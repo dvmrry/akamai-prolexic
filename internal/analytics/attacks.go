@@ -74,7 +74,8 @@ type Attack struct {
 
 // AttackReports lists one customer name's attacks between start and end.
 // The API rejects over-long spans with an invalid start/end error; that
-// error is returned as is.
+// error is returned as is. A 404 means the window holds no attacks: zero
+// rows, not a failure.
 func (c *Client) AttackReports(ctx context.Context, customer string, start, end time.Time) ([]Attack, error) {
 	path, err := contractPath("/attack-reports/contract/", customer,
 		"/start/"+strconv.FormatInt(start.Unix(), 10)+"/end/"+strconv.FormatInt(end.Unix(), 10))
@@ -86,6 +87,10 @@ func (c *Client) AttackReports(ctx context.Context, customer string, start, end 
 		Data []Attack `json:"data"`
 	}
 	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &resp); err != nil {
+		// Live answers 404 NOT_FOUND, not an empty list, for a window with no attacks.
+		if u := apperr.UpstreamOf(err); u != nil && u.Status == http.StatusNotFound {
+			return nil, nil
+		}
 		return nil, err
 	}
 	if err := resp.err("attack reports"); err != nil {
