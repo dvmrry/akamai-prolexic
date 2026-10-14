@@ -1,0 +1,92 @@
+{
+  "$id": "prolexic.routed-health.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failures": {
+      "description": "Customer names whose query failed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The exit code this failure alone would have.",
+            "type": "integer"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "health": {
+      "description": "Sorted by customer, akamaiLocation, routerName.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "akamaiLocation": {
+            "type": "string"
+          },
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "healthyAdcFunnels": {
+            "type": "integer"
+          },
+          "healthyFunnels": {
+            "type": "integer"
+          },
+          "routerName": {
+            "type": "string"
+          },
+          "totalAdcFunnels": {
+            "type": "integer"
+          },
+          "totalFunnels": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "akamaiLocation",
+          "customer",
+          "healthyFunnels",
+          "routerName",
+          "totalFunnels"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "failures",
+    "health",
+    "schema"
+  ],
+  "type": "object"
+}
