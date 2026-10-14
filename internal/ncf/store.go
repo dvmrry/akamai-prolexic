@@ -19,10 +19,11 @@ type LiveAlias struct {
 	AccountID string
 
 	// ActiveVersion is the plan-time conflict token. ProdVersion is the
-	// version production carries. Versions is how many versions exist.
-	// All three are 0 when the API doesn't expose versions (NCF v1).
-	ActiveVersion int
-	ProdVersion   int
+	// version production carries. Version ids are opaque strings (live
+	// NCF v2 uses ids like "V1"). Versions is how many versions exist.
+	// All three are zero when the API doesn't expose versions (NCF v1).
+	ActiveVersion string
+	ProdVersion   string
 	Versions      int
 
 	EntriesCount int
@@ -33,7 +34,7 @@ type LiveAlias struct {
 
 // AliasVersion is one version of an alias.
 type AliasVersion struct {
-	Version int
+	Version string
 	// Entries is nil unless fetched with GetVersion.
 	Entries []string
 }
@@ -70,9 +71,9 @@ type Store interface {
 	ListAliases(ctx context.Context) ([]LiveAlias, error)
 	GetAlias(ctx context.Context, id int64) (LiveAlias, error)
 	ListVersions(ctx context.Context, id int64) ([]AliasVersion, error)
-	GetVersion(ctx context.Context, id int64, version int) (AliasVersion, error)
-	CreateVersion(ctx context.Context, alias LiveAlias, entries []string) (int, error)
-	Activate(ctx context.Context, id int64, version int) error
+	GetVersion(ctx context.Context, id int64, version string) (AliasVersion, error)
+	CreateVersion(ctx context.Context, alias LiveAlias, entries []string) (string, error)
+	Activate(ctx context.Context, id int64, version string) error
 	Deployment(ctx context.Context) (Deployment, error)
 	Limits(ctx context.Context) ([]Limit, error)
 }

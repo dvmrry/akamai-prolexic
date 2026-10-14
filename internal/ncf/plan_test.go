@@ -82,7 +82,7 @@ func TestPlanDiff(t *testing.T) {
 	f.Aliases[0].Entries[1].Ticket = "SEC-2"
 	p := plan(t, world(), f, defaults)
 	a := p.Aliases[0]
-	if !p.Changes || a.ActiveVersion != 1 || a.VersionsRemaining == nil || *a.VersionsRemaining != 9 {
+	if !p.Changes || a.ActiveVersion != "V1" || a.VersionsRemaining == nil || *a.VersionsRemaining != 9 {
 		t.Errorf("plan = %+v", a)
 	}
 	if got := fmt.Sprint(a.Add); got != "[{198.51.100.9/32 SEC-2   } {GEO::US    }]" {
@@ -197,7 +197,7 @@ func TestPlanUnversionedAPI(t *testing.T) {
 	s := world()
 	s.Unversioned = true
 	a := plan(t, s, desired("192.0.2.0/25"), defaults).Aliases[0]
-	if a.ActiveVersion != 0 || a.VersionsRemaining != nil {
+	if a.ActiveVersion != "" || a.VersionsRemaining != nil {
 		t.Errorf("alias plan = %+v", a)
 	}
 }

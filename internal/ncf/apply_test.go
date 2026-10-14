@@ -43,11 +43,11 @@ func TestApplyCreatesVerifiesActivatesAndWaits(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := res.Aliases[0]
-	if a.Status != ncf.StatusDeployed || a.FromVersion != 1 || a.Version != 2 {
+	if a.Status != ncf.StatusDeployed || a.FromVersion != "V1" || a.Version != "V2" {
 		t.Errorf("result = %+v", a)
 	}
 	live := s.Live(101)
-	if live.ActiveVersion != 2 || live.ProdVersion != 2 || !ncf.SameEntries(live.Entries, []string{"192.0.2.0/25", "198.51.100.9/32"}) {
+	if live.ActiveVersion != "V2" || live.ProdVersion != "V2" || !ncf.SameEntries(live.Entries, []string{"192.0.2.0/25", "198.51.100.9/32"}) {
 		t.Errorf("live = %+v", live)
 	}
 	if s.Count("CreateVersion") != 1 || s.Count("Activate") != 1 {
@@ -114,7 +114,7 @@ func TestApplyAmbiguousCreateThatLanded(t *testing.T) {
 	s := world()
 	s.CreateErr, s.CreateLands = ambiguous, true
 	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if err != nil || res.Aliases[0].Version != 2 || res.Aliases[0].Status != ncf.StatusDeployed {
+	if err != nil || res.Aliases[0].Version != "V2" || res.Aliases[0].Status != ncf.StatusDeployed {
 		t.Errorf("res = %+v, err = %v", res, err)
 	}
 	if s.Count("CreateVersion") != 1 {
@@ -157,7 +157,7 @@ func TestApplyLeavesAMismatchedVersionInactive(t *testing.T) {
 	if apperr.CodeOf(err) != apperr.Upstream || s.Count("Activate") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
-	if s.Live(101).ActiveVersion != 1 {
+	if s.Live(101).ActiveVersion != "V1" {
 		t.Error("the mismatched version was activated")
 	}
 }

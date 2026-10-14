@@ -27,8 +27,8 @@ type AliasPlan struct {
 	Type          string `json:"type"`
 	IPVersion     string `json:"ipVersion"`
 	Role          Role   `json:"role"`
-	ActiveVersion int    `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. 0 when the API doesn't expose versions."`
-	ProdVersion   int    `json:"prodVersion"`
+	ActiveVersion string `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
+	ProdVersion   string `json:"prodVersion"`
 	// VersionsRemaining is absent when the API doesn't expose versions.
 	VersionsRemaining *int    `json:"versionsRemaining,omitempty"`
 	Add               []Entry `json:"add"`
@@ -261,7 +261,7 @@ func digest(aliases []AliasPlan) string {
 	type pin struct {
 		ID            int64    `json:"id"`
 		Name          string   `json:"name"`
-		ActiveVersion int      `json:"activeVersion"`
+		ActiveVersion string   `json:"activeVersion"`
 		Add           []string `json:"add"`
 		Remove        []string `json:"remove"`
 	}

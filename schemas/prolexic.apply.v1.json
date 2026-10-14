@@ -18,8 +18,8 @@
             "additionalProperties": false,
             "properties": {
               "activeVersion": {
-                "description": "The conflict token: apply refuses if it moved. 0 when the API doesn't expose versions.",
-                "type": "integer"
+                "description": "The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions.",
+                "type": "string"
               },
               "add": {
                 "items": {
@@ -68,7 +68,7 @@
                 "type": "string"
               },
               "prodVersion": {
-                "type": "integer"
+                "type": "string"
               },
               "remove": {
                 "items": {
@@ -236,7 +236,7 @@
                 "type": "string"
               },
               "fromVersion": {
-                "type": "integer"
+                "type": "string"
               },
               "id": {
                 "type": "integer"
@@ -294,7 +294,7 @@
               },
               "version": {
                 "description": "The version this apply created.",
-                "type": "integer"
+                "type": "string"
               }
             },
             "required": [

@@ -59,9 +59,9 @@ func TestStatusDocText(t *testing.T) {
 	// document directly.
 	two, nine := 2, 9
 	d := &StatusDoc{Aliases: []StatusAlias{
-		{Name: "low", ActiveVersion: 8, ProdVersion: 8, VersionsRemaining: &two},
-		{Name: "pending", ActiveVersion: 9, ProdVersion: 8, VersionsRemaining: &nine},
-		{Name: "fine", ActiveVersion: 4, ProdVersion: 4, VersionsRemaining: &nine},
+		{Name: "low", ActiveVersion: "V8", ProdVersion: "V8", VersionsRemaining: &two},
+		{Name: "pending", ActiveVersion: "V9", ProdVersion: "V8", VersionsRemaining: &nine},
+		{Name: "fine", ActiveVersion: "V4", ProdVersion: "V4", VersionsRemaining: &nine},
 	}}
 	var b strings.Builder
 	if err := d.WriteText(&b); err != nil {

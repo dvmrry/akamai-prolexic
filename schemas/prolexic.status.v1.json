@@ -9,8 +9,8 @@
         "additionalProperties": false,
         "properties": {
           "activeVersion": {
-            "description": "0 when the API doesn't expose versions.",
-            "type": "integer"
+            "description": "Empty when the API doesn't expose versions.",
+            "type": "string"
           },
           "editable": {
             "description": "False means Akamai-managed.",
@@ -30,7 +30,7 @@
           },
           "prodVersion": {
             "description": "The version production carries; differs from activeVersion while an activation is pending.",
-            "type": "integer"
+            "type": "string"
           },
           "type": {
             "type": "string"

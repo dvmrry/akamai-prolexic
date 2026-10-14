@@ -4,7 +4,10 @@ package ncftest
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
@@ -50,7 +53,19 @@ type alias struct {
 	live     ncf.LiveAlias
 	versions [][]string // versions[i] is version i+1
 	lag      int        // polls left before production catches up
-	pending  int        // version heading to production
+	pending  string     // version heading to production
+}
+
+// versionID names version n (1-based) the way live NCF v2 does: "V1", "V2".
+func versionID(n int) string { return fmt.Sprintf("V%d", n) }
+
+// versionIndex is versionID's inverse as a slice index; -1 if malformed.
+func versionIndex(id string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(id, "V"))
+	if err != nil || !strings.HasPrefix(id, "V") {
+		return -1
+	}
+	return n - 1
 }
 
 // New returns an empty store.
@@ -61,7 +76,7 @@ func New() *Store { return &Store{aliases: map[int64]*alias{}} }
 func (s *Store) Add(l ncf.LiveAlias, entries ...string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	l.ActiveVersion, l.ProdVersion, l.Versions = 1, 1, 1
+	l.ActiveVersion, l.ProdVersion, l.Versions = "V1", "V1", 1
 	s.aliases[l.ID] = &alias{live: l, versions: [][]string{slices.Clone(entries)}}
 }
 
@@ -81,8 +96,8 @@ func (s *Store) ActivateNow(id int64, entries ...string) {
 	defer s.mu.Unlock()
 	a := s.aliases[id]
 	a.versions = append(a.versions, slices.Clone(entries))
-	a.live.ActiveVersion = len(a.versions)
-	a.live.ProdVersion = len(a.versions)
+	a.live.ActiveVersion = versionID(len(a.versions))
+	a.live.ProdVersion = versionID(len(a.versions))
 }
 
 // Live returns an alias's current state, entries from its active version.
@@ -95,14 +110,14 @@ func (s *Store) Live(id int64) ncf.LiveAlias {
 func (s *Store) snapshot(a *alias, entries bool) ncf.LiveAlias {
 	l := a.live
 	l.Versions = len(a.versions)
-	act := a.versions[l.ActiveVersion-1]
+	act := a.versions[versionIndex(l.ActiveVersion)]
 	l.EntriesCount = len(act)
 	l.Entries = nil
 	if entries {
 		l.Entries = slices.Clone(act)
 	}
 	if s.Unversioned {
-		l.ActiveVersion, l.ProdVersion, l.Versions = 0, 0, 0
+		l.ActiveVersion, l.ProdVersion, l.Versions = "", "", 0
 	}
 	return l
 }
@@ -133,9 +148,9 @@ func (s *Store) GetAlias(_ context.Context, id int64) (ncf.LiveAlias, error) {
 	if !ok {
 		return ncf.LiveAlias{}, notFound(id)
 	}
-	if a.pending != 0 {
+	if a.pending != "" {
 		if a.lag <= 0 {
-			a.live.ProdVersion, a.pending = a.pending, 0
+			a.live.ProdVersion, a.pending = a.pending, ""
 		} else {
 			a.lag--
 		}
@@ -156,12 +171,12 @@ func (s *Store) ListVersions(_ context.Context, id int64) ([]ncf.AliasVersion, e
 	}
 	out := make([]ncf.AliasVersion, len(a.versions))
 	for i := range a.versions {
-		out[i] = ncf.AliasVersion{Version: i + 1}
+		out[i] = ncf.AliasVersion{Version: versionID(i + 1)}
 	}
 	return out, nil
 }
 
-func (s *Store) GetVersion(_ context.Context, id int64, v int) (ncf.AliasVersion, error) {
+func (s *Store) GetVersion(_ context.Context, id int64, v string) (ncf.AliasVersion, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record("GetVersion")
@@ -169,13 +184,14 @@ func (s *Store) GetVersion(_ context.Context, id int64, v int) (ncf.AliasVersion
 		return ncf.AliasVersion{}, unsupported
 	}
 	a, ok := s.aliases[id]
-	if !ok || v < 1 || v > len(a.versions) {
+	i := versionIndex(v)
+	if !ok || i < 0 || i >= len(a.versions) {
 		return ncf.AliasVersion{}, notFound(id)
 	}
-	return ncf.AliasVersion{Version: v, Entries: slices.Clone(a.versions[v-1])}, nil
+	return ncf.AliasVersion{Version: v, Entries: slices.Clone(a.versions[i])}, nil
 }
 
-func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []string) (int, error) {
+func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []string) (string, error) {
 	if s.BeforeCreate != nil {
 		s.BeforeCreate(s)
 	}
@@ -183,17 +199,17 @@ func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []stri
 	defer s.mu.Unlock()
 	s.record("CreateVersion")
 	if s.Unversioned {
-		return 0, unsupported
+		return "", unsupported
 	}
 	a, ok := s.aliases[l.ID]
 	if !ok {
-		return 0, notFound(l.ID)
+		return "", notFound(l.ID)
 	}
 	if len(a.versions) >= ncf.MaxVersions {
-		return 0, apperr.New(apperr.Upstream, "version limit reached")
+		return "", apperr.New(apperr.Upstream, "version limit reached")
 	}
 	if s.CreateErr != nil && !s.CreateLands {
-		return 0, s.CreateErr
+		return "", s.CreateErr
 	}
 	stored := slices.Clone(entries)
 	if s.Corrupt != nil {
@@ -201,12 +217,12 @@ func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []stri
 	}
 	a.versions = append(a.versions, stored)
 	if s.CreateErr != nil {
-		return 0, s.CreateErr
+		return "", s.CreateErr
 	}
-	return len(a.versions), nil
+	return versionID(len(a.versions)), nil
 }
 
-func (s *Store) Activate(_ context.Context, id int64, v int) error {
+func (s *Store) Activate(_ context.Context, id int64, v string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record("Activate")

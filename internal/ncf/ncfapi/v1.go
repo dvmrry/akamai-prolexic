@@ -80,15 +80,15 @@ var errNeedsV2 = apperr.New(apperr.NotFound, "alias versions are unsupported by 
 
 func (s *V1) ListVersions(context.Context, int64) ([]ncf.AliasVersion, error) { return nil, errNeedsV2 }
 
-func (s *V1) GetVersion(context.Context, int64, int) (ncf.AliasVersion, error) {
+func (s *V1) GetVersion(context.Context, int64, string) (ncf.AliasVersion, error) {
 	return ncf.AliasVersion{}, errNeedsV2
 }
 
-func (s *V1) CreateVersion(context.Context, ncf.LiveAlias, []string) (int, error) {
-	return 0, errNeedsV2
+func (s *V1) CreateVersion(context.Context, ncf.LiveAlias, []string) (string, error) {
+	return "", errNeedsV2
 }
 
-func (s *V1) Activate(context.Context, int64, int) error { return errNeedsV2 }
+func (s *V1) Activate(context.Context, int64, string) error { return errNeedsV2 }
 
 // deploymentStatus is acl-deployment-status.
 type deploymentStatus struct {

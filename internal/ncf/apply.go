@@ -52,8 +52,8 @@ type AliasApply struct {
 	Name        string  `json:"name"`
 	ID          int64   `json:"id"`
 	Status      Status  `json:"status" enum:"unchanged,skipped,failed,created,active,deployed"`
-	FromVersion int     `json:"fromVersion"`
-	Version     int     `json:"version,omitempty" doc:"The version this apply created."`
+	FromVersion string  `json:"fromVersion"`
+	Version     string  `json:"version,omitempty" doc:"The version this apply created."`
 	Add         []Entry `json:"add"`
 	Remove      []Entry `json:"remove"`
 	Error       string  `json:"error,omitempty"`
@@ -127,11 +127,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		a := &res.Aliases[i]
 		if err := write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
-				return fail(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %d", a.Name, a.Version))
+				return fail(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
 			}
 			cur, rerr := read.GetAlias(context.WithoutCancel(ctx), a.ID)
 			if rerr != nil || cur.ActiveVersion != a.Version {
-				return fail(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %d: unknown whether it took effect; check status before re-running", a.Name, a.Version))
+				return fail(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect; check status before re-running", a.Name, a.Version))
 			}
 		}
 		a.Status = StatusActive
@@ -185,37 +185,37 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 
 // createVerified creates ap's version and proves it holds exactly the
 // desired entries.
-func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan) (int, error) {
+func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan) (string, error) {
 	cur, err := read.GetAlias(ctx, ap.ID)
 	if err != nil {
-		return 0, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s", ap.Name)
+		return "", apperr.Wrap(apperr.CodeOf(err), err, "re-read %s", ap.Name)
 	}
 	if cur.ActiveVersion != ap.ActiveVersion {
-		return 0, apperr.New(apperr.Conflict, "%s changed since the plan (activeVersion %d, now %d); re-plan", ap.Name, ap.ActiveVersion, cur.ActiveVersion)
+		return "", apperr.New(apperr.Conflict, "%s changed since the plan (activeVersion %q, now %q); re-plan", ap.Name, ap.ActiveVersion, cur.ActiveVersion)
 	}
 	before, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
-		return 0, apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
+		return "", apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
 	}
 
 	v, err := write.CreateVersion(ctx, cur, ap.desired)
 	if err != nil {
 		if !ambiguous(err) {
-			return 0, apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
+			return "", apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
 		}
 		// Prove the outcome from the version list; never re-send.
 		v, err = landed(context.WithoutCancel(ctx), read, ap, before, err)
 		if err != nil {
-			return 0, err
+			return "", err
 		}
 	}
 
 	got, err := read.GetVersion(ctx, ap.ID, v)
 	if err != nil {
-		return v, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %d", ap.Name, v)
+		return v, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s", ap.Name, v)
 	}
 	if !SameEntries(got.Entries, ap.desired) {
-		return v, apperr.New(apperr.Upstream, "%s version %d doesn't hold the desired entries; it was left inactive", ap.Name, v)
+		return v, apperr.New(apperr.Upstream, "%s version %s doesn't hold the desired entries; it was left inactive", ap.Name, v)
 	}
 	return v, nil
 }
@@ -223,16 +223,16 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 // landed decides an ambiguous create: exactly one new version means it
 // landed (verification follows); none means it didn't; more means someone
 // else is writing.
-func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, cause error) (int, error) {
+func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, cause error) (string, error) {
 	after, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
-		return 0, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: unknown whether it landed, and listing versions failed (%v); check status before re-running", ap.Name, err)
+		return "", apperr.Wrap(apperr.Upstream, cause, "create a version of %s: unknown whether it landed, and listing versions failed (%v); check status before re-running", ap.Name, err)
 	}
-	seen := map[int]bool{}
+	seen := map[string]bool{}
 	for _, v := range before {
 		seen[v.Version] = true
 	}
-	var fresh []int
+	var fresh []string
 	for _, v := range after {
 		if !seen[v.Version] {
 			fresh = append(fresh, v.Version)
@@ -240,11 +240,11 @@ func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion
 	}
 	switch len(fresh) {
 	case 0:
-		return 0, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: it did not land; safe to re-run", ap.Name)
+		return "", apperr.Wrap(apperr.Upstream, cause, "create a version of %s: it did not land; safe to re-run", ap.Name)
 	case 1:
 		return fresh[0], nil
 	default:
-		return 0, apperr.New(apperr.Conflict, "create a version of %s: %d new versions appeared (%v); someone else is writing", ap.Name, len(fresh), fresh)
+		return "", apperr.New(apperr.Conflict, "create a version of %s: %d new versions appeared (%v); someone else is writing", ap.Name, len(fresh), fresh)
 	}
 }
 

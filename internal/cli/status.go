@@ -28,8 +28,8 @@ type StatusAlias struct {
 	IPVersion         string `json:"ipVersion"`
 	Editable          bool   `json:"editable" doc:"False means Akamai-managed."`
 	EntriesCount      int    `json:"entriesCount"`
-	ActiveVersion     int    `json:"activeVersion" doc:"0 when the API doesn't expose versions."`
-	ProdVersion       int    `json:"prodVersion" doc:"The version production carries; differs from activeVersion while an activation is pending."`
+	ActiveVersion     string `json:"activeVersion" doc:"Empty when the API doesn't expose versions."`
+	ProdVersion       string `json:"prodVersion" doc:"The version production carries; differs from activeVersion while an activation is pending."`
 	VersionsRemaining *int   `json:"versionsRemaining,omitempty" doc:"Versions left before the alias is full; absent when the API doesn't expose versions."`
 }
 
@@ -74,8 +74,8 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 		if al.ActiveVersion != al.ProdVersion {
 			mark += "ACTIVATION PENDING"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%d\t%d\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
-			al.EntriesCount, al.ActiveVersion, al.ProdVersion, left, mark)
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%s\t%s\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
+			al.EntriesCount, dash(al.ActiveVersion), dash(al.ProdVersion), left, mark)
 	}
 	fmt.Fprintln(tw, "\nLIMIT TYPE\tLIMIT\tENABLED\tDISABLED\t\t\t\t\t\t")
 	for _, l := range d.Limits {

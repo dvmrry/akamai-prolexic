@@ -289,7 +289,7 @@ func (d *PlanDoc) WriteText(w io.Writer) error {
 			fmt.Fprintf(w, "  %s (%d): no changes\n", al.Name, al.ID)
 			continue
 		}
-		fmt.Fprintf(w, "~ %s (%d) %s %s, activeVersion %d\n", al.Name, al.ID, al.Type, al.IPVersion, al.ActiveVersion)
+		fmt.Fprintf(w, "~ %s (%d) %s %s, activeVersion %s\n", al.Name, al.ID, al.Type, al.IPVersion, dash(al.ActiveVersion))
 		for _, e := range al.Add {
 			meta := ""
 			if e.Ticket != "" {
@@ -366,7 +366,7 @@ func (d *ApplyDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "ALIAS\tID\tSTATUS\tFROM\tVERSION\t+\t-")
 	for _, al := range d.Result.Aliases {
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%d\t%d\t%d\t%d\n", al.Name, al.ID, al.Status, al.FromVersion, al.Version, len(al.Add), len(al.Remove))
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%d\t%d\n", al.Name, al.ID, al.Status, dash(al.FromVersion), dash(al.Version), len(al.Add), len(al.Remove))
 	}
 	return tw.Flush()
 }
