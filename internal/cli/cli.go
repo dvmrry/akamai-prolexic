@@ -57,6 +57,7 @@ func commands() []*command {
 			{name: "show", summary: "one attack's detail report", run: runAttacksShow},
 		}},
 		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
+		{name: "events", summary: "critical events and events per customer name", run: runEvents},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
 			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},
 			{name: "health", summary: "healthy and total tunnels per location and router", run: runRoutedHealth},
