@@ -1,0 +1,141 @@
+package analytics
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+)
+
+// envelope is the status wrapper of the report-style endpoints (attacks,
+// events, metric types). A response that says status=false is a failure even
+// on HTTP 200; a response that omits the field is taken as fine.
+type envelope struct {
+	CurrentContract string `json:"currentContract"`
+	Status          *bool  `json:"status"`
+	StatusMsg       string `json:"statusMsg"`
+}
+
+func (e envelope) err(what string) error {
+	if e.Status != nil && !*e.Status {
+		return apperr.New(apperr.Upstream, "%s: the API reported failure: %s", what, e.StatusMsg)
+	}
+	return nil
+}
+
+// contractPath builds a path with the customer name as the {contract}
+// segment. akamai.Request.Path is an unescaped path, so the name goes in as
+// is and the transport escapes it; a name with a slash can't be expressed.
+func contractPath(prefix, customer, suffix string) (string, error) {
+	if strings.Contains(customer, "/") {
+		return "", apperr.New(apperr.Usage, "customer name %q contains a slash, which the path can't carry", customer)
+	}
+	return basePath + prefix + customer + suffix, nil
+}
+
+// Destination is a targeted address or subnet of an attack.
+type Destination struct {
+	IP      string `json:"ip"`
+	Netmask int    `json:"netmask"`
+}
+
+// Peak is one location's peak statistics of an attack.
+type Peak struct {
+	Location    string `json:"location"`
+	PeakID      int64  `json:"peakId"`
+	Bandwidth   int64  `json:"bandwidth"`
+	PPS         int64  `json:"pps"`
+	Connections int64  `json:"connections,omitempty"`
+}
+
+// Attack is one attack report. Times are the wire's UNIX epoch seconds (UTC).
+type Attack struct {
+	Customer               string        `json:"customer" doc:"The customer name queried; added by prolexic."`
+	AttackID               int64         `json:"attackId"`
+	CustomerShortName      string        `json:"customerShortName,omitempty"`
+	TicketID               int64         `json:"ticketId,omitempty"`
+	EventID                int64         `json:"eventId"`
+	EventType              string        `json:"eventType,omitempty" doc:"alert or attack."`
+	EventTypes             []string      `json:"eventTypes" doc:"The attack types."`
+	StartTime              int64         `json:"startTime" doc:"Attack start, epoch seconds UTC."`
+	EndTime                int64         `json:"endTime,omitempty" doc:"Attack end, epoch seconds UTC; absent while it is ongoing."`
+	EventStartTime         int64         `json:"eventStartTime" doc:"Epoch seconds UTC."`
+	EventEndTime           int64         `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC."`
+	EventStartTimeAsString string        `json:"eventStartTimeAsString" doc:"yyyy-MM-dd HH:mm:ss, as the API reports it."`
+	EventEndTimeAsString   string        `json:"eventEndTimeAsString" doc:"yyyy-MM-dd HH:mm:ss, as the API reports it."`
+	DestinationPort        string        `json:"destinationPort,omitempty"`
+	Destinations           []Destination `json:"destinations,omitempty"`
+	Peaks                  []Peak        `json:"peaks,omitempty"`
+}
+
+// AttackReports lists one customer name's attacks between start and end.
+// The API rejects over-long spans with an invalid start/end error; that
+// error is returned as is.
+func (c *Client) AttackReports(ctx context.Context, customer string, start, end time.Time) ([]Attack, error) {
+	path, err := contractPath("/attack-reports/contract/", customer,
+		"/start/"+strconv.FormatInt(start.Unix(), 10)+"/end/"+strconv.FormatInt(end.Unix(), 10))
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		envelope
+		Data []Attack `json:"data"`
+	}
+	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &resp); err != nil {
+		return nil, err
+	}
+	if err := resp.err("attack reports"); err != nil {
+		return nil, err
+	}
+	for i := range resp.Data {
+		resp.Data[i].Customer = customer
+	}
+	return resp.Data, nil
+}
+
+// AttackRow is one location's row of a single attack's detail report.
+type AttackRow struct {
+	Customer        string `json:"customer" doc:"The customer name queried; added by prolexic."`
+	AttackID        int64  `json:"attackId"`
+	AttackTypeName  string `json:"attackTypeName,omitempty"`
+	EventID         int64  `json:"eventId"`
+	TicketID        int64  `json:"ticketId,omitempty"`
+	Location        string `json:"location" doc:"Where in the Prolexic network the attack was seen."`
+	IP              string `json:"ip" doc:"The target address."`
+	Netmask         int    `json:"netmask"`
+	DestinationPort string `json:"destinationPort,omitempty"`
+	StartTime       int64  `json:"startTime" doc:"Epoch seconds UTC."`
+	EndTime         int64  `json:"endTime,omitempty" doc:"Epoch seconds UTC."`
+	EventStartTime  int64  `json:"eventStartTime,omitempty" doc:"Epoch seconds UTC."`
+	EventEndTime    int64  `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC."`
+	EventPeakID     int64  `json:"eventPeakId,omitempty"`
+	EventBw         int64  `json:"eventBw" doc:"Peak bandwidth of the event."`
+	EventPps        int64  `json:"eventPps" doc:"Peak packets per second of the event."`
+	EventCON        int64  `json:"eventCON,omitempty" doc:"Peak connections of the event."`
+}
+
+// Attack returns the detail rows of one attack of one customer name.
+func (c *Client) Attack(ctx context.Context, customer string, attackID int64) ([]AttackRow, error) {
+	path, err := contractPath("/attack-report/contract/", customer, "/attack-id/"+strconv.FormatInt(attackID, 10))
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		envelope
+		Data []AttackRow `json:"data"`
+	}
+	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &resp); err != nil {
+		return nil, err
+	}
+	if err := resp.err("attack report"); err != nil {
+		return nil, err
+	}
+	for i := range resp.Data {
+		resp.Data[i].Customer = customer
+	}
+	return resp.Data, nil
+}

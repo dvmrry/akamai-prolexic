@@ -12,6 +12,8 @@ import (
 func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
+		&AttackDoc{},
+		&AttacksDoc{},
 		&DoctorDoc{},
 		&RoutedCheckDoc{},
 		&RoutedHealthDoc{},
