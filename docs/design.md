@@ -101,5 +101,5 @@ checking against a real account.
 
 - The NCF v2 adapter (versions, activation, BIG multipart upload).
 - Alias rotation as an explicit command.
-- Network Health targets.
+- Network Health targets: create, update and delete (read-only `targets list` and `targets show` exist; targets are per account, and the spec has no paging).
 - Traffic metrics (`/metrics`, `/time-series-data`, `/scrub-centers`).

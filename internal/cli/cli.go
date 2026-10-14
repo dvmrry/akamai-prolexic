@@ -76,6 +76,10 @@ func commands() []*command {
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
 		{name: "status", summary: "deployment state, aliases and limits (read-only)", run: runStatus},
+		{name: "targets", summary: "Network Health targets (read-only)", sub: []*command{
+			{name: "list", summary: "every target of the account", run: runTargetsList},
+			{name: "show", summary: "one target by id", run: runTargetsShow},
+		}},
 		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
 		{name: "version", summary: "print the version", run: runVersion},
 	}

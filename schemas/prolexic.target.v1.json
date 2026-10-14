@@ -1,0 +1,77 @@
+{
+  "$id": "prolexic.target.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "target": {
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "createdTime": {
+          "description": "ISO 8601, as the API reports it.",
+          "type": "string"
+        },
+        "modifiedBy": {
+          "type": "string"
+        },
+        "modifiedTime": {
+          "description": "ISO 8601, as the API reports it.",
+          "type": "string"
+        },
+        "ports": {
+          "description": "The TCP ports monitored.",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "targetDomain": {
+          "description": "The domain for HTTP tests; null or empty (shown absent) for TCP.",
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "targetIp": {
+          "description": "A single address for TCP tests; null (shown absent) for HTTP.",
+          "type": "string"
+        },
+        "targetName": {
+          "type": "string"
+        },
+        "testIds": {
+          "description": "The test ids the target uses.",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "testType": {
+          "description": "TCP or HTTP.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ports",
+        "targetId",
+        "targetName",
+        "testIds",
+        "testType"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "target"
+  ],
+  "type": "object"
+}
