@@ -1,0 +1,124 @@
+{
+  "$id": "prolexic.status.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aliases": {
+      "description": "Sorted by name.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "description": "0 when the API doesn't expose versions.",
+            "type": "integer"
+          },
+          "editable": {
+            "description": "False means Akamai-managed.",
+            "type": "boolean"
+          },
+          "entriesCount": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prodVersion": {
+            "description": "The version production carries; differs from activeVersion while an activation is pending.",
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "versionsRemaining": {
+            "description": "Versions left before the alias is full; absent when the API doesn't expose versions.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "editable",
+          "entriesCount",
+          "id",
+          "ipVersion",
+          "name",
+          "prodVersion",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "deployment": {
+      "additionalProperties": false,
+      "properties": {
+        "failedRules": {
+          "description": "Rules that failed to install; non-zero is a partial failure.",
+          "type": "integer"
+        },
+        "processing": {
+          "description": "A version is being staged.",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "PRODUCTION, PROCESSING or FAILED; empty when the API reported none.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The ACL version in production.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "failedRules",
+        "processing",
+        "state",
+        "version"
+      ],
+      "type": "object"
+    },
+    "limits": {
+      "description": "Sorted by type.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "disabled",
+          "enabled",
+          "limit",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "aliases",
+    "deployment",
+    "limits",
+    "schema"
+  ],
+  "type": "object"
+}

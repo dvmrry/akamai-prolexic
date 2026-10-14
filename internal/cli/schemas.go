@@ -25,6 +25,7 @@ func documents() []output.Document {
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},
 		&RoutedSessionsDoc{},
+		&StatusDoc{},
 		&VersionDoc{},
 		&ValidateDoc{},
 	}

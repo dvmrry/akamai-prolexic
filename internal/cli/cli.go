@@ -74,6 +74,7 @@ func commands() []*command {
 			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
+		{name: "status", summary: "deployment state, aliases and limits (read-only)", run: runStatus},
 		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
 		{name: "version", summary: "print the version", run: runVersion},
 	}
