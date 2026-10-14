@@ -31,6 +31,8 @@ checking against a real account.
 - **Extension:** "retry only GETs" becomes "retry only reads". The Analytics routed endpoints are POSTs that only query, marked `ReadOnly`, so they retry like GETs and are never ambiguous.
 - A write that fails with a transport error, a 5xx or a cancellation after sending is marked `ambiguous`. Callers prove the outcome by reading; they never resend.
 - Status → exit code: 401/403 → 3; 404 → 4; 409/412 → 8; everything else → 5.
+- An expired deadline exits 5 (upstream), not 1. Responses over 16 MB fail. Error documents keep the gateway's `incidentId`.
+- The tool reports what it reads, unredacted. Keeping account data out of the repo is the maintainers' job (`internal/hygiene` and the local commit guard), not the tool's. Only credential values are never printed.
 
 ## Desired file (`prolexic.desired.v1`)
 
@@ -52,7 +54,7 @@ checking against a real account.
 }
 ```
 
-- **Extension: `role` (`deny` or `allow`)** per alias. The brief says the own-space check applies to "deny-side" entries, but nothing in an alias says which side it is on, so the file asserts it. `export` defaults to `deny`, which means more checks rather than fewer.
+- **Extension: `role` (`deny` or `allow`)** per alias. The brief says the own-space check applies to "deny-side" entries, but nothing in an alias says which side it is on, so the file asserts it. `export` defaults to `deny`, which means more checks rather than fewer. With NCF v2's `prodVersion.aclRuleIndexes`, plan should derive the side from live rules and reject a file whose `role` disagrees.
 - **Extension: `ownSpace`** holds the static list and names the protected-destination alias(es). Plan reads those aliases' live entries.
 - The canonical form is: keys sorted at every level, aliases sorted by name, entries sorted v4 → v6 → GEO → ASN, `[]` never `null`, two-space indent and a trailing newline. `validate` fails a file that isn't byte-identical to it.
 - Entries are normalised on both sides. An authored host-bits typo is rejected, while the same thing from live is masked.
@@ -74,12 +76,12 @@ checking against a real account.
 - Apply runs in three phases, so no alias is activated unless every alias's new version verified:
   1. For each alias: check the conflict token, create a version, re-read it and compare it to desired.
   2. Activate all of them.
-  3. Wait until `prodVersion` matches for all, the ACL deployment reports no failed rules, and nothing is processing.
+  3. Wait until `prodVersion` matches for all, the ACL deployment reports no failed rules, no ruleset at or after the production version is FAILED, and nothing is processing.
 - An ambiguous create is resolved from the version list:
   - no new version: it didn't land, and re-running is safe;
   - exactly one: it landed and goes on to verification;
   - more than one: a concurrent writer (exit 8).
-- **Pending the NCF v2 spec:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). The v1 adapter serves reads, and its version methods return exit 4, so `apply` refuses before any write. The v2 adapter replaces it.
+- **Pending the NCF v2 spec:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v1 adapter serves reads, and its version methods return exit 4, so `apply` refuses before any write. The v2 adapter replaces it.
 - **Verify:** v1's `GET /acls/aliases` may return entries even for Akamai-managed aliases. The adapter discards them, but they still cross the wire.
 
 ## add and remove
