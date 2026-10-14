@@ -1,5 +1,5 @@
 // Package version reports the build's version, commit and date. Release
-// builds inject them with -ldflags "-X github.com/dvmrry/prolexic/internal/version.version=...".
+// builds inject them with -ldflags "-X github.com/dvmrry/akamai-prolexic/internal/version.version=...".
 package version
 
 import (

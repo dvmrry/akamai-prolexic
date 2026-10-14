@@ -1,11 +1,12 @@
-# prolexic
+# akamai-prolexic
 
-A Go CLI for Akamai Prolexic over the Akamai APIs (EdgeGrid auth). Dave owns the design; it is just beginning.
+`prolexic`, a Go CLI for Akamai Prolexic over the Akamai APIs (EdgeGrid auth). Dave owns the design; it is just beginning.
 
 ## Commands
 
 - `make check`: gofmt, `go vet`, `go test`, gitleaks. Run before every commit.
 - `make build`: `bin/prolexic`, with the version injected via ldflags.
+- `make install`: the same into `~/go/bin`. Dave's shell abbreviates it as `plx` (dotfiles).
 - Hooks: `prek install --hook-type pre-commit --hook-type pre-push` once per clone (gitleaks, gofmt and vet on commit; tests on push).
 - Toolchain: `direnv allow` loads the flake's devShell (go, gopls, gofumpt, golangci-lint, gitleaks, prek).
 

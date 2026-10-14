@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/dvmrry/prolexic/internal/version"
+	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
 
 const (
