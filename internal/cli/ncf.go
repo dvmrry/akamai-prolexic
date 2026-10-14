@@ -424,10 +424,19 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 		if err != nil {
 			return nil, err
 		}
-		names, err := analytics.ResolveCustomers(ctx, api, nil)
+		// Every customer name, in use or not: own space is everything we
+		// protect, and an inactive name's prefixes are still ours.
+		all, err := api.CustomerNames(ctx)
 		if err != nil {
-			return nil, err
+			return nil, apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
 		}
+		var names []string
+		for _, n := range all {
+			if !slices.Contains(names, n.Name) {
+				names = append(names, n.Name)
+			}
+		}
+		slices.Sort(names)
 		// A failed name fails the plan: the own-space check can't be
 		// partial.
 		sets, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.MetricTypes, error) {

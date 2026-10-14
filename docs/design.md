@@ -63,7 +63,7 @@ checking against a real account.
 - `GEO::` and `ASN::` are accepted on `SOURCE` and `BIG` aliases (techdocs); `DIPA` holds destination IPs only.
 - The removal threshold is 10 entries per alias per apply. `--max-removals N` raises it and `-1` removes it.
 - Version thresholds count the versions remaining before this apply: a warning below 3, an error at 0, and only for aliases that change.
-- **Own space from Analytics** is the union of `metric-types` FBM `subnets` across in-use customer names. The spec has no field called "protected prefixes", so **verify** that these are the right prefixes.
+- **Own space from Analytics** is the union of `metric-types` FBM `subnets` across all customer names, in use or not. The spec has no field called "protected prefixes", so **verify** that these are the right prefixes.
   - A customer name with none produces a warning: an empty list means unknown, not "nothing protected".
   - If the lookup fails, the plan fails.
   - `--no-analytics-own-space` skips the lookup and records a warning in the plan.

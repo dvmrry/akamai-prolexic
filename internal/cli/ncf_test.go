@@ -214,7 +214,9 @@ func ncfAPI(t *testing.T) *fakeAPI {
 	api.json("GET /network-cloud-firewall/v1/acls/aliases/101", 200, `{"aliasId": 101, "aliasName": "block-v4",
 	  "aliasListType": "SOURCE", "ipVersion": "V4", "accountId": "A-EXAMPLE", "isCustomerEditable": true,
 	  "entriesCount": 2, "entries": ["192.0.2.0/25", "198.51.100.7"]}`)
-	api.json("GET /prolexic-analytics/v2/customer/names", 200, `{"customerNames":[{"name":"example-a","contractId":"C-EXAMPLE","accountName":"Example","inUse":true}]}`)
+	api.json("GET /prolexic-analytics/v2/customer/names", 200, `{"customerNames":[{"name":"example-a","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},{"name":"example-old","contractId":"C-EXAMPLE","accountName":"Example","inUse":false}]}`)
+	api.json("GET /prolexic-analytics/v2/metric-types/example-old", 200, `{"currentContract":"example-old","status":true,
+	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["192.0.2.192/26"]},"packets":{"subnets":[]}}}}}`)
 	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"example-a","status":true,
 	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["198.51.100.128/25"]},"packets":{"subnets":[]}}}}}`)
 	return api
@@ -290,5 +292,16 @@ func TestApplyNeedsWriteCredentials(t *testing.T) {
 	r = runCLI(t, ncfEnv(api.env()), "apply", "--file", p)
 	if r.code != int(apperr.Usage) {
 		t.Errorf("no digest: exit = %d", r.code)
+	}
+}
+
+func TestPlanOwnSpaceIncludesCustomerNamesNotInUse(t *testing.T) {
+	api := ncfAPI(t)
+	p := writeDesired(t, desiredFixture)
+	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "192.0.2.200", "--ticket", "T", "--reason", "r")
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
+	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	if r.code != int(apperr.Validation) || len(doc.Findings) != 1 || !strings.Contains(doc.Findings[0].Message, "analytics example-old/") {
+		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
 	}
 }
