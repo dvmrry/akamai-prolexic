@@ -57,9 +57,9 @@ type PlanOptions struct {
 const DefaultMaxRemovals = 10
 
 // geoASNTypes are the alias types that accept GEO:: and ASN:: entries.
-// SOURCE only, per the v1 spec (BIG is an uploaded IP list; DIPA holds
-// destinations). To verify against the live API.
-var geoASNTypes = []string{"SOURCE"}
+// Source-side types only, per techdocs: SOURCE and BIG; DIPA holds
+// destination IPs.
+var geoASNTypes = []string{"SOURCE", "BIG"}
 
 // countLimits are the entry-count bounds per alias type.
 var countLimits = map[string][2]int{

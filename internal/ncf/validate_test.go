@@ -124,3 +124,27 @@ func TestValidateRequiresCanonicalForm(t *testing.T) {
 		t.Errorf("hand-edited: findings = %v", got)
 	}
 }
+
+func TestValidateContainedScalesToBigAliases(t *testing.T) {
+	var es []Entry
+	for i := range 19999 {
+		es = append(es, Entry{CIDR: netip.AddrFrom4([4]byte{198, 18 + byte(i>>16), byte(i >> 8), byte(i)}).String() + "/32"})
+	}
+	es = append(es, Entry{CIDR: "198.18.0.0/24"}) // covers 256 of them
+	f := testFile(Alias{Name: "big", ID: 1, Type: "BIG", Role: RoleDeny, Entries: es})
+	c := testChecker()
+	c.Bogons = nil // 198.18/15 is benchmarking space, a bogon elsewhere
+	start := time.Now()
+	n := 0
+	for _, x := range c.Validate(f, nil) {
+		if x.Code == "contained" {
+			n++
+		}
+	}
+	if n != 256 {
+		t.Errorf("contained = %d, want 256", n)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("validate took %s on 20,000 entries", d)
+	}
+}

@@ -181,7 +181,7 @@ func TestPlanLiveFindings(t *testing.T) {
 	}
 }
 
-func TestPlanGeoASNOnlyOnSource(t *testing.T) {
+func TestPlanGeoASNNotOnDIPA(t *testing.T) {
 	s := ncftest.New()
 	s.Add(ncf.LiveAlias{ID: 5, Name: "dst", Type: "DIPA", IPVersion: "V4", Editable: true})
 	f := &ncf.File{Schema: ncf.DesiredSchemaID, AccountID: "A-EXAMPLE", Aliases: []ncf.Alias{

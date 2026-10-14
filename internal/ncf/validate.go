@@ -166,9 +166,15 @@ func (c *Checker) validateEntries(a Alias, own []netip.Prefix) []Finding {
 		}
 		prefixes = append(prefixes, p)
 	}
+	// A prefix is contained when one of its strict supernets is also an entry:
+	// at most 128 set lookups each, so BIG aliases stay linear.
+	set := make(map[netip.Prefix]bool, len(prefixes))
 	for _, p := range prefixes {
-		for _, q := range prefixes {
-			if p != q && Contains(q, p) {
+		set[p] = true
+	}
+	for _, p := range prefixes {
+		for bits := p.Bits() - 1; bits >= 0; bits-- {
+			if q := netip.PrefixFrom(p.Addr(), bits).Masked(); set[q] {
 				add(Warning, "contained", p.String(), "%s is already covered by %s", p, q)
 				break
 			}
