@@ -39,6 +39,9 @@
         "errorCode": {
           "type": "string"
         },
+        "incidentId": {
+          "type": "string"
+        },
         "method": {
           "type": "string"
         },

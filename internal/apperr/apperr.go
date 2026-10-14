@@ -65,6 +65,8 @@ type UpstreamDetail struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Detail    string `json:"detail,omitempty"`
+	// IncidentID is the gateway's incident reference, for Akamai support.
+	IncidentID string `json:"incidentId,omitempty"`
 	// Ambiguous is set when a non-idempotent request may or may not have
 	// taken effect (a transport failure or a 5xx after the request was sent).
 	Ambiguous bool `json:"ambiguous,omitempty"`
@@ -94,13 +96,18 @@ func Wrap(code Code, err error, format string, args ...any) *Error {
 }
 
 // CodeOf classifies err: nil is OK, a cancelled context is Cancelled, an
-// *Error is its own code, and anything else is a bug.
+// expired deadline is Upstream, an *Error is its own code, and anything
+// else is a bug.
 func CodeOf(err error) Code {
 	if err == nil {
 		return OK
 	}
 	if errors.Is(err, context.Canceled) {
 		return Cancelled
+	}
+	// A deadline is a request that ran out of time upstream, not a bug.
+	if errors.Is(err, context.DeadlineExceeded) {
+		return Upstream
 	}
 	var e *Error
 	if errors.As(err, &e) {

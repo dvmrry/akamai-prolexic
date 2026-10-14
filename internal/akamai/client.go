@@ -28,6 +28,10 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
 
+// MaxResponseSize bounds a response body. The largest expected one is an
+// alias list or a 19,999-entry BIG alias, far below it.
+const MaxResponseSize = 16 << 20
+
 // Client calls one Akamai API host with one set of credentials.
 type Client struct {
 	base       url.URL
@@ -171,7 +175,13 @@ func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, c
 
 func (c *Client) finish(req Request, resp *http.Response, out any) error {
 	defer drain(resp)
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseSize+1))
+	if err == nil && len(b) > MaxResponseSize {
+		return &apperr.Error{
+			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: response larger than %d bytes", req.Method, req.Path, MaxResponseSize),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
 	if err != nil {
 		return &apperr.Error{
 			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: read response", req.Method, req.Path), Err: err,
@@ -194,25 +204,27 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 // application's (errorCode, message) and the API gateway's (type, title,
 // detail, and sometimes code).
 type problem struct {
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Detail    string `json:"detail"`
-	Code      string `json:"code"`
-	ErrorCode string `json:"errorCode"`
-	Message   string `json:"message"`
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	Code       string `json:"code"`
+	ErrorCode  string `json:"errorCode"`
+	Message    string `json:"message"`
+	IncidentID string `json:"incidentId"`
 }
 
 func statusError(req Request, status int, body []byte) error {
 	var p problem
 	_ = json.Unmarshal(body, &p) // a non-JSON error body still yields a status error
 	d := &apperr.UpstreamDetail{
-		Method:    req.Method,
-		Path:      req.Path,
-		Status:    status,
-		ErrorCode: firstNonEmpty(p.ErrorCode, p.Code),
-		Title:     p.Title,
-		Detail:    firstNonEmpty(p.Detail, p.Message),
-		Ambiguous: !req.safe() && status >= 500,
+		Method:     req.Method,
+		Path:       req.Path,
+		Status:     status,
+		ErrorCode:  firstNonEmpty(p.ErrorCode, p.Code),
+		Title:      p.Title,
+		Detail:     firstNonEmpty(p.Detail, p.Message),
+		IncidentID: p.IncidentID,
+		Ambiguous:  !req.safe() && status >= 500,
 	}
 	msg := fmt.Sprintf("%s %s: HTTP %d", req.Method, req.Path, status)
 	if s := firstNonEmpty(d.Detail, d.Title, d.ErrorCode); s != "" {

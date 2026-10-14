@@ -153,3 +153,37 @@ func TestParseRetryAfter(t *testing.T) {
 		t.Error("garbage accepted")
 	}
 }
+
+func TestGatewayIncidentIDIsKept(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(502)
+		w.Write([]byte(`{"type":"gateway","title":"Bad Gateway","incidentId":"incident-0001"}`))
+	})
+	c.MaxAttempts = 1
+	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
+	if d := apperr.UpstreamOf(err); d == nil || d.IncidentID != "incident-0001" {
+		t.Errorf("detail = %+v", d)
+	}
+}
+
+func TestResponseSizeCap(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write(make([]byte, MaxResponseSize+1))
+	})
+	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
+	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestDeadlineIsAnUpstreamFailure(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := c.Do(ctx, Request{Method: "GET", Path: "/p"}, nil)
+	if apperr.CodeOf(err) != apperr.Upstream {
+		t.Errorf("err = %v (code %d), want exit 5", err, apperr.CodeOf(err))
+	}
+}
