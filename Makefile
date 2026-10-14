@@ -18,7 +18,7 @@ install:
 	go install -ldflags '$(LDFLAGS)' ./cmd/prolexic
 
 fmt-check:
-	@files="$$(gofmt -l .)"; if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
+	@files="$$(find . -path ./.claude -prune -o -name '*.go' -print | xargs gofmt -l)"; if [ -n "$$files" ]; then echo "$$files"; exit 1; fi
 
 vet:
 	go vet ./...
