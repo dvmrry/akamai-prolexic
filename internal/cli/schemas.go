@@ -18,6 +18,7 @@ func documents() []output.Document {
 		&AttacksDoc{},
 		&ChangeDoc{},
 		&EventsDoc{},
+		&ExportDoc{},
 		&FmtDoc{},
 		&PlanDoc{},
 		&DoctorDoc{},

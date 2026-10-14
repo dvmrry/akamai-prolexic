@@ -1,0 +1,65 @@
+{
+  "$id": "prolexic.export.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aliases": {
+      "description": "The aliases in the written file, sorted by name, with their delta to the file's previous entries.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "description": "Live entries the file did not have; all of them for a new alias.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "removed": {
+            "description": "Entries the file had that are no longer live.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "id",
+          "name",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "created": {
+      "description": "The file did not exist: bootstrapped from every editable alias.",
+      "type": "boolean"
+    },
+    "file": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "written": {
+      "description": "False when the file already held exactly the exported bytes.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "aliases",
+    "created",
+    "file",
+    "schema",
+    "written"
+  ],
+  "type": "object"
+}

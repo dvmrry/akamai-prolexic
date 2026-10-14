@@ -65,6 +65,7 @@ func commands() []*command {
 		}},
 		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
+		{name: "export", summary: "write live editable aliases to the desired file (bootstrap, or adopt drift)", run: runExport},
 		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
 		{name: "plan", summary: "diff the desired file against live and validate it", run: runPlan},
 		{name: "remove", summary: "remove entries from an alias in the desired file (offline)", run: runRemove},
