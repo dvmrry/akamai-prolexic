@@ -1,0 +1,13 @@
+# Akamai EdgeGrid credentials live in ~/.edgerc; never in this repo.
+.edgerc
+.env
+.env.*
+bin/
+dist/
+/prolexic
+coverage.out
+*.test
+.direnv/
+.claude/settings.local.json
+# Transient scratch space (run output, captured API responses); never tracked.
+/scratch/
