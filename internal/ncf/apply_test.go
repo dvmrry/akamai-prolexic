@@ -211,6 +211,27 @@ func TestApplyReportsFailedRules(t *testing.T) {
 	}
 }
 
+func TestApplyReportsAFailedRuleset(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		deploy  ncf.Deployment
+		wantErr bool
+	}{
+		{"newer FAILED ruleset, no failed rules", ncf.Deployment{Version: 7, State: "PRODUCTION", FailedVersion: 8}, true},
+		{"nothing in production", ncf.Deployment{State: "FAILED", FailedVersion: 3}, true},
+		{"older FAILED ruleset is history", ncf.Deployment{Version: 7, State: "PRODUCTION", FailedVersion: 5}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := world()
+			s.Deploy = tt.deploy
+			res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+			if (err != nil) != tt.wantErr || (tt.wantErr && res.Aliases[0].Status != ncf.StatusActive) {
+				t.Errorf("err = %v, res = %+v", err, res)
+			}
+		})
+	}
+}
+
 func TestApplyOnAnUnversionedAPIIsUnsupported(t *testing.T) {
 	s := world()
 	s.Unversioned = true

@@ -116,10 +116,11 @@ func (s *V1) Deployment(ctx context.Context) (ncf.Deployment, error) {
 		case "PROCESSING":
 			d.Processing = true
 		case "FAILED":
-			if d.State == "" {
-				d.Version, d.State = rs.Version, rs.DeploymentStatus
-			}
+			d.FailedVersion = max(d.FailedVersion, rs.Version)
 		}
+	}
+	if d.State == "" && d.FailedVersion != 0 {
+		d.State = "FAILED"
 	}
 	return d, nil
 }

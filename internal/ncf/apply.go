@@ -161,11 +161,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			if err != nil {
 				return plan, res, apperr.Wrap(apperr.CodeOf(err), err, "read ACL deployment status")
 			}
-			if d.FailedRules > 0 {
+			if why := d.Failure(); why != "" {
 				for _, i := range todo {
 					res.Aliases[i].Status = StatusActive
 				}
-				return plan, res, apperr.New(apperr.Upstream, "production carries the new versions but the ACL deployment reports %d failed rules", d.FailedRules)
+				return plan, res, apperr.New(apperr.Upstream, "production carries the new versions but the ACL deployment is unhealthy: %s", why)
 			}
 			if !d.Processing {
 				return plan, res, nil

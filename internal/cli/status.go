@@ -14,10 +14,11 @@ import (
 
 // StatusDeployment is the account's ACL deployment state.
 type StatusDeployment struct {
-	Version     int    `json:"version" doc:"The ACL version in production."`
-	State       string `json:"state" doc:"PRODUCTION, PROCESSING or FAILED; empty when the API reported none."`
-	FailedRules int    `json:"failedRules" doc:"Rules that failed to install; non-zero is a partial failure."`
-	Processing  bool   `json:"processing" doc:"A version is being staged."`
+	Version       int    `json:"version" doc:"The ACL version in production."`
+	State         string `json:"state" doc:"PRODUCTION, PROCESSING or FAILED; empty when the API reported none."`
+	FailedRules   int    `json:"failedRules" doc:"Rules that failed to install; non-zero is a partial failure."`
+	Processing    bool   `json:"processing" doc:"A version is being staged."`
+	FailedVersion int    `json:"failedVersion,omitempty" doc:"The newest FAILED ruleset; at or after the production version it means the deployment failed."`
 }
 
 // StatusAlias is one live alias, from the list call only (no entries).
@@ -108,7 +109,7 @@ func runStatus(ctx context.Context, a *app, args []string) (output.Document, err
 		return nil, err
 	}
 	doc := &StatusDoc{
-		Deployment: StatusDeployment{Version: dep.Version, State: dep.State, FailedRules: dep.FailedRules, Processing: dep.Processing},
+		Deployment: StatusDeployment{Version: dep.Version, State: dep.State, FailedRules: dep.FailedRules, Processing: dep.Processing, FailedVersion: dep.FailedVersion},
 		Aliases:    []StatusAlias{},
 		Limits:     []StatusLimit{},
 	}

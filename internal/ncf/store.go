@@ -2,6 +2,7 @@ package ncf
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 )
 
@@ -41,10 +42,24 @@ type AliasVersion struct {
 
 // Deployment is the account's ACL deployment state.
 type Deployment struct {
-	Version     int    // the ACL version in production
-	State       string // PRODUCTION, PROCESSING or FAILED
-	FailedRules int    // rules that failed to install; non-zero is a partial failure
-	Processing  bool   // a version is being staged
+	Version       int    // the ACL version in production; 0 if none
+	State         string // the production ruleset's state, or FAILED when nothing is in production
+	FailedRules   int    // production rules that failed to install; non-zero is a partial failure
+	Processing    bool   // a version is being staged
+	FailedVersion int    // the newest FAILED ruleset; 0 if none
+}
+
+// Failure says why the deployment is not healthy, or "" when it is. A
+// FAILED ruleset at or after the production version is a failure even when
+// it reports no failed rules; an older one is history.
+func (d Deployment) Failure() string {
+	switch {
+	case d.FailedRules > 0:
+		return fmt.Sprintf("production ACL version %d reports %d failed rules", d.Version, d.FailedRules)
+	case d.FailedVersion != 0 && d.FailedVersion >= d.Version:
+		return fmt.Sprintf("ACL version %d FAILED to deploy (production is %d)", d.FailedVersion, d.Version)
+	}
+	return ""
 }
 
 // Limit is the account's alias limit for one type.

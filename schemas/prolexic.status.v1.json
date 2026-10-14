@@ -61,6 +61,10 @@
           "description": "Rules that failed to install; non-zero is a partial failure.",
           "type": "integer"
         },
+        "failedVersion": {
+          "description": "The newest FAILED ruleset; at or after the production version it means the deployment failed.",
+          "type": "integer"
+        },
         "processing": {
           "description": "A version is being staged.",
           "type": "boolean"
