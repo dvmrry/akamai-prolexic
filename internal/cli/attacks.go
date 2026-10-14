@@ -49,7 +49,8 @@ func (d *AttacksDoc) WriteText(w io.Writer) error {
 }
 
 // epoch renders UNIX seconds as RFC 3339 UTC; 0 (unset) as "-".
-func epoch(sec int64) string {
+func epoch(e analytics.Epoch) string {
+	sec := e.Unix()
 	if sec <= 0 {
 		return "-"
 	}

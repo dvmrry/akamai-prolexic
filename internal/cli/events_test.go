@@ -89,3 +89,40 @@ func TestEventsUsage(t *testing.T) {
 		t.Errorf("exit = %d, want 2", r.code)
 	}
 }
+
+// Live sends lastOccurred as a string of epoch milliseconds, and the spec's
+// other epochs may drift the same way.
+func TestEventsLenientEpochs(t *testing.T) {
+	api := newFakeAPI(t)
+	api.json("GET /prolexic-analytics/v2/critical-events/contract/example-a", 200,
+		`{"status":true,"data":[{"eventId":"11","firstOccur":"1767300000000","recentOccur":"1767310000"}]}`)
+	api.json("GET /prolexic-analytics/v2/events/contract/example-a", 200,
+		`{"status":true,"data":[{"eventTitle":"SYN flood","eventType":"attack","isOngoing":false,"eventStartTime":"1767305000000","eventEndTime":1767306000000,
+		   "eventInfo":{"startTime":"1767305000000","lastOccurred":"1700000000000","endTime":false}}]}`)
+	r := runCLI(t, api.env(), "events", "--customer", "example-a")
+	if r.code != 0 {
+		t.Fatalf("exit = %d: %s", r.code, r.stderr)
+	}
+	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	if len(doc.Events) != 2 {
+		t.Fatalf("events = %+v", doc.Events)
+	}
+	ev := doc.Events[0].Event
+	if ev == nil || ev.EventStartTime != 1767305000 || ev.EventEndTime != 1767306000 || ev.EventInfo.LastOccurred != 1700000000 {
+		t.Errorf("event = %+v", ev)
+	}
+	if c := doc.Events[1].Critical; c == nil || c.FirstOccur != 1767300000 || c.RecentOccur != 1767310000 {
+		t.Errorf("critical = %+v", c)
+	}
+}
+
+func TestEventsGarbageEpochIsADecodeError(t *testing.T) {
+	api := newFakeAPI(t)
+	api.json("GET /prolexic-analytics/v2/critical-events/contract/example-a", 200, `{"status":true,"data":[]}`)
+	api.json("GET /prolexic-analytics/v2/events/contract/example-a", 200,
+		`{"status":true,"data":[{"eventType":"alert","eventStartTime":"soon"}]}`)
+	r := runCLI(t, api.env(), "events", "--customer", "example-a")
+	if r.code != int(apperr.Upstream) {
+		t.Errorf("exit = %d, want 5", r.code)
+	}
+}

@@ -38,11 +38,11 @@
                 "type": "string"
               },
               "expires": {
-                "description": "Epoch seconds UTC.",
+                "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                 "type": "integer"
               },
               "firstOccur": {
-                "description": "Epoch seconds UTC.",
+                "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                 "type": "integer"
               },
               "importance": {
@@ -67,7 +67,7 @@
                 "type": "string"
               },
               "recentOccur": {
-                "description": "Epoch seconds UTC.",
+                "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                 "type": "integer"
               },
               "siteCustomerName": {
@@ -99,7 +99,7 @@
             "additionalProperties": false,
             "properties": {
               "eventEndTime": {
-                "description": "Epoch seconds UTC.",
+                "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                 "type": "integer"
               },
               "eventInfo": {
@@ -127,14 +127,14 @@
                     "type": "string"
                   },
                   "lastOccurred": {
-                    "description": "Epoch seconds UTC.",
+                    "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                     "type": "integer"
                   },
                   "location": {
                     "type": "string"
                   },
                   "startTime": {
-                    "description": "Epoch seconds UTC.",
+                    "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                     "type": "integer"
                   },
                   "topDestinationPorts": {},
@@ -144,7 +144,7 @@
                 "type": "object"
               },
               "eventStartTime": {
-                "description": "Epoch seconds UTC.",
+                "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
                 "type": "integer"
               },
               "eventTitle": {

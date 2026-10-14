@@ -37,9 +37,9 @@ type CriticalEvent struct {
 	Importance       int64  `json:"importance,omitempty"`
 	State            int64  `json:"state,omitempty"`
 	Acknowledged     int64  `json:"acknowledged,omitempty"`
-	FirstOccur       int64  `json:"firstOccur,omitempty" doc:"Epoch seconds UTC."`
-	RecentOccur      int64  `json:"recentOccur,omitempty" doc:"Epoch seconds UTC."`
-	Expires          int64  `json:"expires,omitempty" doc:"Epoch seconds UTC."`
+	FirstOccur       Epoch  `json:"firstOccur,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	RecentOccur      Epoch  `json:"recentOccur,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	Expires          Epoch  `json:"expires,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
 }
 
 // EventInfo is the detail of an Event. The traffic breakdowns are kept as the
@@ -52,8 +52,8 @@ type EventInfo struct {
 	AlertInfo           string          `json:"alertInfo,omitempty"`
 	Location            string          `json:"location,omitempty"`
 	DestinationIPs      string          `json:"destinationIPs,omitempty"`
-	StartTime           int64           `json:"startTime,omitempty" doc:"Epoch seconds UTC."`
-	LastOccurred        int64           `json:"lastOccurred,omitempty" doc:"Epoch seconds UTC."`
+	StartTime           Epoch           `json:"startTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	LastOccurred        Epoch           `json:"lastOccurred,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
 	EndTime             json.RawMessage `json:"endTime,omitempty" doc:"Epoch seconds UTC, or false while the event is ongoing."`
 	TopSourceIPs        json.RawMessage `json:"topSourceIPs,omitempty"`
 	TopNetProtocols     json.RawMessage `json:"topNetProtocols,omitempty"`
@@ -67,8 +67,8 @@ type Event struct {
 	Service        string     `json:"service,omitempty" doc:"Mitigation for attacks; for alerts abm, abr, arb, bgp, fbm, int or man."`
 	Severity       int64      `json:"severity,omitempty"`
 	IsOngoing      bool       `json:"isOngoing"`
-	EventStartTime int64      `json:"eventStartTime" doc:"Epoch seconds UTC."`
-	EventEndTime   int64      `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC."`
+	EventStartTime Epoch      `json:"eventStartTime" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EventEndTime   Epoch      `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
 	EventInfo      *EventInfo `json:"eventInfo,omitempty"`
 }
 
@@ -81,22 +81,22 @@ type EventRow struct {
 	Critical *CriticalEvent `json:"critical,omitempty"`
 	Event    *Event         `json:"event,omitempty"`
 
-	at, from, to int64 // epoch seconds: sort key, span start, span end (MaxInt64 while ongoing)
+	at, from, to Epoch // epoch seconds: sort key, span start, span end (MaxInt64 while ongoing)
 }
 
 // At is the row's time as epoch seconds, the key to sort by.
-func (r EventRow) At() int64 { return r.at }
+func (r EventRow) At() int64 { return int64(r.at) }
 
 // Overlaps reports whether the row's span intersects [start, end].
 func (r EventRow) Overlaps(start, end time.Time) bool {
-	return r.from <= end.Unix() && r.to >= start.Unix()
+	return int64(r.from) <= end.Unix() && int64(r.to) >= start.Unix()
 }
 
-func rfc3339(sec int64) string {
+func rfc3339(sec Epoch) string {
 	if sec <= 0 {
 		return ""
 	}
-	return time.Unix(sec, 0).UTC().Format(time.RFC3339)
+	return time.Unix(int64(sec), 0).UTC().Format(time.RFC3339)
 }
 
 // CriticalEvents lists one customer name's critical events. The API takes no
@@ -157,7 +157,7 @@ func (c *Client) Events(ctx context.Context, customer string) ([]EventRow, error
 		e := &resp.Data[i]
 		to := e.EventEndTime
 		if e.IsOngoing || to == 0 {
-			to = math.MaxInt64
+			to = Epoch(math.MaxInt64)
 		}
 		rows[i] = EventRow{Customer: customer, Kind: KindEvent, Time: rfc3339(e.EventStartTime), Event: e, at: e.EventStartTime, from: e.EventStartTime, to: to}
 	}

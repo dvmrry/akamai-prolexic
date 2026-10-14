@@ -61,10 +61,10 @@ type Attack struct {
 	EventID                int64         `json:"eventId"`
 	EventType              string        `json:"eventType,omitempty" doc:"alert or attack."`
 	EventTypes             []string      `json:"eventTypes" doc:"The attack types."`
-	StartTime              int64         `json:"startTime" doc:"Attack start, epoch seconds UTC."`
-	EndTime                int64         `json:"endTime,omitempty" doc:"Attack end, epoch seconds UTC; absent while it is ongoing."`
-	EventStartTime         int64         `json:"eventStartTime" doc:"Epoch seconds UTC."`
-	EventEndTime           int64         `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC."`
+	StartTime              Epoch         `json:"startTime" doc:"Attack start, epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EndTime                Epoch         `json:"endTime,omitempty" doc:"Attack end, epoch seconds UTC (normalised; the API may send a string of milliseconds); absent while it is ongoing."`
+	EventStartTime         Epoch         `json:"eventStartTime" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EventEndTime           Epoch         `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
 	EventStartTimeAsString string        `json:"eventStartTimeAsString" doc:"yyyy-MM-dd HH:mm:ss, as the API reports it."`
 	EventEndTimeAsString   string        `json:"eventEndTimeAsString" doc:"yyyy-MM-dd HH:mm:ss, as the API reports it."`
 	DestinationPort        string        `json:"destinationPort,omitempty"`
@@ -108,10 +108,10 @@ type AttackRow struct {
 	IP              string `json:"ip" doc:"The target address."`
 	Netmask         int    `json:"netmask"`
 	DestinationPort string `json:"destinationPort,omitempty"`
-	StartTime       int64  `json:"startTime" doc:"Epoch seconds UTC."`
-	EndTime         int64  `json:"endTime,omitempty" doc:"Epoch seconds UTC."`
-	EventStartTime  int64  `json:"eventStartTime,omitempty" doc:"Epoch seconds UTC."`
-	EventEndTime    int64  `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC."`
+	StartTime       Epoch  `json:"startTime" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EndTime         Epoch  `json:"endTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EventStartTime  Epoch  `json:"eventStartTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EventEndTime    Epoch  `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
 	EventPeakID     int64  `json:"eventPeakId,omitempty"`
 	EventBw         int64  `json:"eventBw" doc:"Peak bandwidth of the event."`
 	EventPps        int64  `json:"eventPps" doc:"Peak packets per second of the event."`

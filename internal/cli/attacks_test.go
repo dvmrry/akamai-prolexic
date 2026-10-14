@@ -137,3 +137,29 @@ func TestAttacksShow(t *testing.T) {
 		t.Errorf("empty report: exit = %d, want 4", r.code)
 	}
 }
+
+func TestAttacksLenientEpochs(t *testing.T) {
+	api := newFakeAPI(t)
+	api.json("GET /prolexic-analytics/v2/attack-reports/contract/example-a/start/1767225600/end/1767312000", 200,
+		`{"status":true,"data":[{"attackId":1,"startTime":"1767300000000","endTime":"1767301000","eventStartTime":1767300000000,"eventTypes":[]}]}`)
+	api.json("GET /prolexic-analytics/v2/attack-report/contract/example-a/attack-id/1", 200,
+		`{"status":true,"data":[{"attackId":1,"location":"LOC-A","ip":"203.0.113.10","netmask":32,"startTime":"1767300000000","endTime":null}]}`)
+	env := api.env()
+	env.Now = func() time.Time { return fixedNow }
+	r := runCLI(t, env, "attacks", "list", "--customer", "example-a")
+	if r.code != 0 {
+		t.Fatalf("list exit = %d: %s", r.code, r.stderr)
+	}
+	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	if a := doc.Attacks[0]; a.StartTime != 1767300000 || a.EndTime != 1767301000 || a.EventStartTime != 1767300000 {
+		t.Errorf("attack = %+v", a)
+	}
+	r = runCLI(t, env, "attacks", "show", "--id", "1", "--customer", "example-a")
+	if r.code != 0 {
+		t.Fatalf("show exit = %d: %s", r.code, r.stderr)
+	}
+	one := decode[AttackDoc](t, r.stdout, "prolexic.attack.v1")
+	if one.Rows[0].StartTime != 1767300000 || one.Rows[0].EndTime != 0 {
+		t.Errorf("row = %+v", one.Rows[0])
+	}
+}
