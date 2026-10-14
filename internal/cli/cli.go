@@ -54,6 +54,7 @@ func commands() []*command {
 	return []*command{
 		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
+			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
 		{name: "version", summary: "print the version", run: runVersion},
