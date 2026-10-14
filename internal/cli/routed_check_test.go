@@ -34,19 +34,17 @@ func checkAPI(t *testing.T, routes func(attempt int) string) (*fakeAPI, *atomic.
 	return api, &attempt
 }
 
-// fakeClock makes the check's waits instant and advances Env.Now by them.
-func fakeClock(t *testing.T) (now func() time.Time, slept *[]time.Duration) {
-	t.Helper()
+// fakeClock makes env's waits instant and advances env.Now by them.
+func fakeClock(env *Env) (slept *[]time.Duration) {
 	cur := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	slept = &[]time.Duration{}
-	orig := checkSleep
-	t.Cleanup(func() { checkSleep = orig })
-	checkSleep = func(_ context.Context, d time.Duration) error {
+	env.Sleep = func(_ context.Context, d time.Duration) error {
 		*slept = append(*slept, d)
 		cur = cur.Add(d)
 		return nil
 	}
-	return func() time.Time { return cur }, slept
+	env.Now = func() time.Time { return cur }
+	return slept
 }
 
 func TestRoutedCheckPresentSatisfied(t *testing.T) {
@@ -133,7 +131,7 @@ func TestRoutedCheckWaitPollsUntilSatisfied(t *testing.T) {
 	})
 	env := api.env()
 	var slept *[]time.Duration
-	env.Now, slept = fakeClock(t)
+	slept = fakeClock(&env)
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "5m", "--interval", "30s")
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
@@ -148,7 +146,7 @@ func TestRoutedCheckWaitTimesOut(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesOne })
 	env := api.env()
 	var slept *[]time.Duration
-	env.Now, slept = fakeClock(t)
+	slept = fakeClock(&env)
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "70s", "--interval", "30s")
 	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	// Attempts at 0s, 30s, 60s and 70s: the last sleep is clipped to the deadline.
@@ -159,14 +157,12 @@ func TestRoutedCheckWaitTimesOut(t *testing.T) {
 
 func TestRoutedCheckHonoursCancellation(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesOne })
-	orig := checkSleep
-	t.Cleanup(func() { checkSleep = orig })
 	ctx, cancel := context.WithCancel(context.Background())
-	checkSleep = func(ctx context.Context, _ time.Duration) error {
+	env := api.env()
+	env.Sleep = func(ctx context.Context, _ time.Duration) error {
 		cancel()
 		return ctx.Err()
 	}
-	env := api.env()
 	env.Stdout, env.Stderr = &strings.Builder{}, &strings.Builder{}
 	env.Home = t.TempDir()
 	code := Run(ctx, []string{"routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "5m"}, env)

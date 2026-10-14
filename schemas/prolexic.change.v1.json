@@ -1,0 +1,113 @@
+{
+  "$id": "prolexic.change.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "add",
+        "remove"
+      ],
+      "type": "string"
+    },
+    "alias": {
+      "type": "string"
+    },
+    "entries": {
+      "description": "The entries added, or removed with the metadata they had.",
+      "items": {
+        "oneOf": [
+          {
+            "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "added": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              "cidr": {
+                "type": "string"
+              },
+              "expires": {
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "ticket": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "cidr"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "file": {
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable reason, e.g. bogon, own_space, host_bits.",
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "ticket": {
+      "type": "string"
+    },
+    "written": {
+      "description": "False when a finding blocked the change; the file is untouched.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "action",
+    "alias",
+    "entries",
+    "file",
+    "findings",
+    "schema",
+    "ticket",
+    "written"
+  ],
+  "type": "object"
+}

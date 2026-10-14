@@ -1,0 +1,331 @@
+{
+  "$id": "prolexic.apply.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "plan": {
+      "additionalProperties": false,
+      "description": "The fresh plan apply computed.",
+      "properties": {
+        "accountId": {
+          "type": "string"
+        },
+        "aliases": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "activeVersion": {
+                "description": "The conflict token: apply refuses if it moved. 0 when the API doesn't expose versions.",
+                "type": "integer"
+              },
+              "add": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "added": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "cidr": {
+                          "type": "string"
+                        },
+                        "expires": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "ticket": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "cidr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "ipVersion": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "prodVersion": {
+                "type": "integer"
+              },
+              "remove": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "added": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "cidr": {
+                          "type": "string"
+                        },
+                        "expires": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "ticket": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "cidr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "role": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "unchanged": {
+                "type": "integer"
+              },
+              "versionsRemaining": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "activeVersion",
+              "add",
+              "id",
+              "ipVersion",
+              "name",
+              "prodVersion",
+              "remove",
+              "role",
+              "type",
+              "unchanged"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "changes": {
+          "type": "boolean"
+        },
+        "digest": {
+          "description": "sha256 over each alias's id, name, activeVersion and changes; apply --expect-digest must match.",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "type": "string"
+              },
+              "code": {
+                "description": "Stable machine-readable reason, e.g. bogon, own_space, host_bits.",
+                "type": "string"
+              },
+              "entry": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error",
+                  "warning"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "severity"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "accountId",
+        "aliases",
+        "changes",
+        "digest",
+        "findings"
+      ],
+      "type": "object"
+    },
+    "result": {
+      "additionalProperties": false,
+      "description": "Absent when apply refused before writing (plan errors, digest moved).",
+      "properties": {
+        "aliases": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "add": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "added": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "cidr": {
+                          "type": "string"
+                        },
+                        "expires": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "ticket": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "cidr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "error": {
+                "type": "string"
+              },
+              "fromVersion": {
+                "type": "integer"
+              },
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "remove": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "added": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "cidr": {
+                          "type": "string"
+                        },
+                        "expires": {
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "ticket": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "cidr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "status": {
+                "enum": [
+                  "unchanged",
+                  "skipped",
+                  "failed",
+                  "created",
+                  "active",
+                  "deployed"
+                ],
+                "type": "string"
+              },
+              "version": {
+                "description": "The version this apply created.",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "add",
+              "fromVersion",
+              "id",
+              "name",
+              "remove",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "aliases",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "file",
+    "schema"
+  ],
+  "type": "object"
+}

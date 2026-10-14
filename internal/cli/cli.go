@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -31,6 +32,10 @@ type Env struct {
 	Getenv         func(string) string
 	Home           string // "" means os.UserHomeDir
 	Now            func() time.Time
+	Sleep          func(context.Context, time.Duration) error // nil means a real, cancellable sleep
+	// Bogons overrides the bogon list (tests drop the documentation ranges
+	// their fixtures use); nil means ncf.Bogons.
+	Bogons []netip.Prefix
 
 	// Transport and Scheme let tests point clients at an httptest server.
 	Transport http.RoundTripper
@@ -52,18 +57,24 @@ type command struct {
 // commands is the whole tree. Keep it sorted by name within each level.
 func commands() []*command {
 	return []*command{
+		{name: "add", summary: "add entries to an alias in the desired file (offline)", run: runAdd},
+		{name: "apply", summary: "apply a reviewed plan (the only command that writes)", run: runApply},
 		{name: "attacks", summary: "attack reports (read-only)", sub: []*command{
 			{name: "list", summary: "attacks in a time window per customer name", run: runAttacksList},
 			{name: "show", summary: "one attack's detail report", run: runAttacksShow},
 		}},
 		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
+		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
+		{name: "plan", summary: "diff the desired file against live and validate it", run: runPlan},
+		{name: "remove", summary: "remove entries from an alias in the desired file (offline)", run: runRemove},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
 			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},
 			{name: "health", summary: "healthy and total tunnels per location and router", run: runRoutedHealth},
 			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
+		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
 		{name: "version", summary: "print the version", run: runVersion},
 	}
 }
@@ -87,6 +98,9 @@ func Run(ctx context.Context, args []string, env Env) int {
 	}
 	if env.Now == nil {
 		env.Now = time.Now
+	}
+	if env.Sleep == nil {
+		env.Sleep = sleep
 	}
 	a := &app{env: env, format: output.Auto}
 
@@ -117,6 +131,17 @@ func (a *app) fail(err error) int {
 		fmt.Fprintf(a.env.Stderr, "prolexic: %v\n", err)
 	}
 	return int(apperr.CodeOf(err))
+}
+
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // helpRequest is returned for -h/--help/help; it prints usage and exits 0.

@@ -49,18 +49,6 @@ func (d *RoutedCheckDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-// checkSleep waits between attempts; tests replace it.
-var checkSleep = func(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
 func runRoutedCheck(ctx context.Context, a *app, args []string) (output.Document, error) {
 	fs := a.flags()
 	var customers, sites stringList
@@ -130,7 +118,7 @@ func runRoutedCheck(ctx context.Context, a *app, args []string) (output.Document
 			}
 			return doc, apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", res.Off, len(res.Sessions), expect, prefix)
 		}
-		if err := checkSleep(ctx, min(*interval, remaining)); err != nil {
+		if err := a.env.Sleep(ctx, min(*interval, remaining)); err != nil {
 			return nil, err
 		}
 	}

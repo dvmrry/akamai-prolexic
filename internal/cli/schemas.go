@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/dvmrry/akamai-prolexic/internal/jsonschema"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -12,21 +13,26 @@ import (
 func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
+		&ApplyDoc{},
 		&AttackDoc{},
 		&AttacksDoc{},
+		&ChangeDoc{},
 		&EventsDoc{},
+		&FmtDoc{},
+		&PlanDoc{},
 		&DoctorDoc{},
 		&RoutedCheckDoc{},
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},
 		&RoutedSessionsDoc{},
 		&VersionDoc{},
+		&ValidateDoc{},
 	}
 }
 
 // inputs lists the schema'd files the CLI reads, by schema id.
 func inputs() map[string]any {
-	return map[string]any{}
+	return map[string]any{ncf.DesiredSchemaID: &ncf.File{}}
 }
 
 // Schemas renders every published schema, keyed by schema id.
