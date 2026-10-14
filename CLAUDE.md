@@ -13,6 +13,7 @@
 ## Rules
 
 - **Credentials:** EdgeGrid credentials live in `~/.edgerc`, never in the repo, tests or fixtures. Use synthetic `akab-` values with low entropy in tests (e.g. `akab-xxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx`); `.gitleaks.toml` flags realistic ones.
+- **Login-only API specs** go in `spec/` (gitignored except its README); never commit them, or paste their content into tracked files. Specs from github.com/akamai/akamai-apis (Apache-2.0) may be vendored with their license.
 - **Captured API responses** go in `/scratch/` (gitignored) until they're scrubbed into test fixtures.
 - **Languages:** Go only; tooling and scripts in Go or bash, never Python.
 - **Commits:** no `Co-Authored-By` lines. Short, conventional-ish messages (`feat:`, `fix:`, `docs:`).

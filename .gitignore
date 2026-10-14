@@ -11,3 +11,6 @@ coverage.out
 .claude/settings.local.json
 # Transient scratch space (run output, captured API responses); never tracked.
 /scratch/
+# Akamai specs from behind the login (see spec/README.md); only the README is tracked.
+/spec/*
+!/spec/README.md
