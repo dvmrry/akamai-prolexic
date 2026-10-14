@@ -14,3 +14,4 @@ coverage.out
 # Akamai specs from behind the login (see spec/README.md); only the README is tracked.
 /spec/*
 !/spec/README.md
+.claude/worktrees/
