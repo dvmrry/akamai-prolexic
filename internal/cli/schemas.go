@@ -13,6 +13,7 @@ func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
 		&DoctorDoc{},
+		&RoutedCheckDoc{},
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},
 		&RoutedSessionsDoc{},
