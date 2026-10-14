@@ -1,0 +1,123 @@
+{
+  "$id": "prolexic.routed-sessions.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failures": {
+      "description": "Customer names whose query failed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The exit code this failure alone would have.",
+            "type": "integer"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "sessions": {
+      "description": "Sorted by customer, dataCenter, routerName, customerBgpPeerIpv4.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "akamaiBgpPeerIpv4": {
+            "type": "string"
+          },
+          "akamaiBgpPeerIpv6": {
+            "type": "string"
+          },
+          "akamaiGreEndpointIpv4": {
+            "type": "string"
+          },
+          "akamaiGreEndpointIpv6": {
+            "type": "string"
+          },
+          "asn": {
+            "type": "integer"
+          },
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "customerBgpPeerIpv4": {
+            "type": "string"
+          },
+          "customerBgpPeerIpv6": {
+            "type": "string"
+          },
+          "customerGreEndpointIpv4": {
+            "type": "string"
+          },
+          "customerGreEndpointIpv6": {
+            "type": "string"
+          },
+          "dataCenter": {
+            "type": "string"
+          },
+          "healthIpv4": {
+            "type": "string"
+          },
+          "healthIpv6": {
+            "type": "string"
+          },
+          "mtu": {
+            "type": "integer"
+          },
+          "routerName": {
+            "type": "string"
+          },
+          "tunnelType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "akamaiBgpPeerIpv4",
+          "akamaiGreEndpointIpv4",
+          "asn",
+          "customer",
+          "customerBgpPeerIpv4",
+          "customerGreEndpointIpv4",
+          "dataCenter",
+          "healthIpv4",
+          "routerName"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "customers",
+    "failures",
+    "schema",
+    "sessions"
+  ],
+  "type": "object"
+}

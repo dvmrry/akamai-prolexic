@@ -1,0 +1,38 @@
+{
+  "$id": "prolexic.version.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "arch": {
+      "type": "string"
+    },
+    "commit": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string"
+    },
+    "go": {
+      "type": "string"
+    },
+    "os": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "arch",
+    "commit",
+    "date",
+    "go",
+    "os",
+    "schema",
+    "version"
+  ],
+  "type": "object"
+}
