@@ -132,6 +132,15 @@ func (s *Store) ActivateNow(id int64, entries ...string) {
 	a.live.ProdVersion = versionID(len(a.versions))
 }
 
+// Lag pins an alias's production version behind its active one, with no
+// activation pending: production that never catches up.
+func (s *Store) Lag(id int64, prod string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.aliases[id]
+	a.live.ProdVersion, a.pending = prod, ""
+}
+
 // Live returns an alias's current state, entries from its active version.
 func (s *Store) Live(id int64) ncf.LiveAlias {
 	s.mu.Lock()

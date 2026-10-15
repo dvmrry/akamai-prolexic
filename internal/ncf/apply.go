@@ -66,6 +66,10 @@ type AliasApply struct {
 	Add         []Entry `json:"add"`
 	Remove      []Entry `json:"remove"`
 	Error       string  `json:"error,omitempty"`
+	// WaitedForProduction is set on an unchanged alias whose production
+	// lagged its active version (activated earlier or by someone else), which
+	// apply waited on without writing it.
+	WaitedForProduction bool `json:"waitedForProduction,omitempty"`
 }
 
 // Apply re-plans f, refuses if the digest moved, then writes each changed
@@ -198,6 +202,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	if len(target) == 0 {
 		return plan, res, nil
 	}
+	for i := range target {
+		if !plan.Aliases[i].Changed() {
+			res.Aliases[i].WaitedForProduction = true
+		}
+	}
 	deadline := opts.Now().Add(opts.Timeout)
 	for {
 		// One alias list per poll: it carries every production version and
@@ -230,12 +239,17 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			}
 			if !d.Processing {
 				for i := range target {
-					res.Aliases[i].Status = StatusDeployed
+					if plan.Aliases[i].Changed() {
+						res.Aliases[i].Status = StatusDeployed
+					}
 				}
 				return plan, res, nil
 			}
 		}
 		if !opts.Now().Before(deadline) {
+			if !plan.Changes {
+				return plan, res, apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", opts.Timeout, strings.Join(lagging(plan, target), ", "))
+			}
 			return plan, res, apperr.New(apperr.Upstream, "not deployed after %s; the target versions are active and production should follow; re-run apply to keep waiting", opts.Timeout)
 		}
 		if err := opts.Sleep(ctx, opts.Interval); err != nil {
@@ -307,6 +321,16 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s, and re-activating %s failed (%v): fix it by hand", ap.Name, v, why, ap.ActiveVersion, rerr)
 	}
 	return v, false, &rolledBack{apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s; %s was re-activated", ap.Name, v, why, ap.ActiveVersion)}
+}
+
+// lagging names the aliases a production wait targets, sorted.
+func lagging(plan *Plan, target map[int]string) []string {
+	var out []string
+	for i := range target {
+		out = append(out, plan.Aliases[i].Name)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // rolledBack marks an error after which the failing alias's own upload

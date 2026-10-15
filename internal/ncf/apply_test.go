@@ -426,7 +426,7 @@ func TestApplyReRunFinishesAProductionWait(t *testing.T) {
 	s.SetLag(3)
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC)}
 	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: "sha256:stale", Now: clock.now, Sleep: clock.sleep})
-	if err != nil || !res.AlreadyApplied || res.Aliases[0].Status != ncf.StatusDeployed || s.Count("CreateVersion") != 1 {
+	if err != nil || !res.AlreadyApplied || res.Aliases[0].Status != ncf.StatusUnchanged || !res.Aliases[0].WaitedForProduction || s.Count("CreateVersion") != 1 {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }
@@ -452,5 +452,18 @@ func TestApplyRetryReusesItsEarlierVersion(t *testing.T) {
 	res, err := apply(t, s, f, nil)
 	if err != nil || res.Aliases[0].Version != "V2" || s.Count("CreateVersion") != 1 {
 		t.Errorf("err = %v, version = %s, creates = %d; the retry must re-use V2", err, res.Aliases[0].Version, s.Count("CreateVersion"))
+	}
+}
+
+func TestApplyNoOpTimeoutSaysItWroteNothing(t *testing.T) {
+	s := world()
+	s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
+	s.Lag(101, "V1") // someone else activated V2; production still carries V1
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, desired("192.0.2.0/25", "198.51.100.7"), nil, ncf.ApplyOptions{
+		PlanOptions: defaults, Timeout: time.Minute, Now: clock.now, Sleep: clock.sleep,
+	})
+	if err == nil || !strings.Contains(err.Error(), "this apply wrote nothing") || res.Aliases[0].Status != ncf.StatusUnchanged {
+		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }

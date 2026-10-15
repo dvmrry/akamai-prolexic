@@ -302,6 +302,9 @@
               "version": {
                 "description": "The version this apply created.",
                 "type": "string"
+              },
+              "waitedForProduction": {
+                "type": "boolean"
               }
             },
             "required": [
