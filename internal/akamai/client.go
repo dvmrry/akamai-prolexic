@@ -216,6 +216,27 @@ type problem struct {
 	ErrorCode  string `json:"errorCode"`
 	Message    string `json:"message"`
 	IncidentID string `json:"incidentId"`
+	// ErrorPaths is the Analytics error shape's per-field detail: which
+	// request field was wrong, and why.
+	ErrorPaths []struct {
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	} `json:"errorPaths"`
+}
+
+// detail is the most useful text a problem carries.
+func (p problem) detail() string {
+	d := firstNonEmpty(p.Detail, p.Message)
+	var paths []string
+	for _, e := range p.ErrorPaths {
+		if e.Path != "" || e.Message != "" {
+			paths = append(paths, strings.TrimSpace(e.Path+": "+e.Message))
+		}
+	}
+	if len(paths) > 0 {
+		d = strings.TrimSpace(d + " (" + strings.Join(paths, "; ") + ")")
+	}
+	return d
 }
 
 func statusError(req Request, status int, body []byte) error {
@@ -227,7 +248,7 @@ func statusError(req Request, status int, body []byte) error {
 		Status:     status,
 		ErrorCode:  firstNonEmpty(p.ErrorCode, p.Code),
 		Title:      p.Title,
-		Detail:     firstNonEmpty(p.Detail, p.Message),
+		Detail:     p.detail(),
 		IncidentID: p.IncidentID,
 		Ambiguous:  !req.safe() && status >= 500,
 	}

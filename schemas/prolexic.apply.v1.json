@@ -153,6 +153,10 @@
               "description": "Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one.",
               "type": "integer"
             },
+            "liveChecksRan": {
+              "description": "False when the offline checks failed, so the counts below are zero because nothing live was checked.",
+              "type": "boolean"
+            },
             "ownASNs": {
               "description": "Own AS numbers that ASN:: entries were checked against.",
               "type": "integer"
@@ -180,6 +184,7 @@
           },
           "required": [
             "deployedRules",
+            "liveChecksRan",
             "ownASNs",
             "ownSpace"
           ],

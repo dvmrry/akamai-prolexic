@@ -93,6 +93,10 @@ func parseMetricTypes(types []string, subnet, ip string) (map[string][]string, [
 	if (subnet != "" || ip != "") && len(fbm) == 0 {
 		return nil, nil, apperr.New(apperr.Usage, "--subnet and --ip apply to fbm types only")
 	}
+	if len(fbm) > 0 && subnet == "" && ip == "" {
+		// The API rejects every such request (400 ILLEGAL_ARGUMENT): catch it here.
+		return nil, nil, apperr.New(apperr.Usage, "fbm types need --subnet or --ip")
+	}
 	for _, ms := range services {
 		slices.Sort(ms)
 	}
@@ -119,8 +123,8 @@ func newMetricsCmd(a *app) *cobra.Command {
 	f := cmd.Flags()
 	listVar(f, &customers, "customer", "customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)")
 	listVar(f, &types, "type", typeHelp)
-	f.StringVar(&subnet, "subnet", "", "restrict fbm types to one subnet")
-	f.StringVar(&ip, "ip", "", "restrict fbm types to one IP address")
+	f.StringVar(&subnet, "subnet", "", "the subnet fbm types report on (fbm types need --subnet or --ip)")
+	f.StringVar(&ip, "ip", "", "the IP address fbm types report on (fbm types need --subnet or --ip)")
 	f.IntVar(&samples, "samples", 100, "number of data points to return")
 	win.register(cmd, 24*time.Hour)
 	return cmd

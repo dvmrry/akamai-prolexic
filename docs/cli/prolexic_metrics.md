@@ -18,11 +18,11 @@ prolexic metrics [flags]
       --customer strings   customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)
       --end string         window end, RFC 3339 (default: now)
   -h, --help               help for metrics
-      --ip string          restrict fbm types to one IP address
+      --ip string          the IP address fbm types report on (fbm types need --subnet or --ip)
       --samples int        number of data points to return (default 100)
       --since duration     window ending now, e.g. 24h; exclusive with --start/--end (default 24h0m0s)
       --start string       window start, RFC 3339 (e.g. 2026-01-01T00:00:00Z)
-      --subnet string      restrict fbm types to one subnet
+      --subnet string      the subnet fbm types report on (fbm types need --subnet or --ip)
       --type strings       SERVICE:METRIC, or fbm:METRIC:PROTOCOL (repeatable or comma-separated); e.g. routed:bandwidthIn, fbm:bandwidth:total
 ```
 

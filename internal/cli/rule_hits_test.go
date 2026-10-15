@@ -92,3 +92,13 @@ func TestRuleHitsShowUsage(t *testing.T) {
 		t.Errorf("unknown rule: exit = %d", r.code)
 	}
 }
+
+func TestRuleHitsRejectsDotPathSegments(t *testing.T) {
+	api := newFakeAPI(t)
+	for _, id := range []string{".", ".."} {
+		r := runCLI(t, api.env(), "rule-hits", "show", "--rule", id)
+		if r.code != int(apperr.Usage) || len(api.calls) != 0 {
+			t.Errorf("--rule %q: exit = %d, calls = %d", id, r.code, len(api.calls))
+		}
+	}
+}

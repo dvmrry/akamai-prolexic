@@ -31,8 +31,8 @@ func (e envelope) err(what string) error {
 // segment. akamai.Request.Path is an unescaped path, so the name goes in as
 // is and the transport escapes it; a name with a slash can't be expressed.
 func contractPath(prefix, customer, suffix string) (string, error) {
-	if strings.Contains(customer, "/") {
-		return "", apperr.New(apperr.Usage, "customer name %q contains a slash, which the path can't carry", customer)
+	if strings.Contains(customer, "/") || customer == "." || customer == ".." || customer == "" {
+		return "", apperr.New(apperr.Usage, "customer name %q can't be a path segment", customer)
 	}
 	return basePath + prefix + customer + suffix, nil
 }

@@ -21,8 +21,8 @@ func pathSafe(flag, v string) (string, error) {
 	if v == "" {
 		return "", apperr.New(apperr.Usage, "--%s is required", flag)
 	}
-	if strings.Contains(v, "/") {
-		return "", apperr.New(apperr.Usage, "--%s %q: a '/' can't go in the path", flag, v)
+	if strings.Contains(v, "/") || v == "." || v == ".." {
+		return "", apperr.New(apperr.Usage, "--%s %q can't be a path segment", flag, v)
 	}
 	return v, nil
 }

@@ -27,6 +27,7 @@ type Plan struct {
 // Checks summarises the live checks' inputs. It stays zero when the
 // offline checks fail, since the live checks then don't run.
 type Checks struct {
+	LiveChecksRan bool          `json:"liveChecksRan" doc:"False when the offline checks failed, so the counts below are zero because nothing live was checked."`
 	OwnSpace      []CheckSource `json:"ownSpace" doc:"Each own-space source and how many prefixes it gave, sorted by source."`
 	OwnASNs       int           `json:"ownASNs" doc:"Own AS numbers that ASN:: entries were checked against."`
 	DeployedRules int           `json:"deployedRules" doc:"Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one."`
@@ -101,6 +102,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		p.Findings = append(p.Findings, Finding{sev, code, alias, entry, fmt.Sprintf(format, args...)})
 	}
 
+	p.Checks.LiveChecksRan = true
 	all, err := store.ListAliases(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.CodeOf(err), err, "list aliases")

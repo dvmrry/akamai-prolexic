@@ -199,3 +199,15 @@ func TestWriteWithUndecodableSuccessIsAmbiguous(t *testing.T) {
 		t.Errorf("err = %v; a 2xx write took effect, so an unreadable body must be ambiguous", err)
 	}
 }
+
+func TestAnalyticsErrorPathsAreSurfaced(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		w.Write([]byte(`{"status":400,"errorCode":"ILLEGAL_ARGUMENT","data":"","args":["x"],
+		  "errorPaths":[{"path":"metrics[0].subnet","message":"is required for fbm metrics"}]}`))
+	})
+	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
+	if !strings.Contains(err.Error(), "metrics[0].subnet: is required for fbm metrics") {
+		t.Errorf("err = %v", err)
+	}
+}

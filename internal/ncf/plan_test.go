@@ -355,7 +355,7 @@ func TestPlanSaysWhatItCheckedAgainst(t *testing.T) {
 		},
 	})
 	got := fmt.Sprintf("%+v", p.Checks)
-	want := "{OwnSpace:[{Source:alias protected-dst Prefixes:1} {Source:analytics Prefixes:1} {Source:static Prefixes:1}] OwnASNs:1 DeployedRules:1}"
+	want := "{LiveChecksRan:true OwnSpace:[{Source:alias protected-dst Prefixes:1} {Source:analytics Prefixes:1} {Source:static Prefixes:1}] OwnASNs:1 DeployedRules:1}"
 	if got != want {
 		t.Errorf("checks = %s\nwant     %s", got, want)
 	}

@@ -100,3 +100,11 @@ func TestMetricsFlagErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsFBMNeedsSubnetOrIPBeforeAnyRequest(t *testing.T) {
+	api := newFakeAPI(t)
+	r := runCLI(t, api.env(), "metrics", "--customer", "example-a", "--type", "fbm:bandwidth:total")
+	if r.code != int(apperr.Usage) || !strings.Contains(r.stderr, "fbm types need --subnet or --ip") || len(api.calls) != 0 {
+		t.Errorf("exit = %d, calls = %d, stderr = %s", r.code, len(api.calls), r.stderr)
+	}
+}

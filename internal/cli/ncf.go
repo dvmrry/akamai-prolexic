@@ -372,6 +372,10 @@ func writeChecks(w io.Writer, c ncf.Checks, analytics bool) error {
 	if !analytics {
 		ownSpace += "; Prolexic Analytics skipped"
 	}
+	if !c.LiveChecksRan {
+		_, err := fmt.Fprintln(w, "\nlive checks didn't run: the offline checks failed")
+		return err
+	}
 	_, err := fmt.Fprintf(w, "\nchecked against: own space %s; %d own AS numbers; %d deployed ACL rules\n", ownSpace, c.OwnASNs, c.DeployedRules)
 	return err
 }
