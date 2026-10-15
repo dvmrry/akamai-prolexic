@@ -339,3 +339,24 @@ func TestPlanOwnSpaceAliasesMustBeDIPA(t *testing.T) {
 		t.Errorf("findings = %q", got)
 	}
 }
+
+func TestPlanSaysWhatItCheckedAgainst(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	s.UseInRule(101, 1)
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.OwnSpace.Prefixes = []string{"203.0.113.128/25"}
+	p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1,
+		OwnSpace: func(context.Context) ([]ncf.OwnSpacePrefix, error) {
+			return []ncf.OwnSpacePrefix{{Prefix: netip.MustParsePrefix("198.51.100.128/25"), Source: "analytics example-a/site"}}, nil
+		},
+		OwnASNs: func(context.Context) ([]ncf.OwnASN, error) {
+			return []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a"}, {ASN: 64500, Source: "analytics example-b"}}, nil
+		},
+	})
+	got := fmt.Sprintf("%+v", p.Checks)
+	want := "{OwnSpace:[{Source:alias protected-dst Prefixes:1} {Source:analytics Prefixes:1} {Source:static Prefixes:1}] OwnASNs:1 DeployedRules:1}"
+	if got != want {
+		t.Errorf("checks = %s\nwant     %s", got, want)
+	}
+}

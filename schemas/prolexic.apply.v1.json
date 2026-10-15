@@ -146,6 +146,45 @@
         "changes": {
           "type": "boolean"
         },
+        "checks": {
+          "additionalProperties": false,
+          "properties": {
+            "deployedRules": {
+              "description": "Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one.",
+              "type": "integer"
+            },
+            "ownASNs": {
+              "description": "Own AS numbers that ASN:: entries were checked against.",
+              "type": "integer"
+            },
+            "ownSpace": {
+              "description": "Each own-space source and how many prefixes it gave, sorted by source.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "prefixes": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "prefixes",
+                  "source"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "deployedRules",
+            "ownASNs",
+            "ownSpace"
+          ],
+          "type": "object"
+        },
         "digest": {
           "description": "sha256 over each alias's id, name, activeVersion and changes; apply --expect-digest must match.",
           "type": "string"
@@ -189,6 +228,7 @@
         "accountId",
         "aliases",
         "changes",
+        "checks",
         "digest",
         "findings"
       ],

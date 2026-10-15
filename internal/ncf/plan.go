@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -18,6 +19,23 @@ type Plan struct {
 	Changes   bool        `json:"changes"`
 	Aliases   []AliasPlan `json:"aliases"`
 	Findings  []Finding   `json:"findings"`
+	// Checks says what the live checks ran against, so a clean plan reads as
+	// "checked against these sources" and not only as "no errors".
+	Checks Checks `json:"checks"`
+}
+
+// Checks summarises the live checks' inputs. It stays zero when the
+// offline checks fail, since the live checks then don't run.
+type Checks struct {
+	OwnSpace      []CheckSource `json:"ownSpace" doc:"Each own-space source and how many prefixes it gave, sorted by source."`
+	OwnASNs       int           `json:"ownASNs" doc:"Own AS numbers that ASN:: entries were checked against."`
+	DeployedRules int           `json:"deployedRules" doc:"Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one."`
+}
+
+// CheckSource is one own-space source: "static", "alias <name>" or "analytics".
+type CheckSource struct {
+	Source   string `json:"source"`
+	Prefixes int    `json:"prefixes"`
 }
 
 // AliasPlan is one alias's diff.
@@ -75,7 +93,7 @@ var countLimits = map[string][2]int{
 // plan couldn't be computed (credentials, upstream); findings are in the
 // Plan.
 func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte, opts PlanOptions) (*Plan, error) {
-	p := &Plan{AccountID: f.AccountID, Aliases: []AliasPlan{}, Findings: c.Validate(f, raw)}
+	p := &Plan{AccountID: f.AccountID, Aliases: []AliasPlan{}, Findings: c.Validate(f, raw), Checks: Checks{OwnSpace: []CheckSource{}}}
 	if HasErrors(p.Findings) {
 		return p, nil
 	}
@@ -96,6 +114,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	if err != nil {
 		return nil, err
 	}
+	p.Checks.OwnSpace = summariseOwnSpace(staticOwnSpace(f), own)
 	ownASNs := map[uint32]string{}
 	if opts.OwnASNs != nil {
 		asns, err := opts.OwnASNs(ctx)
@@ -108,6 +127,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			}
 		}
 	}
+	p.Checks.OwnASNs = len(ownASNs)
 
 	// Deployed rules decide each alias's side; fetch them once, and only
 	// when some alias in the file is referenced by one.
@@ -119,6 +139,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 				return nil, apperr.Wrap(apperr.CodeOf(err), err, "read the deployed ACL rules")
 			}
 			rules = RulesByIndex(deployed)
+			p.Checks.DeployedRules = len(deployed)
 			break
 		}
 	}
@@ -324,6 +345,25 @@ func withEntries(ctx context.Context, store Store, l LiveAlias) (LiveAlias, erro
 	}
 	l.Entries = v.Entries
 	return l, nil
+}
+
+// summariseOwnSpace counts own-space prefixes per source; Analytics sources
+// (one per customer name and site) fold into "analytics".
+func summariseOwnSpace(static, live []OwnSpacePrefix) []CheckSource {
+	counts := map[string]int{}
+	for _, o := range append(append([]OwnSpacePrefix{}, static...), live...) {
+		source := o.Source
+		if strings.HasPrefix(source, "analytics") {
+			source = "analytics"
+		}
+		counts[source]++
+	}
+	out := []CheckSource{}
+	for source, n := range counts {
+		out = append(out, CheckSource{Source: source, Prefixes: n})
+	}
+	slices.SortFunc(out, func(a, b CheckSource) int { return strings.Compare(a.Source, b.Source) })
+	return out
 }
 
 // staticOwnSpace is the desired file's static own-space list, parsed (Validate
