@@ -28,6 +28,12 @@ func (a *app) run(body func(ctx context.Context, args []string) (output.Document
 	}
 }
 
+// CommandTree is the command tree with no environment, for generated
+// documentation: flag defaults are the built-in ones.
+func CommandTree() *cobra.Command {
+	return (&app{env: Env{Getenv: func(string) string { return "" }}}).root()
+}
+
 // root builds the command tree.
 func (a *app) root() *cobra.Command {
 	root := &cobra.Command{

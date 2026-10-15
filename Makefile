@@ -8,7 +8,7 @@ LDFLAGS := -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSI
 	-X github.com/dvmrry/akamai-prolexic/internal/version.commit=$(COMMIT) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.date=$(DATE)
 
-.PHONY: build install fmt-check vet test race schemas secret-scan check
+.PHONY: build install fmt-check vet test race schemas docs secret-scan check
 
 build:
 	go build -ldflags '$(LDFLAGS)' -o bin/prolexic ./cmd/prolexic
@@ -32,6 +32,11 @@ race:
 # Regenerate schemas/ from the Go document types (TestSchemas checks them).
 schemas:
 	go test ./internal/cli -run TestSchemas -update
+
+# Regenerate docs/cli/ (the Markdown CLI reference) from the command tree
+# (TestDocsCurrent checks it).
+docs:
+	go run ./internal/tools/gendocs docs/cli
 
 # The whole working tree, with the repo's rules (EdgeGrid tokens included).
 secret-scan:
