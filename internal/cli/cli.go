@@ -76,6 +76,7 @@ func commands() []*command {
 			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
+		{name: "scrub-centers", summary: "active scrub centers (read-only)", run: runScrubCenters},
 		{name: "status", summary: "deployment state, aliases and limits (read-only)", run: runStatus},
 		{name: "targets", summary: "Network Health targets (read-only)", sub: []*command{
 			{name: "list", summary: "every target of the account", run: runTargetsList},
