@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -16,9 +15,6 @@ import (
 // docs and tool schemas) and runs through a.run, which records the
 // Document it returns; Run prints it and the error, and maps the error to
 // the exit code. A command never writes to stdout itself.
-//
-// Migration: commands not yet converted are mounted as legacy leaves, which
-// hand their raw arguments to the old run function to parse.
 
 // run adapts a command body to cobra's RunE. The body returns the document
 // to print and the error that decides the exit code; both may be set (a
@@ -32,8 +28,7 @@ func (a *app) run(body func(ctx context.Context, args []string) (output.Document
 	}
 }
 
-// root builds the command tree: native commands from nativeCommands, the
-// rest from the legacy table.
+// root builds the command tree.
 func (a *app) root() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "prolexic",
@@ -64,38 +59,52 @@ func (a *app) root() *cobra.Command {
 	pf.StringVar(&a.section, "section", envOr(a.env.Getenv, "PROLEXIC_SECTION", "default"), "credentials section for reads ($PROLEXIC_SECTION)")
 	pf.StringVar(&a.writeSection, "write-section", envOr(a.env.Getenv, "PROLEXIC_WRITE_SECTION", "write"), "credentials section for writes; only apply uses it ($PROLEXIC_WRITE_SECTION)")
 	pf.StringVar(&a.accountKey, "account-key", a.env.Getenv("PROLEXIC_ACCOUNT_KEY"), "accountSwitchKey, overriding the credentials' account_key ($PROLEXIC_ACCOUNT_KEY)")
-
-	native := nativeCommands()
-	for _, c := range commands() {
-		root.AddCommand(a.mount(c, nil, native))
-	}
+	root.AddCommand(a.tree()...)
 	return root
 }
 
-// mount turns one entry of the legacy table into a cobra command, using the
-// native constructor for its path when there is one.
-func (a *app) mount(c *command, parent []string, native map[string]func(*app) *cobra.Command) *cobra.Command {
-	path := append(append([]string{}, parent...), c.name)
-	if build, ok := native[strings.Join(path, " ")]; ok {
-		return build(a)
+// tree is every command of the CLI, sorted by name within each level. A new
+// command is added here: its constructor, or a group of them.
+func (a *app) tree() []*cobra.Command {
+	return []*cobra.Command{
+		group("acl", "ACL versions, rules and deployment (read-only)",
+			newACLDeploymentCmd(a), newACLShowCmd(a), newACLVersionsCmd(a)),
+		newAddCmd(a),
+		group("aliases", "aliases and their versions (read-only)",
+			newAliasesListCmd(a), newAliasesShowCmd(a), newAliasesVersionsCmd(a)),
+		newApplyCmd(a),
+		group("attacks", "attack reports (read-only)",
+			newAttacksListCmd(a), newAttacksShowCmd(a)),
+		newCustomersCmd(a),
+		newDoctorCmd(a),
+		newEventsCmd(a),
+		newExportCmd(a),
+		newFmtCmd(a),
+		group("managed", "managed-services ACLs and rule hits (read-only)",
+			newManagedACLCmd(a), newManagedRuleHitsCmd(a)),
+		newMetricsCmd(a),
+		newPlanCmd(a),
+		newProtectedCmd(a),
+		newRemoveCmd(a),
+		group("routed", "Routed BGP sessions, routes and tunnel health (read-only)",
+			newRoutedCheckCmd(a), newRoutedHealthCmd(a), newRoutedRoutesCmd(a), newRoutedSessionsCmd(a)),
+		group("rule-hits", "ACL rule match statistics (read-only)",
+			newRuleHitsListCmd(a), newRuleHitsShowCmd(a)),
+		newScrubCentersCmd(a),
+		newStatusCmd(a),
+		group("targets", "Network Health targets (read-only)",
+			newTargetsListCmd(a), newTargetsShowCmd(a)),
+		newTimeSeriesCmd(a),
+		newValidateCmd(a),
+		newVersionCmd(a),
 	}
-	if c.run != nil {
-		run := c.run
-		return &cobra.Command{
-			Use:                c.name,
-			Short:              c.summary,
-			DisableFlagParsing: true, // the legacy run function parses its own flags
-			RunE: a.run(func(ctx context.Context, args []string) (output.Document, error) {
-				a.path = strings.Join(path, " ")
-				return run(ctx, a, args)
-			}),
-		}
-	}
-	group := newGroup(c.name, c.summary)
-	for _, sub := range c.sub {
-		group.AddCommand(a.mount(sub, path, native))
-	}
-	return group
+}
+
+// group is a command that only holds the given subcommands.
+func group(name, short string, subs ...*cobra.Command) *cobra.Command {
+	g := newGroup(name, short)
+	g.AddCommand(subs...)
+	return g
 }
 
 // newGroup is a command that only holds subcommands: run bare or with an
@@ -111,18 +120,6 @@ func newGroup(name, short string) *cobra.Command {
 			}
 			return apperr.New(apperr.Usage, "missing subcommand for %q\n%s", cmd.CommandPath(), cmd.UsageString())
 		},
-	}
-}
-
-// nativeCommands are the converted commands, by path.
-func nativeCommands() map[string]func(*app) *cobra.Command {
-	return map[string]func(*app) *cobra.Command{
-		"add":   newAddCmd,
-		"apply": newApplyCmd, "export": newExportCmd, "fmt": newFmtCmd, "remove": newRemoveCmd, "validate": newValidateCmd,
-		"doctor":          newDoctorCmd,
-		"plan":            newPlanCmd,
-		"routed sessions": newRoutedSessionsCmd, "acl deployment": newACLDeploymentCmd, "acl show": newACLShowCmd, "acl versions": newACLVersionsCmd, "aliases list": newAliasesListCmd, "aliases show": newAliasesShowCmd, "aliases versions": newAliasesVersionsCmd, "customers": newCustomersCmd, "managed acl": newManagedACLCmd, "managed rule-hits": newManagedRuleHitsCmd, "rule-hits list": newRuleHitsListCmd, "rule-hits show": newRuleHitsShowCmd, "status": newStatusCmd, "targets list": newTargetsListCmd, "targets show": newTargetsShowCmd, "attacks list": newAttacksListCmd, "attacks show": newAttacksShowCmd, "events": newEventsCmd, "metrics": newMetricsCmd, "protected": newProtectedCmd, "scrub-centers": newScrubCentersCmd, "time-series": newTimeSeriesCmd, "routed check": newRoutedCheckCmd, "routed health": newRoutedHealthCmd, "routed routes": newRoutedRoutesCmd,
-		"version": newVersionCmd,
 	}
 }
 
