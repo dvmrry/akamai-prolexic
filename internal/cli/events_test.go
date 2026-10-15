@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
@@ -116,13 +117,35 @@ func TestEventsLenientEpochs(t *testing.T) {
 	}
 }
 
-func TestEventsGarbageEpochIsADecodeError(t *testing.T) {
+// Text dates are read; an unreadable value is blanked, not a failure.
+func TestEventsTextAndUnreadableEpochs(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("GET /prolexic-analytics/v2/critical-events/contract/example-a", 200, `{"status":true,"data":[]}`)
 	api.json("GET /prolexic-analytics/v2/events/contract/example-a", 200,
-		`{"status":true,"data":[{"eventType":"alert","eventStartTime":"soon"}]}`)
+		`{"status":true,"data":[
+		  {"eventTitle":"text","eventType":"alert","eventStartTime":"2026-10-14 13:05:22 UTC","eventEndTime":"2026-10-14T13:06:22Z"},
+		  {"eventTitle":"odd","eventType":"alert","eventStartTime":"soon","eventEndTime":false}]}`)
 	r := runCLI(t, api.env(), "events", "--customer", "example-a")
-	if r.code != int(apperr.Upstream) {
-		t.Errorf("exit = %d, want 5", r.code)
+	if r.code != 0 {
+		t.Fatalf("exit = %d: %s", r.code, r.stderr)
+	}
+	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	if len(doc.Failures) != 0 || len(doc.Events) != 2 {
+		t.Fatalf("failures = %+v, events = %+v", doc.Failures, doc.Events)
+	}
+	var text, odd *analytics.Event
+	for _, row := range doc.Events {
+		switch row.Event.EventTitle {
+		case "text":
+			text = row.Event
+		case "odd":
+			odd = row.Event
+		}
+	}
+	if text == nil || text.EventStartTime != 1791983122 || text.EventEndTime != 1791983182 {
+		t.Errorf("text = %+v", text)
+	}
+	if odd == nil || odd.EventStartTime != 0 || odd.EventEndTime != 0 {
+		t.Errorf("odd = %+v", odd)
 	}
 }

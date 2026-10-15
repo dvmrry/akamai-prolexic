@@ -37,9 +37,9 @@ type CriticalEvent struct {
 	Importance       int64  `json:"importance,omitempty"`
 	State            int64  `json:"state,omitempty"`
 	Acknowledged     int64  `json:"acknowledged,omitempty"`
-	FirstOccur       Epoch  `json:"firstOccur,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
-	RecentOccur      Epoch  `json:"recentOccur,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
-	Expires          Epoch  `json:"expires,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	FirstOccur       Epoch  `json:"firstOccur,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
+	RecentOccur      Epoch  `json:"recentOccur,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
+	Expires          Epoch  `json:"expires,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 }
 
 // EventInfo is the detail of an Event. The traffic breakdowns are kept as the
@@ -52,8 +52,8 @@ type EventInfo struct {
 	AlertInfo           string          `json:"alertInfo,omitempty"`
 	Location            string          `json:"location,omitempty"`
 	DestinationIPs      string          `json:"destinationIPs,omitempty"`
-	StartTime           Epoch           `json:"startTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
-	LastOccurred        Epoch           `json:"lastOccurred,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	StartTime           Epoch           `json:"startTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
+	LastOccurred        Epoch           `json:"lastOccurred,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EndTime             json.RawMessage `json:"endTime,omitempty" doc:"Epoch seconds UTC, or false while the event is ongoing."`
 	TopSourceIPs        json.RawMessage `json:"topSourceIPs,omitempty"`
 	TopNetProtocols     json.RawMessage `json:"topNetProtocols,omitempty"`
@@ -67,8 +67,8 @@ type Event struct {
 	Service        string     `json:"service,omitempty" doc:"Mitigation for attacks; for alerts abm, abr, arb, bgp, fbm, int or man."`
 	Severity       int64      `json:"severity,omitempty"`
 	IsOngoing      bool       `json:"isOngoing"`
-	EventStartTime Epoch      `json:"eventStartTime" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
-	EventEndTime   Epoch      `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; the API may send a string of milliseconds)."`
+	EventStartTime Epoch      `json:"eventStartTime" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
+	EventEndTime   Epoch      `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EventInfo      *EventInfo `json:"eventInfo,omitempty"`
 }
 

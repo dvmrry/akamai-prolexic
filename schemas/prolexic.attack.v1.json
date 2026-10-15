@@ -29,7 +29,7 @@
             "type": "string"
           },
           "endTime": {
-            "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
             "type": "integer"
           },
           "eventBw": {
@@ -41,7 +41,7 @@
             "type": "integer"
           },
           "eventEndTime": {
-            "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
             "type": "integer"
           },
           "eventId": {
@@ -55,7 +55,7 @@
             "type": "integer"
           },
           "eventStartTime": {
-            "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
             "type": "integer"
           },
           "ip": {
@@ -70,7 +70,7 @@
             "type": "integer"
           },
           "startTime": {
-            "description": "Epoch seconds UTC (normalised; the API may send a string of milliseconds).",
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
             "type": "integer"
           },
           "ticketId": {

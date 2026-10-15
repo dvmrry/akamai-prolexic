@@ -24,10 +24,34 @@ func TestEpochDecode(t *testing.T) {
 			t.Errorf("%s: got %d, %v; want %d", tc.in, e, err, tc.want)
 		}
 	}
-	for _, in := range []string{`"soon"`, `false`, `true`, `{}`, `[]`, `1.5`, `"12x"`} {
+}
+
+// 2026-10-14 13:05:22 UTC is 1791983122.
+func TestEpochDecodesTextDates(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want Epoch
+	}{
+		{`"2026-10-14 13:05:22 UTC"`, 1791983122},
+		{`"2026-10-14 13:05:22"`, 1791983122},
+		{`"2026-10-14T13:05:22Z"`, 1791983122},
+		{`"2026-10-14T13:05:22.250Z"`, 1791983122},
+		{`"2026-10-14T15:05:22+02:00"`, 1791983122},
+		{`"2026-10-14"`, 1791936000},
+	} {
 		var e Epoch
-		if err := json.Unmarshal([]byte(in), &e); err == nil {
-			t.Errorf("%s: decoded to %d, want an error", in, e)
+		if err := json.Unmarshal([]byte(tc.in), &e); err != nil || e != tc.want {
+			t.Errorf("%s: got %d, %v; want %d", tc.in, e, err, tc.want)
+		}
+	}
+}
+
+// Lenient: a value prolexic can't read is blanked, never an error.
+func TestEpochUnreadableIsZero(t *testing.T) {
+	for _, in := range []string{`"soon"`, `false`, `true`, `{}`, `[]`, `1.5`, `"12x"`, `"2026-13-45"`, `"1.5"`, `"NaN"`, `"Inf"`} {
+		e := Epoch(7)
+		if err := json.Unmarshal([]byte(in), &e); err != nil || e != 0 {
+			t.Errorf("%s: got %d, %v; want 0 and no error", in, e, err)
 		}
 	}
 }
