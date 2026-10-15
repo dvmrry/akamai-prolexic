@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/spf13/cobra"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
@@ -151,29 +153,45 @@ func (d *ChangeDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runAdd(_ context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file := fileFlag(fs)
-	ticket := fs.String("ticket", "", "the ticket authorising the change (required)")
-	reason := fs.String("reason", "", "why the entries are added (required)")
-	expires := fs.String("expires", "", "YYYY-MM-DD after which the entries are flagged as expired")
-	pos, err := a.parseInterleaved(fs, args)
-	if err != nil {
-		return nil, err
+// addArgs are add's flags.
+type addArgs struct {
+	file, ticket, reason, expires string
+}
+
+func newAddCmd(a *app) *cobra.Command {
+	var p addArgs
+	cmd := &cobra.Command{
+		Use:     "add --file F <alias> <entry>... --ticket T --reason R [--expires YYYY-MM-DD]",
+		Short:   "add entries to an alias in the desired file (offline)",
+		Long:    "Adds entries, with ticket, reason and date metadata, to one alias of the desired file and rewrites it in canonical form. Offline validation runs first; on any error, or a warning about an added entry, nothing is written.",
+		Example: "  prolexic add --file desired.json block-v4 198.51.100.7 --ticket SEC-123 --reason scanner",
+		Args:    cobra.MinimumNArgs(2),
+		RunE: a.run(func(_ context.Context, args []string) (output.Document, error) {
+			return add(a, p, args)
+		}),
 	}
-	if len(pos) < 2 || *ticket == "" || *reason == "" {
-		return nil, apperr.New(apperr.Usage, "usage: prolexic add --file F <alias> <entry>... --ticket T --reason R [--expires YYYY-MM-DD]")
+	f := cmd.Flags()
+	f.StringVar(&p.file, "file", "", "the desired file (required)")
+	f.StringVar(&p.ticket, "ticket", "", "the ticket authorising the change (required)")
+	f.StringVar(&p.reason, "reason", "", "why the entries are added (required)")
+	f.StringVar(&p.expires, "expires", "", "YYYY-MM-DD after which the entries are flagged as expired")
+	for _, name := range []string{"file", "ticket", "reason"} {
+		_ = cmd.MarkFlagRequired(name)
 	}
-	if *expires != "" {
-		if _, err := ncf.ParseDate(*expires); err != nil {
-			return nil, apperr.New(apperr.Usage, "--expires %q is not YYYY-MM-DD", *expires)
+	return cmd
+}
+
+func add(a *app, args addArgs, pos []string) (output.Document, error) {
+	if args.expires != "" {
+		if _, err := ncf.ParseDate(args.expires); err != nil {
+			return nil, apperr.New(apperr.Usage, "--expires %q is not YYYY-MM-DD", args.expires)
 		}
 	}
-	f, raw, err := readDesired(*file)
+	f, raw, err := readDesired(args.file)
 	if err != nil {
 		return nil, err
 	}
-	doc := &ChangeDoc{File: *file, Action: "add", Alias: pos[0], Ticket: *ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
+	doc := &ChangeDoc{File: args.file, Action: "add", Alias: pos[0], Ticket: args.ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
 	alias, err := findAlias(f, pos[0])
 	if err != nil {
 		return nil, err
@@ -198,7 +216,7 @@ func runAdd(_ context.Context, a *app, args []string) (output.Document, error) {
 			continue
 		}
 		added[key] = true
-		e := ncf.Entry{CIDR: key, Ticket: *ticket, Reason: *reason, Added: today, Expires: *expires}
+		e := ncf.Entry{CIDR: key, Ticket: args.ticket, Reason: args.reason, Added: today, Expires: args.expires}
 		alias.Entries = append(alias.Entries, e)
 		doc.Entries = append(doc.Entries, e)
 	}
@@ -315,14 +333,40 @@ func (a *app) planFlags(fs *flag.FlagSet) (file *string, maxRemovals *int, noAna
 	return
 }
 
-func runPlan(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file, maxRemovals, noAnalytics := a.planFlags(fs)
-	exitCode := fs.Bool("exit-code", false, "exit 7 when the plan has changes (drift)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+// planArgs are the flags plan and apply share.
+type planArgs struct {
+	file        string
+	maxRemovals int
+	noAnalytics bool
+}
+
+func (p *planArgs) register(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.StringVar(&p.file, "file", "", "the desired file (required)")
+	f.IntVar(&p.maxRemovals, "max-removals", ncf.DefaultMaxRemovals, "most entries one alias may lose in one apply; -1 for no limit")
+	f.BoolVar(&p.noAnalytics, "no-analytics-own-space", false, "skip Prolexic Analytics own space (protected prefixes, own AS numbers) in the checks; recorded in the plan")
+	_ = cmd.MarkFlagRequired("file")
+}
+
+func newPlanCmd(a *app) *cobra.Command {
+	var p planArgs
+	var exitCode bool
+	cmd := &cobra.Command{
+		Use:   "plan",
+		Short: "diff the desired file against live and validate it",
+		Long:  "Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. apply --expect-digest takes that digest.",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return plan(ctx, a, p, exitCode)
+		}),
 	}
-	f, raw, err := readDesired(*file)
+	p.register(cmd)
+	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "exit 7 when the plan has changes (drift)")
+	return cmd
+}
+
+func plan(ctx context.Context, a *app, args planArgs, exitCode bool) (output.Document, error) {
+	f, raw, err := readDesired(args.file)
 	if err != nil {
 		return nil, err
 	}
@@ -330,18 +374,18 @@ func runPlan(ctx context.Context, a *app, args []string) (output.Document, error
 	if err != nil {
 		return nil, err
 	}
-	opts, warnings := a.planOptions(*maxRemovals, *noAnalytics)
+	opts, warnings := a.planOptions(args.maxRemovals, args.noAnalytics)
 	p, err := a.checker().MakePlan(ctx, store, f, raw, opts)
 	if err != nil {
 		return nil, err
 	}
 	p.Findings = append(p.Findings, *warnings...)
-	doc := &PlanDoc{File: *file, Plan: *p, OwnSpaceAnalytics: !*noAnalytics}
+	doc := &PlanDoc{File: args.file, Plan: *p, OwnSpaceAnalytics: !args.noAnalytics}
 	switch {
 	case ncf.HasErrors(p.Findings):
 		return doc, apperr.New(apperr.Validation, "the plan has errors")
-	case *exitCode && p.Changes:
-		return doc, apperr.New(apperr.Drift, "live differs from %s", *file)
+	case exitCode && p.Changes:
+		return doc, apperr.New(apperr.Drift, "live differs from %s", args.file)
 	}
 	return doc, nil
 }

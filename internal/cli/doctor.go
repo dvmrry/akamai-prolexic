@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/edgegrid"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -60,11 +62,17 @@ func (d *DoctorDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runDoctor(_ context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newDoctorCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "doctor",
+		Short: "show which credentials resolve (offline)",
+		Long:  "Shows which credentials resolve for the read and write sections, and whether a proxy is configured. It never contacts the network and never prints a credential value or the API host.",
+		Args:  cobra.NoArgs,
+		RunE:  a.run(func(context.Context, []string) (output.Document, error) { return doctor(a) }),
 	}
+}
+
+func doctor(a *app) (output.Document, error) {
 	doc := &DoctorDoc{
 		Version: version.Current(),
 		Clients: []ClientStatus{a.clientStatus("read", a.section), a.clientStatus("write", a.writeSection)},

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
@@ -22,9 +24,13 @@ func (d *VersionDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runVersion(_ context.Context, a *app, args []string) (output.Document, error) {
-	if err := a.parse(a.flags(), args, false); err != nil {
-		return nil, err
+func newVersionCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "print the version",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(context.Context, []string) (output.Document, error) {
+			return &VersionDoc{Info: version.Current()}, nil
+		}),
 	}
-	return &VersionDoc{Info: version.Current()}, nil
 }

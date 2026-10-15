@@ -122,12 +122,16 @@ func TestDispatch(t *testing.T) {
 		wantStderr string
 	}{
 		{"no args", nil, apperr.Usage, "", "missing command"},
-		{"help", []string{"--help"}, apperr.OK, "usage: prolexic <command>", ""},
-		{"group help", []string{"routed"}, apperr.Usage, "", "usage: prolexic routed <command>"},
+		{"help", []string{"--help"}, apperr.OK, "Available Commands:", ""},
+		{"help command", []string{"help", "plan"}, apperr.OK, "apply --expect-digest takes that digest", ""},
+		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for \"prolexic routed\"`},
+		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command \"bogus\" for \"prolexic routed\"`},
 		{"unknown", []string{"bogus"}, apperr.Usage, "", `unknown command \"bogus\"`},
 		{"version", []string{"version"}, apperr.OK, `"schema": "prolexic.version.v1"`, ""},
 		{"--version", []string{"--version", "--format", "text"}, apperr.OK, "prolexic ", ""},
-		{"bad flag", []string{"version", "--nope"}, apperr.Usage, "", "flag provided but not defined"},
+		{"bad flag", []string{"version", "--nope"}, apperr.Usage, "", "unknown flag: --nope"},
+		{"missing required flag", []string{"plan"}, apperr.Usage, "", `required flag(s) \"file\" not set`},
+		{"too few arguments", []string{"add", "--file", "f", "--ticket", "T", "--reason", "r", "block-v4"}, apperr.Usage, "", "requires at least 2 arg(s)"},
 		{"bad format", []string{"version", "--format", "yaml"}, apperr.Usage, "", "--format must be"},
 		{"flag help", []string{"routed", "sessions", "-h"}, apperr.OK, "-customer", ""},
 	}

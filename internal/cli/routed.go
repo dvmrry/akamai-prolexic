@@ -8,6 +8,8 @@ import (
 	"slices"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -35,13 +37,26 @@ func (d *RoutedSessionsDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-func runRoutedSessions(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newRoutedSessionsCmd(a *app) *cobra.Command {
+	var customers []string
+	cmd := &cobra.Command{
+		Use:   "sessions",
+		Short: "BGP sessions per customer name",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return routedSessions(ctx, a, customers)
+		}),
 	}
+	customerFlag(cmd, &customers)
+	return cmd
+}
+
+// customerFlag is the --customer flag every fan-out command takes.
+func customerFlag(cmd *cobra.Command, customers *[]string) {
+	cmd.Flags().StringSliceVar(customers, "customer", nil, "customer name to query; repeatable or comma-separated (default: every in-use name)")
+}
+
+func routedSessions(ctx context.Context, a *app, customers []string) (output.Document, error) {
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err

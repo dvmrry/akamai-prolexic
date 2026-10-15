@@ -62,7 +62,7 @@ func commands() []*command {
 			{name: "show", summary: "one ACL version's rules (default: production)", run: runACLShow},
 			{name: "versions", summary: "every ACL version", run: runACLVersions},
 		}},
-		{name: "add", summary: "add entries to an alias in the desired file (offline)", run: runAdd},
+		{name: "add"},
 		{name: "aliases", summary: "aliases and their versions (read-only)", sub: []*command{
 			{name: "list", summary: "every alias, without entries", run: runAliasesList},
 			{name: "show", summary: "one alias's entries at a version", run: runAliasesShow},
@@ -74,7 +74,7 @@ func commands() []*command {
 			{name: "show", summary: "one attack's detail report", run: runAttacksShow},
 		}},
 		{name: "customers", summary: "the account's customer names (read-only)", run: runCustomers},
-		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
+		{name: "doctor"},
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
 		{name: "export", summary: "write live editable aliases to the desired file (bootstrap, or adopt drift)", run: runExport},
 		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
@@ -83,14 +83,14 @@ func commands() []*command {
 			{name: "rule-hits", summary: "a policy domain's rule statistics, and one rule's time series", run: runManagedRuleHits},
 		}},
 		{name: "metrics", summary: "traffic metrics per customer name (read-only)", run: runMetrics},
-		{name: "plan", summary: "diff the desired file against live and validate it", run: runPlan},
+		{name: "plan"},
 		{name: "protected", summary: "prefixes and AS numbers treated as own space, per customer name (read-only)", run: runProtected},
 		{name: "remove", summary: "remove entries from an alias in the desired file (offline)", run: runRemove},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
 			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},
 			{name: "health", summary: "healthy and total tunnels per location and router", run: runRoutedHealth},
 			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
-			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
+			{name: "sessions"},
 		}},
 		{name: "rule-hits", summary: "ACL rule match statistics (read-only)", sub: []*command{
 			{name: "list", summary: "match statistics of every rule", run: runRuleHitsList},
@@ -104,7 +104,7 @@ func commands() []*command {
 		}},
 		{name: "time-series", summary: "flow usage and attack traffic per destination (read-only)", run: runTimeSeries},
 		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
-		{name: "version", summary: "print the version", run: runVersion},
+		{name: "version"},
 	}
 }
 
@@ -118,6 +118,10 @@ type app struct {
 	section      string
 	writeSection string
 	accountKey   string
+
+	formatFlag string          // --format as given; parsed into format before a command runs
+	doc        output.Document // what the command returned, printed by Run
+	ran        bool            // a command body ran (so an error is its own, not a usage error)
 }
 
 // Run executes args and returns the exit code.
@@ -132,14 +136,11 @@ func Run(ctx context.Context, args []string, env Env) int {
 		env.Sleep = sleep
 	}
 	a := &app{env: env, format: output.Auto}
-
-	cmd, rest, path, err := find(commands(), args)
-	if err != nil {
-		return a.fail(err)
+	if len(args) > 0 && args[0] == "--version" {
+		args = append([]string{"version"}, args[1:]...)
 	}
-	a.path = path
-	doc, err := cmd.run(ctx, a, rest)
-	if doc != nil {
+	err := a.execute(ctx, args)
+	if doc := a.doc; doc != nil {
 		if werr := output.Write(env.Stdout, a.format, doc); werr != nil && err == nil {
 			err = werr
 		}
