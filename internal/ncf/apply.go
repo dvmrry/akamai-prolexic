@@ -69,7 +69,7 @@ type AliasApply struct {
 	// WaitedForProduction is set on an unchanged alias whose production
 	// lagged its active version (activated earlier or by someone else), which
 	// apply waited on without writing it.
-	WaitedForProduction bool `json:"waitedForProduction,omitempty"`
+	WaitedForProduction bool `json:"waitedForProduction,omitempty" doc:"Unchanged, but production lagged its active version (activated earlier or by someone else), so apply waited on it without writing it."`
 }
 
 // Apply re-plans f, refuses if the digest moved, then writes each changed
@@ -223,7 +223,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		for i, want := range target {
 			prod, ok := prods[res.Aliases[i].ID]
 			if !ok {
-				return fail(i, apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", res.Aliases[i].Name))
+				err := apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", res.Aliases[i].Name)
+				if !plan.Aliases[i].Changed() {
+					return plan, res, err // never written by this apply: not its failure
+				}
+				return fail(i, err)
 			}
 			if prod != want {
 				pending++
@@ -247,10 +251,15 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			}
 		}
 		if !opts.Now().Before(deadline) {
-			if !plan.Changes {
-				return plan, res, apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", opts.Timeout, strings.Join(lagging(plan, target), ", "))
+			written, outside := lagging(plan, target, prods, res)
+			switch {
+			case len(written) == 0:
+				return plan, res, apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", opts.Timeout, strings.Join(outside, ", "))
+			case len(outside) == 0:
+				return plan, res, apperr.New(apperr.Upstream, "not deployed after %s: %s; the new versions are active and production should follow; re-run apply to keep waiting", opts.Timeout, strings.Join(written, ", "))
+			default:
+				return plan, res, apperr.New(apperr.Upstream, "not deployed after %s: %s (written by this apply) and %s (activated outside it); re-run apply to keep waiting", opts.Timeout, strings.Join(written, ", "), strings.Join(outside, ", "))
 			}
-			return plan, res, apperr.New(apperr.Upstream, "not deployed after %s; the target versions are active and production should follow; re-run apply to keep waiting", opts.Timeout)
 		}
 		if err := opts.Sleep(ctx, opts.Interval); err != nil {
 			return plan, res, err
@@ -323,14 +332,22 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	return v, false, &rolledBack{apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s; %s was re-activated", ap.Name, v, why, ap.ActiveVersion)}
 }
 
-// lagging names the aliases a production wait targets, sorted.
-func lagging(plan *Plan, target map[int]string) []string {
-	var out []string
-	for i := range target {
-		out = append(out, plan.Aliases[i].Name)
+// lagging names the targeted aliases production hasn't caught up with,
+// split into those this apply wrote and those it only waited on, sorted.
+func lagging(plan *Plan, target map[int]string, prods map[int64]string, res *ApplyResult) (written, outside []string) {
+	for i, want := range target {
+		if prods[res.Aliases[i].ID] == want {
+			continue
+		}
+		if plan.Aliases[i].Changed() {
+			written = append(written, plan.Aliases[i].Name)
+		} else {
+			outside = append(outside, plan.Aliases[i].Name)
+		}
 	}
-	slices.Sort(out)
-	return out
+	slices.Sort(written)
+	slices.Sort(outside)
+	return written, outside
 }
 
 // rolledBack marks an error after which the failing alias's own upload

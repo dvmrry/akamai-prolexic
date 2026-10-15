@@ -304,6 +304,7 @@
                 "type": "string"
               },
               "waitedForProduction": {
+                "description": "Unchanged, but production lagged its active version (activated earlier or by someone else), so apply waited on it without writing it.",
                 "type": "boolean"
               }
             },

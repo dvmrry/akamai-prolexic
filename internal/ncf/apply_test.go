@@ -467,3 +467,17 @@ func TestApplyNoOpTimeoutSaysItWroteNothing(t *testing.T) {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }
+
+func TestApplyMixedTimeoutNamesBothKinds(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	s.ActivateNow(103, "192.0.2.128/25")
+	s.Lag(103, "V1") // activated outside this apply, production stuck
+	s.ProdLag = 1000 // this apply's own write never lands either
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/25")})
+	_, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "block-v4 (written by this apply) and block-v4-b (activated outside it)") {
+		t.Errorf("err = %v", err)
+	}
+}
