@@ -106,126 +106,169 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	if HasErrors(plan.Findings) {
 		return plan, nil, apperr.New(apperr.Validation, "the plan has errors; nothing applied")
 	}
-	// The digest guards every write. With nothing to write, live already
-	// matches the reviewed file (a re-run after success): converge on
-	// production and succeed whatever the digest.
+	// The digest guards every write (invariant 1). With nothing to write,
+	// live already matches the reviewed file (a re-run after success):
+	// converge on production and succeed whatever the digest.
 	if plan.Changes && plan.Digest != opts.ExpectDigest {
 		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: re-plan and review", opts.ExpectDigest, plan.Digest)
 	}
 
-	res := &ApplyResult{Digest: plan.Digest, AlreadyApplied: !plan.Changes, Aliases: make([]AliasApply, len(plan.Aliases))}
-	var todo []int
+	r := newApplyRun(c, read, write, plan, opts)
+	if err := r.create(ctx); err != nil {
+		return plan, r.res, err
+	}
+	if err := r.activate(ctx); err != nil {
+		return plan, r.res, err
+	}
+	return plan, r.res, r.waitForProduction(ctx)
+}
+
+// applyRun is one apply's state across its phases: the plan, the result
+// being built, and todo, the changed aliases (indexes into both) in write
+// order.
+type applyRun struct {
+	c           *Checker
+	read, write Store
+	plan        *Plan
+	res         *ApplyResult
+	todo        []int
+	opts        ApplyOptions
+	comment     string // every version this apply creates carries it
+}
+
+func newApplyRun(c *Checker, read, write Store, plan *Plan, opts ApplyOptions) *applyRun {
+	r := &applyRun{
+		c: c, read: read, write: write, plan: plan, opts: opts,
+		res:     &ApplyResult{Digest: plan.Digest, AlreadyApplied: !plan.Changes, Aliases: make([]AliasApply, len(plan.Aliases))},
+		comment: "prolexic apply " + plan.Digest,
+	}
 	for i, ap := range plan.Aliases {
-		res.Aliases[i] = AliasApply{Name: ap.Name, ID: ap.ID, Status: StatusUnchanged, FromVersion: ap.ActiveVersion, Add: ap.Add, Remove: ap.Remove}
+		r.res.Aliases[i] = AliasApply{Name: ap.Name, ID: ap.ID, Status: StatusUnchanged, FromVersion: ap.ActiveVersion, Add: ap.Add, Remove: ap.Remove}
 		if ap.Changed() {
-			res.Aliases[i].Status = StatusSkipped
-			todo = append(todo, i)
+			r.res.Aliases[i].Status = StatusSkipped
+			r.todo = append(r.todo, i)
 		}
 	}
-	fail := func(i int, err error) (*Plan, *ApplyResult, error) {
-		res.Aliases[i].Status = StatusFailed
-		res.Aliases[i].Error = err.Error()
-		return plan, res, err
-	}
-
 	// BIG aliases go last: their upload may activate on arrival, so every
 	// other alias should have verified before one is created.
-	slices.SortStableFunc(todo, func(x, y int) int {
+	slices.SortStableFunc(r.todo, func(x, y int) int {
 		return cmp.Compare(boolInt(plan.Aliases[x].Type == "BIG"), boolInt(plan.Aliases[y].Type == "BIG"))
 	})
-	comment := "prolexic apply " + plan.Digest
+	return r
+}
 
-	// Phase 1: create and verify. A failure rolls back every version this
-	// apply already saw go live on upload, so nothing stays active unless
-	// everything verified.
-	for _, i := range todo {
-		ap := plan.Aliases[i]
-		v, active, err := c.createVerified(ctx, read, write, ap, comment)
-		res.Aliases[i].Version = v
+// fail marks alias i failed with err and returns err.
+func (r *applyRun) fail(i int, err error) error {
+	r.res.Aliases[i].Status = StatusFailed
+	r.res.Aliases[i].Error = err.Error()
+	return err
+}
+
+// failAndRollBack puts back everything this apply made live (invariant 3),
+// then marks alias i failed.
+func (r *applyRun) failAndRollBack(ctx context.Context, i int, err error) error {
+	if rerr := rollBack(ctx, r.read, r.write, r.plan, r.res, r.todo); rerr != nil {
+		err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
+	}
+	return r.fail(i, err)
+}
+
+// create is phase 1: create and verify each changed alias's version
+// (invariants 2 and 4). A failure rolls back every version this apply already
+// saw go live on upload.
+func (r *applyRun) create(ctx context.Context) error {
+	for _, i := range r.todo {
+		v, active, err := r.c.createVerified(ctx, r.read, r.write, r.plan.Aliases[i], r.comment)
+		r.res.Aliases[i].Version = v
 		if err != nil {
-			if rerr := rollBack(ctx, read, write, plan, res, todo); rerr != nil {
-				err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
-			}
-			p, r, ferr := fail(i, err)
+			err = r.failAndRollBack(ctx, i, err)
 			var rb *rolledBack
 			if errors.As(err, &rb) {
-				r.Aliases[i].Status = StatusRolledBack // its own upload was put back
+				r.res.Aliases[i].Status = StatusRolledBack // its own upload was put back
 			}
-			return p, r, ferr
+			return err
 		}
-		res.Aliases[i].Status = StatusCreated
+		r.res.Aliases[i].Status = StatusCreated
 		if active {
-			res.Aliases[i].Status = StatusActive
+			r.res.Aliases[i].Status = StatusActive
 		}
 	}
+	return nil
+}
 
-	// Phase 2: activate. A failure rolls back every alias this apply already
-	// activated, so the reviewed change lands whole or not at all.
-	failActivate := func(i int, err error) (*Plan, *ApplyResult, error) {
-		if rerr := rollBack(ctx, read, write, plan, res, todo); rerr != nil {
-			err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
-		}
-		return fail(i, err)
-	}
-	for _, i := range todo {
-		a := &res.Aliases[i]
+// activate is phase 2: activate every created version, re-reading each
+// alias's token first (invariant 3). A failure rolls back every alias this
+// apply already activated, so the reviewed change lands whole or not at all.
+func (r *applyRun) activate(ctx context.Context) error {
+	for _, i := range r.todo {
+		a, planned := &r.res.Aliases[i], r.plan.Aliases[i].ActiveVersion
 		if a.Status == StatusActive {
 			continue // the API activated it on creation (BIG upload)
 		}
 		// No ETag: re-read the token right before activating, so another
 		// writer's activation during phase 1 is never silently replaced.
-		if cur, err := activeVersion(ctx, read, a.ID); err != nil {
-			return failActivate(i, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s before activating", a.Name))
-		} else if cur != plan.Aliases[i].ActiveVersion {
-			return failActivate(i, apperr.New(apperr.Conflict, "%s changed during this apply (activeVersion %q, now %q); its version %s was left inactive; re-plan", a.Name, plan.Aliases[i].ActiveVersion, cur, a.Version))
+		if cur, err := activeVersion(ctx, r.read, a.ID); err != nil {
+			return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s before activating", a.Name))
+		} else if cur != planned {
+			return r.failAndRollBack(ctx, i, apperr.New(apperr.Conflict, "%s changed during this apply (activeVersion %q, now %q); its version %s was left inactive; re-plan", a.Name, planned, cur, a.Version))
 		}
-		if err := write.Activate(ctx, a.ID, a.Version); err != nil {
+		if err := r.write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
-				return failActivate(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
+				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
 			}
-			cur, rerr := activeVersion(context.WithoutCancel(ctx), read, a.ID)
+			cur, rerr := activeVersion(context.WithoutCancel(ctx), r.read, a.ID)
 			if rerr != nil || cur != a.Version {
 				// It may have landed: count it as live so the rollback covers
 				// it (re-activating the replaced version is harmless if not).
 				a.Status = StatusActive
-				return failActivate(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect", a.Name, a.Version))
+				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect", a.Name, a.Version))
 			}
 		}
 		a.Status = StatusActive
 	}
+	return nil
+}
 
-	// Phase 3: wait until production carries each alias's target: the new
-	// version for a changed alias, and the active version for an unchanged
-	// one whose production lags, so a re-run after a timed-out apply
-	// finishes the job. An alias no deployed rule references has nothing to
-	// wait for: activation is its end state.
+// targets are the aliases phase 3 waits on, with the version production must
+// carry: the new version for a changed alias, and the active version for an
+// unchanged one whose production lags (so a re-run after a timed-out apply
+// finishes the job). A changed alias a deployed rule uses is always a
+// target, for the deployment health check. An alias no deployed rule
+// references has nothing to wait for: activation is its end state.
+func (r *applyRun) targets() map[int]string {
 	target := map[int]string{}
-	for i, ap := range plan.Aliases {
+	for i, ap := range r.plan.Aliases {
 		want := ap.ActiveVersion
 		if ap.Changed() {
-			want = res.Aliases[i].Version
+			want = r.res.Aliases[i].Version
 		}
-		// A changed alias a deployed rule uses always gets the deployment
-		// health check, even if production already carries its version.
 		if ap.ProdVersion != "" && (ap.Changed() || ap.ProdVersion != want) {
 			target[i] = want
 		}
 	}
-	if len(target) == 0 {
-		return plan, res, nil
-	}
 	for i := range target {
-		if !plan.Aliases[i].Changed() {
-			res.Aliases[i].WaitedForProduction = true
+		if !r.plan.Aliases[i].Changed() {
+			r.res.Aliases[i].WaitedForProduction = true
 		}
 	}
-	deadline := opts.Now().Add(opts.Timeout)
+	return target
+}
+
+// waitForProduction is phase 3 (invariant 6): poll until production carries
+// every target and the ACL deployment is healthy and settled, or the timeout
+// passes.
+func (r *applyRun) waitForProduction(ctx context.Context) error {
+	target := r.targets()
+	if len(target) == 0 {
+		return nil
+	}
+	deadline := r.opts.Now().Add(r.opts.Timeout)
 	for {
 		// One alias list per poll: it carries every production version and
 		// no entries, so a BIG alias isn't re-downloaded every interval.
-		all, err := read.ListAliases(ctx)
+		all, err := r.read.ListAliases(ctx)
 		if err != nil {
-			return plan, res, apperr.Wrap(apperr.CodeOf(err), err, "poll aliases")
+			return apperr.Wrap(apperr.CodeOf(err), err, "poll aliases")
 		}
 		prods := make(map[int64]string, len(all))
 		for _, l := range all {
@@ -233,13 +276,13 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		}
 		pending := 0
 		for i, want := range target {
-			prod, ok := prods[res.Aliases[i].ID]
+			prod, ok := prods[r.res.Aliases[i].ID]
 			if !ok {
-				err := apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", res.Aliases[i].Name)
-				if !plan.Aliases[i].Changed() {
-					return plan, res, err // never written by this apply: not its failure
+				err := apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", r.res.Aliases[i].Name)
+				if !r.plan.Aliases[i].Changed() {
+					return err // never written by this apply: not its failure
 				}
-				return fail(i, err)
+				return r.fail(i, err)
 			}
 			if prod == "" {
 				delete(target, i) // no deployed rule uses it any more: nothing to wait for
@@ -250,48 +293,54 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			}
 		}
 		if pending == 0 {
-			d, err := read.Deployment(ctx)
+			d, err := r.read.Deployment(ctx)
 			if err != nil {
-				return plan, res, apperr.Wrap(apperr.CodeOf(err), err, "read ACL deployment status")
+				return apperr.Wrap(apperr.CodeOf(err), err, "read ACL deployment status")
 			}
 			if why := d.Failure(); why != "" {
-				return plan, res, apperr.New(apperr.Upstream, "production carries the target versions but the ACL deployment is unhealthy: %s", why)
+				return apperr.New(apperr.Upstream, "production carries the target versions but the ACL deployment is unhealthy: %s", why)
 			}
 			if !d.Processing {
 				for i := range target {
-					if plan.Aliases[i].Changed() {
-						res.Aliases[i].Status = StatusDeployed
+					if r.plan.Aliases[i].Changed() {
+						r.res.Aliases[i].Status = StatusDeployed
 					}
 				}
-				return plan, res, nil
+				return nil
 			}
 		}
-		if !opts.Now().Before(deadline) {
-			written, outside := lagging(plan, target, prods, res)
-			if len(written)+len(outside) > 0 {
-				// Say what the deployment itself reports, if it's part of it.
-				if d, derr := read.Deployment(ctx); derr == nil {
-					if why := d.Failure(); why != "" {
-						return plan, res, apperr.New(apperr.Upstream, "not deployed after %s, and the ACL deployment is unhealthy: %s", opts.Timeout, why)
-					}
-				}
-			}
-			switch {
-			case len(written) == 0 && len(outside) == 0:
-				return plan, res, apperr.New(apperr.Upstream, "production carries the target versions, but the ACL deployment is still processing after %s; re-run apply to keep waiting", opts.Timeout)
-			case !plan.Changes:
-				return plan, res, apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", opts.Timeout, strings.Join(outside, ", "))
-			case len(written) == 0:
-				return plan, res, apperr.New(apperr.Upstream, "this apply's new versions are in production, but after %s production still lags for %s, activated outside this apply", opts.Timeout, strings.Join(outside, ", "))
-			case len(outside) == 0:
-				return plan, res, apperr.New(apperr.Upstream, "not deployed after %s: %s; the new versions are active and production should follow; re-run apply to keep waiting", opts.Timeout, strings.Join(written, ", "))
-			default:
-				return plan, res, apperr.New(apperr.Upstream, "not deployed after %s: %s (written by this apply) and %s (activated outside it); re-run apply to keep waiting", opts.Timeout, strings.Join(written, ", "), strings.Join(outside, ", "))
+		if !r.opts.Now().Before(deadline) {
+			return r.timeoutError(ctx, target, prods)
+		}
+		if err := r.opts.Sleep(ctx, r.opts.Interval); err != nil {
+			return err
+		}
+	}
+}
+
+// timeoutError says what is actually lagging when the production wait gives
+// up: what this apply wrote, what it only waited on, or the deployment itself.
+func (r *applyRun) timeoutError(ctx context.Context, target map[int]string, prods map[int64]string) error {
+	timeout := r.opts.Timeout
+	written, outside := lagging(r.plan, target, prods, r.res)
+	if len(written)+len(outside) > 0 {
+		if d, err := r.read.Deployment(ctx); err == nil {
+			if why := d.Failure(); why != "" {
+				return apperr.New(apperr.Upstream, "not deployed after %s, and the ACL deployment is unhealthy: %s", timeout, why)
 			}
 		}
-		if err := opts.Sleep(ctx, opts.Interval); err != nil {
-			return plan, res, err
-		}
+	}
+	switch {
+	case len(written) == 0 && len(outside) == 0:
+		return apperr.New(apperr.Upstream, "production carries the target versions, but the ACL deployment is still processing after %s; re-run apply to keep waiting", timeout)
+	case !r.plan.Changes:
+		return apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", timeout, strings.Join(outside, ", "))
+	case len(written) == 0:
+		return apperr.New(apperr.Upstream, "this apply's new versions are in production, but after %s production still lags for %s, activated outside this apply", timeout, strings.Join(outside, ", "))
+	case len(outside) == 0:
+		return apperr.New(apperr.Upstream, "not deployed after %s: %s; the new versions are active and production should follow; re-run apply to keep waiting", timeout, strings.Join(written, ", "))
+	default:
+		return apperr.New(apperr.Upstream, "not deployed after %s: %s (written by this apply) and %s (activated outside it); re-run apply to keep waiting", timeout, strings.Join(written, ", "), strings.Join(outside, ", "))
 	}
 }
 
