@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -46,18 +48,27 @@ func versionNumber(v string) int {
 	return n
 }
 
-func runAliasesVersions(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	name := fs.String("name", "", "alias name")
-	id := fs.Int64("id", 0, "alias id")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newAliasesVersionsCmd(a *app) *cobra.Command {
+	var name string
+	var id int64
+	cmd := &cobra.Command{
+		Use:   "versions",
+		Short: "one alias's version history",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aliasesVersions(ctx, a, name, id)
+		}),
 	}
+	aliasSelector(cmd, &name, &id)
+	return cmd
+}
+
+func aliasesVersions(ctx context.Context, a *app, name string, id int64) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err
 	}
-	al, err := resolveAlias(ctx, api, *name, *id)
+	al, err := resolveAlias(ctx, api, name, id)
 	if err != nil {
 		return nil, err
 	}

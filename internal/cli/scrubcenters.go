@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -25,11 +27,18 @@ func (d *ScrubCentersDoc) WriteText(w io.Writer) error {
 	return nil
 }
 
-func runScrubCenters(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newScrubCentersCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "scrub-centers",
+		Short: "active scrub centers (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return scrubCenters(ctx, a)
+		}),
 	}
+}
+
+func scrubCenters(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err

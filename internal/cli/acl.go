@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -32,11 +34,18 @@ func (d *ACLVersionsDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runACLVersions(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newACLVersionsCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "versions",
+		Short: "every ACL version",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aclVersions(ctx, a)
+		}),
 	}
+}
+
+func aclVersions(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err
@@ -158,13 +167,22 @@ func ruleRow(r ncfapi.ACLRuleDetail) ACLRuleRow {
 	return row
 }
 
-func runACLShow(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	version := fs.Int("version", 0, "ACL version number (default: the version in production)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newACLShowCmd(a *app) *cobra.Command {
+	var version int
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "one ACL version's rules (default: production)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aclShow(ctx, a, version)
+		}),
 	}
-	if *version < 0 {
+	cmd.Flags().IntVar(&version, "version", 0, "ACL version number (default: the version in production)")
+	return cmd
+}
+
+func aclShow(ctx context.Context, a *app, version int) (output.Document, error) {
+	if version < 0 {
 		return nil, apperr.New(apperr.Usage, "--version must be positive")
 	}
 	api, err := a.ncfV2()
@@ -176,7 +194,7 @@ func runACLShow(ctx context.Context, a *app, args []string) (output.Document, er
 		return nil, err
 	}
 	prod, perr := ncfapi.ProductionVersion(sets)
-	v := *version
+	v := version
 	if v == 0 {
 		if perr != nil {
 			return nil, perr
@@ -219,11 +237,18 @@ func (d *ACLDeploymentDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runACLDeployment(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newACLDeploymentCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "deployment",
+		Short: "deployment-status rulesets and which is in production",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aclDeployment(ctx, a)
+		}),
 	}
+}
+
+func aclDeployment(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err

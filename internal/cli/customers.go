@@ -8,6 +8,8 @@ import (
 	"slices"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -29,11 +31,18 @@ func (d *CustomersDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runCustomers(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newCustomersCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "customers",
+		Short: "the account's customer names (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return customers(ctx, a)
+		}),
 	}
+}
+
+func customers(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err

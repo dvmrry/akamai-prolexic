@@ -10,7 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/networkhealth"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -55,11 +56,18 @@ func joinInts(n []int) string {
 	return strings.Join(s, ",")
 }
 
-func runTargetsList(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newTargetsListCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "every target of the account",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return targetsList(ctx, a)
+		}),
 	}
+}
+
+func targetsList(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.networkHealth()
 	if err != nil {
 		return nil, err
@@ -95,20 +103,27 @@ func (d *TargetDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runTargetsShow(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	id := fs.String("id", "", "target id (required)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newTargetsShowCmd(a *app) *cobra.Command {
+	var id string
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "one target by id",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return targetsShow(ctx, a, id)
+		}),
 	}
-	if *id == "" {
-		return nil, apperr.New(apperr.Usage, "--id is required\n%s", flagUsage(fs))
-	}
+	cmd.Flags().StringVar(&id, "id", "", "target id (required)")
+	_ = cmd.MarkFlagRequired("id")
+	return cmd
+}
+
+func targetsShow(ctx context.Context, a *app, id string) (output.Document, error) {
 	api, err := a.networkHealth()
 	if err != nil {
 		return nil, err
 	}
-	t, err := api.Target(ctx, *id)
+	t, err := api.Target(ctx, id)
 	if err != nil {
 		return nil, err
 	}

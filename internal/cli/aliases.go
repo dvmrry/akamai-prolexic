@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
@@ -43,12 +45,21 @@ func (d *AliasesDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runAliasesList(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	editable := fs.Bool("editable", false, "only customer-editable aliases (not Akamai-managed)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newAliasesListCmd(a *app) *cobra.Command {
+	var editable bool
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "every alias, without entries",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aliasesList(ctx, a, editable)
+		}),
 	}
+	cmd.Flags().BoolVar(&editable, "editable", false, "only customer-editable aliases (not Akamai-managed)")
+	return cmd
+}
+
+func aliasesList(ctx context.Context, a *app, editable bool) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err
@@ -57,7 +68,7 @@ func runAliasesList(ctx context.Context, a *app, args []string) (output.Document
 	if err != nil {
 		return nil, err
 	}
-	if *editable {
+	if editable {
 		rows = slices.DeleteFunc(rows, func(r ncfapi.AliasInfo) bool { return !r.Editable })
 	}
 	slices.SortStableFunc(rows, func(x, y ncfapi.AliasInfo) int {
@@ -142,23 +153,38 @@ func normaliseEntries(raw []string) []string {
 	return append(out, bad...)
 }
 
-func runAliasesShow(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	name := fs.String("name", "", "alias name")
-	id := fs.Int64("id", 0, "alias id")
-	version := fs.String("version", "", "version id, e.g. V3 (default: the alias's active version)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newAliasesShowCmd(a *app) *cobra.Command {
+	var name, version string
+	var id int64
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "one alias's entries at a version",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return aliasesShow(ctx, a, name, id, version)
+		}),
 	}
+	aliasSelector(cmd, &name, &id)
+	cmd.Flags().StringVar(&version, "version", "", "version id, e.g. V3 (default: the alias's active version)")
+	return cmd
+}
+
+// aliasSelector is the --name/--id pair that picks one alias.
+func aliasSelector(cmd *cobra.Command, name *string, id *int64) {
+	cmd.Flags().StringVar(name, "name", "", "alias name")
+	cmd.Flags().Int64Var(id, "id", 0, "alias id")
+}
+
+func aliasesShow(ctx context.Context, a *app, name string, id int64, version string) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err
 	}
-	al, err := resolveAlias(ctx, api, *name, *id)
+	al, err := resolveAlias(ctx, api, name, id)
 	if err != nil {
 		return nil, err
 	}
-	v := cmp.Or(*version, al.ActiveVersion)
+	v := cmp.Or(version, al.ActiveVersion)
 	if v == "" {
 		return nil, apperr.New(apperr.Upstream, "alias %s lists no active version; name one with --version", al.Name)
 	}

@@ -1,8 +1,10 @@
 package cli
 
 import (
-	"flag"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -13,9 +15,13 @@ type windowFlags struct {
 	since time.Duration
 	start string
 	end   string
+
+	flags *pflag.FlagSet // the command's flags, to tell an explicit --since from its default
 }
 
-func (w *windowFlags) register(fs *flag.FlagSet, defaultSince time.Duration) {
+func (w *windowFlags) register(cmd *cobra.Command, defaultSince time.Duration) {
+	fs := cmd.Flags()
+	w.flags = fs
 	fs.DurationVar(&w.since, "since", defaultSince, "window ending now, e.g. 24h; exclusive with --start/--end")
 	fs.StringVar(&w.start, "start", "", "window start, RFC 3339 (e.g. 2026-01-01T00:00:00Z)")
 	fs.StringVar(&w.end, "end", "", "window end, RFC 3339 (default: now)")
@@ -23,13 +29,8 @@ func (w *windowFlags) register(fs *flag.FlagSet, defaultSince time.Duration) {
 
 // resolve returns the window, UTC. given is false when the user set no flag
 // and defaultSince is 0: the caller then applies no window at all.
-func (w *windowFlags) resolve(fs *flag.FlagSet, now time.Time) (start, end time.Time, given bool, err error) {
-	sinceSet := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "since" {
-			sinceSet = true
-		}
-	})
+func (w *windowFlags) resolve(now time.Time) (start, end time.Time, given bool, err error) {
+	sinceSet := w.flags.Changed("since")
 	if sinceSet && (w.start != "" || w.end != "") {
 		return start, end, false, apperr.New(apperr.Usage, "--since can't be combined with --start/--end")
 	}

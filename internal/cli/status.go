@@ -8,6 +8,8 @@ import (
 	"slices"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -75,11 +77,18 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runStatus(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newStatusCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "deployment state, aliases and limits (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return status(ctx, a)
+		}),
 	}
+}
+
+func status(ctx context.Context, a *app) (output.Document, error) {
 	store, err := a.ncfRead()
 	if err != nil {
 		return nil, err

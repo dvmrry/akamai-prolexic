@@ -10,6 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -57,16 +59,24 @@ func epoch(e analytics.Epoch) string {
 	return time.Unix(sec, 0).UTC().Format(time.RFC3339)
 }
 
-func runAttacksList(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
+func newAttacksListCmd(a *app) *cobra.Command {
+	var customers []string
 	var win windowFlags
-	win.register(fs, 24*time.Hour)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "attacks in a time window per customer name",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return attacksList(ctx, a, customers, win)
+		}),
 	}
-	start, end, _, err := win.resolve(fs, a.env.Now())
+	customerFlag(cmd, &customers)
+	win.register(cmd, 24*time.Hour)
+	return cmd
+}
+
+func attacksList(ctx context.Context, a *app, customers []string, win windowFlags) (output.Document, error) {
+	start, end, _, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -121,26 +131,39 @@ func (d *AttackDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runAttacksShow(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	id := fs.Int64("id", 0, "attack id (required)")
-	customer := fs.String("customer", "", "customer name the attack belongs to (required)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newAttacksShowCmd(a *app) *cobra.Command {
+	var id int64
+	var customer string
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "one attack's detail report",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return attacksShow(ctx, a, id, customer)
+		}),
 	}
-	if *id <= 0 || *customer == "" {
-		return nil, apperr.New(apperr.Usage, "--id and --customer are both required\n%s", flagUsage(fs))
+	f := cmd.Flags()
+	f.Int64Var(&id, "id", 0, "attack id (required)")
+	f.StringVar(&customer, "customer", "", "customer name the attack belongs to (required)")
+	_ = cmd.MarkFlagRequired("id")
+	_ = cmd.MarkFlagRequired("customer")
+	return cmd
+}
+
+func attacksShow(ctx context.Context, a *app, id int64, customer string) (output.Document, error) {
+	if id <= 0 {
+		return nil, apperr.New(apperr.Usage, "--id must be a positive attack id")
 	}
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := api.Attack(ctx, *customer, *id)
+	rows, err := api.Attack(ctx, customer, id)
 	if err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return nil, apperr.New(apperr.NotFound, "attack %d has no report rows for %s", *id, *customer)
+		return nil, apperr.New(apperr.NotFound, "attack %d has no report rows for %s", id, customer)
 	}
 	slices.SortStableFunc(rows, func(x, y analytics.AttackRow) int {
 		return cmp.Or(
@@ -150,5 +173,5 @@ func runAttacksShow(ctx context.Context, a *app, args []string) (output.Document
 			cmp.Compare(x.EventPeakID, y.EventPeakID),
 		)
 	})
-	return &AttackDoc{Customer: *customer, AttackID: *id, Rows: rows}, nil
+	return &AttackDoc{Customer: customer, AttackID: id, Rows: rows}, nil
 }

@@ -10,6 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -100,27 +102,39 @@ func parseMetricTypes(types []string, subnet, ip string) (map[string][]string, [
 	return services, fbm, nil
 }
 
-func runMetrics(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers, types stringList
-	fs.Var(&customers, "customer", "customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)")
-	fs.Var(&types, "type", typeHelp)
-	subnet := fs.String("subnet", "", "restrict fbm types to one subnet")
-	ip := fs.String("ip", "", "restrict fbm types to one IP address")
-	samples := fs.Int("samples", 100, "number of data points to return")
+func newMetricsCmd(a *app) *cobra.Command {
+	var customers, types []string
+	var subnet, ip string
+	var samples int
 	var win windowFlags
-	win.register(fs, 24*time.Hour)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+	cmd := &cobra.Command{
+		Use:     "metrics",
+		Short:   "traffic metrics per customer name (read-only)",
+		Example: "  prolexic metrics --type routed:bandwidthIn --since 6h",
+		Args:    cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return metrics(ctx, a, customers, types, subnet, ip, samples, win)
+		}),
 	}
-	services, fbm, err := parseMetricTypes(types, *subnet, *ip)
+	f := cmd.Flags()
+	f.StringSliceVar(&customers, "customer", nil, "customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)")
+	f.StringSliceVar(&types, "type", nil, typeHelp)
+	f.StringVar(&subnet, "subnet", "", "restrict fbm types to one subnet")
+	f.StringVar(&ip, "ip", "", "restrict fbm types to one IP address")
+	f.IntVar(&samples, "samples", 100, "number of data points to return")
+	win.register(cmd, 24*time.Hour)
+	return cmd
+}
+
+func metrics(ctx context.Context, a *app, customers, types []string, subnet, ip string, samples int, win windowFlags) (output.Document, error) {
+	services, fbm, err := parseMetricTypes(types, subnet, ip)
 	if err != nil {
 		return nil, err
 	}
-	if *samples < 1 {
+	if samples < 1 {
 		return nil, apperr.New(apperr.Usage, "--samples must be at least 1")
 	}
-	start, end, _, err := win.resolve(fs, a.env.Now())
+	start, end, _, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +149,7 @@ func runMetrics(ctx context.Context, a *app, args []string) (output.Document, er
 	if err != nil {
 		return nil, err
 	}
-	q := analytics.MetricQuery{Services: services, FBM: fbm, Start: start, End: end, Samples: *samples}
+	q := analytics.MetricQuery{Services: services, FBM: fbm, Start: start, End: end, Samples: samples}
 	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.MetricSeries, error) {
 		return api.Metrics(ctx, name, q)
 	})

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -44,13 +46,21 @@ func (d *ProtectedDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-func runProtected(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every name, in use or not)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newProtectedCmd(a *app) *cobra.Command {
+	var customers []string
+	cmd := &cobra.Command{
+		Use:   "protected",
+		Short: "prefixes and AS numbers treated as own space, per customer name (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return protected(ctx, a, customers)
+		}),
 	}
+	cmd.Flags().StringSliceVar(&customers, "customer", nil, "customer name to query; repeatable or comma-separated (default: every name, in use or not)")
+	return cmd
+}
+
+func protected(ctx context.Context, a *app, customers []string) (output.Document, error) {
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err

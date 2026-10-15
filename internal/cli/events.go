@@ -9,6 +9,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -48,19 +50,29 @@ func (d *EventsDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-func runEvents(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-	criticalOnly := fs.Bool("critical-only", false, "only critical events")
+func newEventsCmd(a *app) *cobra.Command {
+	var customers []string
+	var criticalOnly bool
 	var win windowFlags
-	win.register(fs, 0)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+	cmd := &cobra.Command{
+		Use:   "events",
+		Short: "critical events and events per customer name",
+		Long:  "Critical events and events per customer name. The API has no time window for events: --since, --start and --end filter the answer, keeping events whose span overlaps the window. With none of them, every event is listed.",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return events(ctx, a, customers, criticalOnly, win)
+		}),
 	}
+	customerFlag(cmd, &customers)
+	cmd.Flags().BoolVar(&criticalOnly, "critical-only", false, "only critical events")
+	win.register(cmd, 0)
+	return cmd
+}
+
+func events(ctx context.Context, a *app, customers []string, criticalOnly bool, win windowFlags) (output.Document, error) {
 	// The API has no time window for events: --since/--start/--end filter the
 	// answer here, keeping events whose span overlaps the window.
-	start, end, windowed, err := win.resolve(fs, a.env.Now())
+	start, end, windowed, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +86,7 @@ func runEvents(ctx context.Context, a *app, args []string) (output.Document, err
 	}
 	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.EventRow, error) {
 		crit, err := api.CriticalEvents(ctx, name)
-		if err != nil || *criticalOnly {
+		if err != nil || criticalOnly {
 			return crit, err
 		}
 		evs, err := api.Events(ctx, name)

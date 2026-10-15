@@ -10,6 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -42,13 +44,23 @@ func (d *ManagedACLDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runManagedACL(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	domain := fs.String("policy-domain", "", "policy domain (required)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newManagedACLCmd(a *app) *cobra.Command {
+	var domain string
+	cmd := &cobra.Command{
+		Use:   "acl",
+		Short: "a policy domain's latest managed-services ACL version",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return managedACL(ctx, a, domain)
+		}),
 	}
-	d, err := pathSafe("policy-domain", *domain)
+	cmd.Flags().StringVar(&domain, "policy-domain", "", "policy domain (required)")
+	_ = cmd.MarkFlagRequired("policy-domain")
+	return cmd
+}
+
+func managedACL(ctx context.Context, a *app, domain string) (output.Document, error) {
+	d, err := pathSafe("policy-domain", domain)
 	if err != nil {
 		return nil, err
 	}
@@ -87,26 +99,37 @@ func (d *ManagedRuleHitsDoc) WriteText(w io.Writer) error {
 	return writeSeries(w, d.Series)
 }
 
-func runManagedRuleHits(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	domain := fs.String("policy-domain", "", "policy domain (required)")
-	rule := fs.String("rule", "", "one rule's id (its uuid): show that rule and its time series")
+func newManagedRuleHitsCmd(a *app) *cobra.Command {
+	var domain, rule string
 	var win windowFlags
-	win.register(fs, 0)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+	cmd := &cobra.Command{
+		Use:   "rule-hits",
+		Short: "a policy domain's rule statistics, and one rule's time series",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return managedRuleHits(ctx, a, domain, rule, win)
+		}),
 	}
-	d, err := pathSafe("policy-domain", *domain)
+	f := cmd.Flags()
+	f.StringVar(&domain, "policy-domain", "", "policy domain (required)")
+	f.StringVar(&rule, "rule", "", "one rule's id (its uuid): show that rule and its time series")
+	win.register(cmd, 0)
+	_ = cmd.MarkFlagRequired("policy-domain")
+	return cmd
+}
+
+func managedRuleHits(ctx context.Context, a *app, domain, rule string, win windowFlags) (output.Document, error) {
+	d, err := pathSafe("policy-domain", domain)
 	if err != nil {
 		return nil, err
 	}
 	var id string
-	if *rule != "" {
-		if id, err = pathSafe("rule", *rule); err != nil {
+	if rule != "" {
+		if id, err = pathSafe("rule", rule); err != nil {
 			return nil, err
 		}
 	}
-	start, end, given, err := win.resolve(fs, a.env.Now())
+	start, end, given, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}

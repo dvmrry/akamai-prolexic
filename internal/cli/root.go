@@ -121,7 +121,7 @@ func nativeCommands() map[string]func(*app) *cobra.Command {
 		"apply": newApplyCmd, "export": newExportCmd, "fmt": newFmtCmd, "remove": newRemoveCmd, "validate": newValidateCmd,
 		"doctor":          newDoctorCmd,
 		"plan":            newPlanCmd,
-		"routed sessions": newRoutedSessionsCmd, "routed check": newRoutedCheckCmd, "routed health": newRoutedHealthCmd, "routed routes": newRoutedRoutesCmd,
+		"routed sessions": newRoutedSessionsCmd, "acl deployment": newACLDeploymentCmd, "acl show": newACLShowCmd, "acl versions": newACLVersionsCmd, "aliases list": newAliasesListCmd, "aliases show": newAliasesShowCmd, "aliases versions": newAliasesVersionsCmd, "customers": newCustomersCmd, "managed acl": newManagedACLCmd, "managed rule-hits": newManagedRuleHitsCmd, "rule-hits list": newRuleHitsListCmd, "rule-hits show": newRuleHitsShowCmd, "status": newStatusCmd, "targets list": newTargetsListCmd, "targets show": newTargetsShowCmd, "attacks list": newAttacksListCmd, "attacks show": newAttacksShowCmd, "events": newEventsCmd, "metrics": newMetricsCmd, "protected": newProtectedCmd, "scrub-centers": newScrubCentersCmd, "time-series": newTimeSeriesCmd, "routed check": newRoutedCheckCmd, "routed health": newRoutedHealthCmd, "routed routes": newRoutedRoutesCmd,
 		"version": newVersionCmd,
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -70,11 +72,18 @@ func (d *RuleHitsDoc) WriteText(w io.Writer) error {
 	return writeHitRows(w, d.Rules)
 }
 
-func runRuleHitsList(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newRuleHitsListCmd(a *app) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "match statistics of every rule",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return ruleHitsList(ctx, a)
+		}),
 	}
+}
+
+func ruleHitsList(ctx context.Context, a *app) (output.Document, error) {
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err
@@ -107,19 +116,29 @@ func (d *RuleHitDoc) WriteText(w io.Writer) error {
 	return writeSeries(w, d.Series)
 }
 
-func runRuleHitsShow(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	rule := fs.String("rule", "", "rule id (the ruleId `rule-hits list` shows; required)")
+func newRuleHitsShowCmd(a *app) *cobra.Command {
+	var rule string
 	var win windowFlags
-	win.register(fs, 0)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "one rule's statistics, and its time series with a window",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return ruleHitsShow(ctx, a, rule, win)
+		}),
 	}
-	id, err := pathSafe("rule", *rule)
+	cmd.Flags().StringVar(&rule, "rule", "", "rule id (the ruleId from rule-hits list; required)")
+	win.register(cmd, 0)
+	_ = cmd.MarkFlagRequired("rule")
+	return cmd
+}
+
+func ruleHitsShow(ctx context.Context, a *app, rule string, win windowFlags) (output.Document, error) {
+	id, err := pathSafe("rule", rule)
 	if err != nil {
 		return nil, err
 	}
-	start, end, given, err := win.resolve(fs, a.env.Now())
+	start, end, given, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}
