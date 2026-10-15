@@ -353,3 +353,12 @@ func TestPlanRejectsOurOwnASNFromBGPSessions(t *testing.T) {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
 	}
 }
+
+func TestPlanCustomerNameWithoutRoutedHasNoASNs(t *testing.T) {
+	api := ncfAPI(t)
+	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 404, `{"errorCode":"NOT_FOUND","message":"no routed service"}`)
+	p := writeDesired(t, desiredFixture)
+	if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p); r.code != 0 {
+		t.Errorf("exit = %d: %s", r.code, r.stderr)
+	}
+}

@@ -386,9 +386,11 @@ type rolledBack struct{ error }
 
 func (r *rolledBack) Unwrap() error { return r.error }
 
-// rollBack re-activates the replaced version of every alias that went live
-// on upload during this apply's create phase. It tries them all and names
-// the ones it couldn't put back.
+// rollBack re-activates the replaced version of every alias this apply made
+// live (or may have): BIG uploads that went live on arrival, activations in
+// phase 2, and activations whose outcome is unknown. It leaves an alias alone
+// if someone else has activated another version since, tries them all, and
+// names the ones it couldn't put back.
 func rollBack(ctx context.Context, read, write Store, plan *Plan, res *ApplyResult, todo []int) error {
 	var failed []string
 	for _, j := range todo {

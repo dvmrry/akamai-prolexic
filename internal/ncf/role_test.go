@@ -53,3 +53,23 @@ func TestDerivedRole(t *testing.T) {
 		}
 	}
 }
+
+func TestMentionsIsWholeName(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"SRC::A-EXAMPLE::edge-block": false, // "edge" is part of a longer name
+		"SRC:A-EXAMPLE:edge":         true,  // an unrecognised form of the whole name
+		"edge":                       true,
+		"edgex edge":                 true,
+		"A-EDGE-X::other":            false,
+	} {
+		if got := mentions(addr, "edge"); got != want {
+			t.Errorf("mentions(%q, edge) = %v, want %v", addr, got, want)
+		}
+	}
+	// The round-11 case: a destination alias whose name is part of the
+	// source alias's name in its own rule derives allow, not unknown.
+	rules := RulesByIndex([]ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::edge-block", Destination: "edge"}})
+	if r, ok := DerivedRole("edge", []int{1}, rules); r != RoleAllow || !ok {
+		t.Errorf("DerivedRole(edge) = %q, %v; want allow", r, ok)
+	}
+}

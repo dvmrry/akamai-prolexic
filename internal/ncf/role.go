@@ -56,9 +56,29 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 // derive allow; any other word on a source use leaves the side unknown.
 var permitActions = map[string]bool{"permit": true, "accept": true, "allow": true}
 
-// mentions reports whether an address contains the alias name at all.
+// mentions reports whether an address names the alias as a whole name
+// anywhere in it: an occurrence whose neighbours aren't name characters
+// ([a-z0-9_-]). A name that is only part of a longer name doesn't count.
 func mentions(addr, name string) bool {
-	return strings.Contains(strings.ToLower(addr), strings.ToLower(name))
+	addr, name = strings.ToLower(addr), strings.ToLower(name)
+	if name == "" {
+		return false
+	}
+	for i := 0; ; {
+		j := strings.Index(addr[i:], name)
+		if j < 0 {
+			return false
+		}
+		start, end := i+j, i+j+len(name)
+		if (start == 0 || !nameChar(addr[start-1])) && (end == len(addr) || !nameChar(addr[end])) {
+			return true
+		}
+		i = start + 1
+	}
+}
+
+func nameChar(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
 }
 
 // refersTo reports whether a parsed rule address names the alias. Live rules

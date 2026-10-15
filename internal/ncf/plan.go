@@ -283,6 +283,10 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 			add(Error, "own_space_alias", name, "", "own-space alias %q is Akamai-managed; list its prefixes in ownSpace.prefixes instead", name)
 			continue
 		}
+		if l.Type != "DIPA" {
+			add(Error, "own_space_alias", name, "", "own-space alias %q is %s; own-space aliases are protected-destination (DIPA) aliases", name, l.Type)
+			continue
+		}
 		full, err := withEntries(ctx, store, l)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get own-space alias %s", name)

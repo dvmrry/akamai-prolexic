@@ -330,3 +330,12 @@ func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
 		t.Errorf("err = %v; the plan must not pass without its own-ASN source", err)
 	}
 }
+
+func TestPlanOwnSpaceAliasesMustBeDIPA(t *testing.T) {
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.OwnSpace.Aliases = []string{"block-v4"} // a SOURCE alias
+	got := findingCodes(plan(t, world(), f, defaults).Findings)
+	if !slices.Equal(got, []string{"error own_space_alias block-v4"}) {
+		t.Errorf("findings = %q", got)
+	}
+}

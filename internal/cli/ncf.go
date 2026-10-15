@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -480,7 +481,13 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 		}
 		// The AS our routers announce from, per BGP session; a failed name
 		// fails the plan, as for prefixes.
-		sessions, _, err := analytics.FanOut(ctx, names, api.BGPSessions)
+		sessions, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.BGPSession, error) {
+			s, err := api.BGPSessions(ctx, name)
+			if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
+				return nil, nil // a customer name without Routed has no BGP sessions
+			}
+			return s, err
+		})
 		if err != nil {
 			return nil, err
 		}
