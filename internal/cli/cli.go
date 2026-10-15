@@ -58,6 +58,9 @@ type command struct {
 func commands() []*command {
 	return []*command{
 		{name: "add", summary: "add entries to an alias in the desired file (offline)", run: runAdd},
+		{name: "aliases", summary: "aliases and their versions (read-only)", sub: []*command{
+			{name: "list", summary: "every alias, without entries", run: runAliasesList},
+		}},
 		{name: "apply", summary: "apply a reviewed plan (the only command that writes)", run: runApply},
 		{name: "attacks", summary: "attack reports (read-only)", sub: []*command{
 			{name: "list", summary: "attacks in a time window per customer name", run: runAttacksList},

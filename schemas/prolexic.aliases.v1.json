@@ -1,0 +1,77 @@
+{
+  "$id": "prolexic.aliases.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aliases": {
+      "description": "Sorted by name, id.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "description": "Empty when none is reported.",
+            "type": "string"
+          },
+          "editable": {
+            "description": "False means Akamai-managed.",
+            "type": "boolean"
+          },
+          "entriesCount": {
+            "description": "Entries in the active version.",
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "inUse": {
+            "description": "A deployed ACL rule references the alias.",
+            "type": "boolean"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prodRuleIndexes": {
+            "description": "Indexes of the deployed ACL rules that reference the alias.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "prodVersion": {
+            "description": "The version production carries; empty when none.",
+            "type": "string"
+          },
+          "type": {
+            "description": "SOURCE, DIPA or BIG.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "editable",
+          "entriesCount",
+          "id",
+          "inUse",
+          "ipVersion",
+          "name",
+          "prodRuleIndexes",
+          "prodVersion",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "aliases",
+    "schema"
+  ],
+  "type": "object"
+}

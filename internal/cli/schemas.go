@@ -13,6 +13,7 @@ import (
 func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
+		&AliasesDoc{},
 		&ApplyDoc{},
 		&AttackDoc{},
 		&AttacksDoc{},
