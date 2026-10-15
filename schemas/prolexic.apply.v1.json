@@ -285,7 +285,8 @@
                   "failed",
                   "created",
                   "active",
-                  "deployed"
+                  "deployed",
+                  "rolled_back"
                 ],
                 "type": "string"
               },

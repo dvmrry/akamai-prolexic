@@ -315,3 +315,45 @@ func TestApplyRollsBackABadBigUpload(t *testing.T) {
 		t.Error("the SOURCE alias was activated although the apply failed")
 	}
 }
+
+func TestApplyDoesNotWaitForAnAliasNoRuleUses(t *testing.T) {
+	s := world()
+	s.Unused(101)
+	res, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err != nil || res.Aliases[0].Status != ncf.StatusActive || s.Live(101).ActiveVersion != "V2" {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+	if s.Count("Deployment") != 0 {
+		t.Errorf("waited on the deployment for an alias no rule uses: %v", s.Calls)
+	}
+}
+
+func TestApplyRollsBackEveryUploadThatWentLive(t *testing.T) {
+	s, f, live := bigWorld()
+	s.Add(ncf.LiveAlias{ID: 105, Name: "block-big-2", Type: "BIG", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, live...)
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-big-2", ID: 105, Type: "BIG", Role: ncf.RoleDeny, Entries: entries(append(live[2:], "198.51.100.201")...)})
+	s.BigActivates = true
+	n := 0
+	s.Corrupt = func(es []string) []string {
+		if n++; n == 3 { // SOURCE, block-big, then block-big-2 comes back wrong
+			return es[1:]
+		}
+		return es
+	}
+	res, err := apply(t, s, f, nil)
+	if err == nil {
+		t.Fatal("apply succeeded")
+	}
+	for _, id := range []int64{101, 104, 105} {
+		if v := s.Live(id).ActiveVersion; v != "V1" {
+			t.Errorf("alias %d is on %s; nothing may stay live after a failed apply", id, v)
+		}
+	}
+	got := map[string]ncf.Status{}
+	for _, a := range res.Aliases {
+		got[a.Name] = a.Status
+	}
+	if got["block-big"] != ncf.StatusRolledBack || got["block-big-2"] != ncf.StatusFailed || got["block-v4"] != ncf.StatusCreated {
+		t.Errorf("statuses = %v", got)
+	}
+}

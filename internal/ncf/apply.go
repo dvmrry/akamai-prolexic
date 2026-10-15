@@ -3,7 +3,9 @@ package ncf
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
@@ -39,8 +41,11 @@ const (
 	StatusSkipped   Status = "skipped"   // not reached: an earlier step failed
 	StatusFailed    Status = "failed"
 	StatusCreated   Status = "created"  // version created and verified, not active
-	StatusActive    Status = "active"   // activated, production not yet carrying it
+	StatusActive    Status = "active"   // activated; final for an alias no deployed rule uses
 	StatusDeployed  Status = "deployed" // production carries it, no failed rules
+	// StatusRolledBack: activated on upload, then the version it replaced
+	// was re-activated because the apply failed.
+	StatusRolledBack Status = "rolled_back"
 )
 
 // ApplyResult reports what apply did, alias by alias.
@@ -53,7 +58,7 @@ type ApplyResult struct {
 type AliasApply struct {
 	Name        string  `json:"name"`
 	ID          int64   `json:"id"`
-	Status      Status  `json:"status" enum:"unchanged,skipped,failed,created,active,deployed"`
+	Status      Status  `json:"status" enum:"unchanged,skipped,failed,created,active,deployed,rolled_back"`
 	FromVersion string  `json:"fromVersion"`
 	Version     string  `json:"version,omitempty" doc:"The version this apply created."`
 	Add         []Entry `json:"add"`
@@ -121,12 +126,17 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	})
 	comment := "prolexic apply " + plan.Digest
 
-	// Phase 1: create and verify.
+	// Phase 1: create and verify. A failure rolls back every version this
+	// apply already saw go live on upload, so nothing stays active unless
+	// everything verified.
 	for _, i := range todo {
 		ap := plan.Aliases[i]
 		v, active, err := c.createVerified(ctx, read, write, ap, comment)
 		res.Aliases[i].Version = v
 		if err != nil {
+			if rerr := rollBack(ctx, write, plan, res, todo); rerr != nil {
+				err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
+			}
 			return fail(i, err)
 		}
 		res.Aliases[i].Status = StatusCreated
@@ -153,7 +163,19 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		a.Status = StatusActive
 	}
 
-	// Phase 3: wait for production.
+	// Phase 3: wait for production, for the aliases a deployed rule uses.
+	// One that no deployed rule references (no production version at plan
+	// time) has nothing to wait for: activation is its end state.
+	var deployed []int
+	for _, i := range todo {
+		if plan.Aliases[i].ProdVersion != "" {
+			deployed = append(deployed, i)
+		}
+	}
+	if len(deployed) == 0 {
+		return plan, res, nil
+	}
+	todo = deployed
 	deadline := opts.Now().Add(opts.Timeout)
 	for {
 		pending := 0
@@ -244,6 +266,30 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries, and re-activating %s failed (%v): fix it by hand", ap.Name, v, ap.ActiveVersion, rerr)
 	}
 	return v, false, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries; %s was re-activated", ap.Name, v, ap.ActiveVersion)
+}
+
+// rollBack re-activates the replaced version of every alias that went live
+// on upload during this apply's create phase. It tries them all and names
+// the ones it couldn't put back.
+func rollBack(ctx context.Context, write Store, plan *Plan, res *ApplyResult, todo []int) error {
+	var failed []string
+	for _, j := range todo {
+		a := &res.Aliases[j]
+		if a.Status != StatusActive {
+			continue
+		}
+		prev := plan.Aliases[j].ActiveVersion
+		if err := write.Activate(context.WithoutCancel(ctx), a.ID, prev); err != nil {
+			a.Error = fmt.Sprintf("activated on upload; re-activating %s failed: %v", prev, err)
+			failed = append(failed, a.Name)
+			continue
+		}
+		a.Status = StatusRolledBack
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%s still live on an unverified upload; fix by hand", strings.Join(failed, ", "))
+	}
+	return nil
 }
 
 // landed decides an ambiguous create: exactly one new version means it

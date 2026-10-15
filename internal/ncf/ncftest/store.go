@@ -59,6 +59,7 @@ type alias struct {
 	versions [][]string // versions[i] is version i+1
 	lag      int        // polls left before production catches up
 	pending  string     // version heading to production
+	unused   bool       // no deployed rule references it: no production version
 }
 
 // versionID names version n (1-based) the way live NCF v2 does: "V1", "V2".
@@ -83,6 +84,14 @@ func (s *Store) Add(l ncf.LiveAlias, entries ...string) {
 	defer s.mu.Unlock()
 	l.ActiveVersion, l.ProdVersion = "V1", "V1"
 	s.aliases[l.ID] = &alias{live: l, versions: [][]string{slices.Clone(entries)}}
+}
+
+// Unused marks an alias as referenced by no deployed rule: it has no
+// production version, before or after an activation.
+func (s *Store) Unused(id int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.aliases[id].unused = true
 }
 
 // AddVersions appends n inactive versions (a concurrent writer).
@@ -120,6 +129,9 @@ func (s *Store) snapshot(a *alias, entries bool) ncf.LiveAlias {
 	if entries {
 		l.Entries = slices.Clone(act)
 	}
+	if a.unused {
+		l.ProdVersion = ""
+	}
 	if s.Unversioned {
 		l.ActiveVersion, l.ProdVersion = "", ""
 	}
@@ -152,7 +164,7 @@ func (s *Store) GetAlias(_ context.Context, id int64) (ncf.LiveAlias, error) {
 	if !ok {
 		return ncf.LiveAlias{}, notFound(id)
 	}
-	if a.pending != "" {
+	if a.pending != "" && !a.unused {
 		if a.lag <= 0 {
 			a.live.ProdVersion, a.pending = a.pending, ""
 		} else {
