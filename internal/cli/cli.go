@@ -60,6 +60,7 @@ func commands() []*command {
 		{name: "add", summary: "add entries to an alias in the desired file (offline)", run: runAdd},
 		{name: "aliases", summary: "aliases and their versions (read-only)", sub: []*command{
 			{name: "list", summary: "every alias, without entries", run: runAliasesList},
+			{name: "show", summary: "one alias's entries at a version", run: runAliasesShow},
 		}},
 		{name: "apply", summary: "apply a reviewed plan (the only command that writes)", run: runApply},
 		{name: "attacks", summary: "attack reports (read-only)", sub: []*command{

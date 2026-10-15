@@ -14,6 +14,7 @@ func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
 		&AliasesDoc{},
+		&AliasDoc{},
 		&ApplyDoc{},
 		&AttackDoc{},
 		&AttacksDoc{},
