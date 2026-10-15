@@ -56,6 +56,11 @@ type Alias struct {
 	Entries []Entry `json:"entries"`
 }
 
+// DenySide reports whether the own-space check applies: a deny-role alias of
+// source addresses. A DIPA alias lists destinations, our protected ones, so
+// its entries are own space by definition whatever its role says.
+func (a Alias) DenySide() bool { return a.Role == RoleDeny && a.Type != "DIPA" }
+
 // Entry is an alias entry with optional metadata. In JSON it is a bare
 // string when it has no metadata, otherwise an object with "cidr".
 type Entry struct {

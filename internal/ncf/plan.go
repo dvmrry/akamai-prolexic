@@ -185,7 +185,7 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 			if v.Is4() != (l.IPVersion == "V4") {
 				add(Error, "address_family", a.Name, key, "%s doesn't match the alias's IP version %s", key, l.IPVersion)
 			}
-			if a.Role == RoleDeny {
+			if a.DenySide() {
 				for _, o := range own {
 					if v.Prefix().Overlaps(o.Prefix) {
 						add(Error, "own_space", a.Name, key, "deny entry %s overlaps own space %s (%s)", key, o.Prefix, o.Source)

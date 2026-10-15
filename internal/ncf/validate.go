@@ -157,7 +157,7 @@ func (c *Checker) validateEntries(a Alias, own []netip.Prefix) []Finding {
 			add(Error, "bogon", key, "%s overlaps the bogon range %s", key, c.Bogons[i])
 			continue // a bogon would only add noise to the checks below
 		}
-		if a.Role == RoleDeny {
+		if a.DenySide() {
 			for _, o := range own {
 				if p.Overlaps(o) {
 					add(Error, "own_space", key, "deny entry %s overlaps own space %s (static list)", key, o)

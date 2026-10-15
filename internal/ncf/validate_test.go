@@ -148,3 +148,12 @@ func TestValidateContainedScalesToBigAliases(t *testing.T) {
 		t.Errorf("validate took %s on 20,000 entries", d)
 	}
 }
+
+func TestValidateDIPAHoldsOwnSpaceWhateverItsRole(t *testing.T) {
+	// export writes role deny for every alias; a DIPA alias lists our
+	// protected destinations, which are own space by definition.
+	f := testFile(Alias{Name: "protected-dst", ID: 2, Type: "DIPA", Role: RoleDeny, Entries: entries("203.0.113.0/25")})
+	if fs := testChecker().Validate(f, nil); len(fs) != 0 {
+		t.Errorf("findings = %v", codes(fs))
+	}
+}
