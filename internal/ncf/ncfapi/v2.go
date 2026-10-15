@@ -118,8 +118,9 @@ func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, er
 	var out []ncf.AliasVersion
 	for page := 0; ; page++ {
 		var resp struct {
-			Content []v2Version `json:"content"`
-			Last    *bool       `json:"last"`
+			Content    []v2Version `json:"content"`
+			Last       *bool       `json:"last"`
+			TotalPages *int        `json:"totalPages"`
 		}
 		q := url.Values{"page": {strconv.Itoa(page)}, "size": {"100"}}
 		if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.aliasPath(id) + "/versions", Query: q}, &resp); err != nil {
@@ -128,10 +129,23 @@ func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, er
 		for _, v := range resp.Content {
 			out = append(out, ncf.AliasVersion{Version: v.Version, Active: v.IsActive})
 		}
-		// Stop on the last page, an empty page, or a page shape without
-		// paging fields; never loop forever on a drifted response.
-		if resp.Last == nil || *resp.Last || len(resp.Content) == 0 || page > 100 {
+		// A short history makes apply misjudge an ambiguous create, so never
+		// stop early: trust "last", then "totalPages", and without either
+		// read until an empty page.
+		switch {
+		case resp.Last != nil:
+			if *resp.Last {
+				return out, nil
+			}
+		case resp.TotalPages != nil:
+			if page+1 >= *resp.TotalPages {
+				return out, nil
+			}
+		case len(resp.Content) == 0:
 			return out, nil
+		}
+		if page >= 1000 {
+			return nil, apperr.New(apperr.Upstream, "alias %d: version history did not end after %d pages", id, page+1)
 		}
 	}
 }
@@ -161,6 +175,9 @@ func (s *V2) CreateVersion(ctx context.Context, alias ncf.LiveAlias, entries []s
 		}
 		req = akamai.Request{Method: http.MethodPost, Path: v2Path + "/big-aliases/" + strconv.FormatInt(alias.ID, 10) + "/versions", Body: body, ContentType: contentType}
 	} else {
+		if alias.ActiveVersion == "" {
+			return ncf.AliasVersion{}, apperr.New(apperr.Bug, "create a version of %s: no source version (the planned active version is unknown)", alias.Name)
+		}
 		req = akamai.Request{Method: http.MethodPost, Path: s.aliasPath(alias.ID) + "/versions", JSON: struct {
 			Entries       []string `json:"entries"`
 			SourceVersion string   `json:"sourceVersion"`

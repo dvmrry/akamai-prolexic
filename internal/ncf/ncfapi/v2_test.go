@@ -196,3 +196,32 @@ func TestV2ActivateAndGetVersion(t *testing.T) {
 		t.Errorf("v = %+v, err = %v", v, err)
 	}
 }
+
+func TestV2ListVersionsNeverStopsEarly(t *testing.T) {
+	tests := map[string][]string{
+		"totalPages only":  {`{"content":[{"version":"V2"}],"totalPages":2}`, `{"content":[{"version":"V1"}],"totalPages":2}`},
+		"no paging fields": {`{"content":[{"version":"V2"}]}`, `{"content":[{"version":"V1"}]}`, `{"content":[]}`},
+	}
+	for name, pages := range tests {
+		t.Run(name, func(t *testing.T) {
+			s, f := newV2(t)
+			n := 0
+			f.routes["GET /aliases/101/versions"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+				w.Write([]byte(pages[n]))
+				n++
+			}
+			vs, err := s.ListVersions(context.Background(), 101)
+			if err != nil || len(vs) != 2 {
+				t.Errorf("versions = %+v, err = %v", vs, err)
+			}
+		})
+	}
+}
+
+func TestV2CreateNeedsASourceVersion(t *testing.T) {
+	s, _ := newV2(t)
+	_, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE"}, []string{"192.0.2.0/25"}, "")
+	if err == nil || !strings.Contains(err.Error(), "no source version") {
+		t.Errorf("err = %v", err)
+	}
+}
