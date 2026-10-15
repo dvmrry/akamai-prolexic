@@ -142,14 +142,21 @@
       "items": {
         "additionalProperties": false,
         "properties": {
-          "code": {
-            "description": "The exit code this failure alone would have.",
-            "type": "integer"
-          },
           "customer": {
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "bug",
+              "usage",
+              "credentials",
+              "not_found",
+              "upstream",
+              "validation",
+              "drift",
+              "conflict",
+              "cancelled"
+            ],
             "type": "string"
           },
           "message": {
@@ -157,7 +164,6 @@
           }
         },
         "required": [
-          "code",
           "customer",
           "kind",
           "message"

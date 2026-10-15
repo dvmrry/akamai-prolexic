@@ -78,7 +78,7 @@ func TestEventsOneListFailingFailsTheName(t *testing.T) {
 	api.json("GET /prolexic-analytics/v2/events/contract/example-a", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	r := runCLI(t, api.env(), "events", "--customer", "example-a")
 	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
-	if r.code != int(apperr.Credentials) || len(doc.Failures) != 1 || len(doc.Events) != 0 {
+	if r.code != exitCode(apperr.Credentials) || len(doc.Failures) != 1 || len(doc.Events) != 0 {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
 }
@@ -86,7 +86,7 @@ func TestEventsOneListFailingFailsTheName(t *testing.T) {
 func TestEventsUsage(t *testing.T) {
 	api := eventsAPI(t)
 	r := runCLI(t, api.env(), "events", "--customer", "example-a", "--since", "1h", "--start", "2026-01-01T00:00:00Z")
-	if r.code != int(apperr.Usage) {
+	if r.code != exitCode(apperr.Usage) {
 		t.Errorf("exit = %d, want 2", r.code)
 	}
 }

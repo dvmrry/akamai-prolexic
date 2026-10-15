@@ -90,7 +90,7 @@ func export(ctx context.Context, a *app, file string, all bool, roleFlag string)
 	if b, rerr := os.ReadFile(file); rerr == nil && len(bytes.TrimSpace(b)) == 0 {
 		created = true
 	} else if f, _, err = readDesired(file); err != nil {
-		if apperr.CodeOf(err) != apperr.NotFound {
+		if apperr.KindOf(err) != apperr.NotFound {
 			return nil, err
 		}
 		created = true

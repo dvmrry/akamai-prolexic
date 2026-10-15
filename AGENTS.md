@@ -36,7 +36,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 
 | package | owns |
 | --- | --- |
-| `internal/apperr` | exit codes (a public contract) and the error type that carries them |
+| `internal/apperr` | the shared error model: error kinds and upstream detail (the CLI maps kinds to exit codes in `internal/cli/exit.go`) |
 | `internal/output` | the document contract: one Document per command, JSON off a terminal, `schema` field |
 | `internal/jsonschema` | schemas derived from Go types |
 | `internal/edgegrid` | credentials and request signing |

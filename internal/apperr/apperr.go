@@ -1,6 +1,8 @@
-// Package apperr carries the CLI's stable exit codes. Every error that reaches
-// the user is an *Error, or is classified as a bug (or a cancellation) by
-// CodeOf.
+// Package apperr is the error model every layer shares: an error's kind, set
+// where the failure is understood, and the upstream detail of a failed API
+// call. Fronts translate kinds at the edge; the CLI maps them to exit codes
+// (internal/cli/exit.go). Every error is an *Error, or is classified as a bug
+// (or a cancellation) by KindOf.
 package apperr
 
 import (
@@ -10,48 +12,27 @@ import (
 	"net/http"
 )
 
-// Code is a process exit code. The values are a public contract: pipelines
-// branch on them.
-type Code int
+// Kind is what went wrong, as a stable name. Kinds appear in error documents
+// and failure lists, so the values are a public contract.
+type Kind string
 
 const (
-	OK          Code = 0
-	Bug         Code = 1
-	Usage       Code = 2
-	Credentials Code = 3
-	NotFound    Code = 4 // not found, or unsupported
-	Upstream    Code = 5
-	Validation  Code = 6
-	Drift       Code = 7 // drift, or the plan digest moved
-	Conflict    Code = 8
-	Cancelled   Code = 130
+	OK          Kind = "ok"
+	Bug         Kind = "bug"
+	Usage       Kind = "usage" // the input is invalid
+	Credentials Kind = "credentials"
+	NotFound    Kind = "not_found" // not found, or unsupported
+	Upstream    Kind = "upstream"
+	Validation  Kind = "validation"
+	Drift       Kind = "drift" // drift, or the plan digest moved
+	Conflict    Kind = "conflict"
+	Cancelled   Kind = "cancelled"
 )
 
-var kinds = map[Code]string{
-	OK:          "ok",
-	Bug:         "bug",
-	Usage:       "usage",
-	Credentials: "credentials",
-	NotFound:    "not_found",
-	Upstream:    "upstream",
-	Validation:  "validation",
-	Drift:       "drift",
-	Conflict:    "conflict",
-	Cancelled:   "cancelled",
-}
-
-// Kind is the code's stable name, as it appears in error documents.
-func (c Code) Kind() string {
-	if k, ok := kinds[c]; ok {
-		return k
-	}
-	return "bug"
-}
-
-// Error is an error with an exit code. Upstream, when set, describes the
-// failed API call.
+// Error is an error with a kind. Upstream, when set, describes the failed API
+// call.
 type Error struct {
-	Code     Code
+	Kind     Kind
 	Message  string
 	Upstream *UpstreamDetail
 	Err      error
@@ -87,19 +68,19 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 // New returns an *Error with a formatted message.
-func New(code Code, format string, args ...any) *Error {
-	return &Error{Code: code, Message: fmt.Sprintf(format, args...)}
+func New(kind Kind, format string, args ...any) *Error {
+	return &Error{Kind: kind, Message: fmt.Sprintf(format, args...)}
 }
 
 // Wrap returns an *Error with a formatted message that wraps err.
-func Wrap(code Code, err error, format string, args ...any) *Error {
-	return &Error{Code: code, Message: fmt.Sprintf(format, args...), Err: err}
+func Wrap(kind Kind, err error, format string, args ...any) *Error {
+	return &Error{Kind: kind, Message: fmt.Sprintf(format, args...), Err: err}
 }
 
-// CodeOf classifies err: nil is OK, a cancelled context is Cancelled, an
-// expired deadline is Upstream, an *Error is its own code, and anything
+// KindOf classifies err: nil is OK, a cancelled context is Cancelled, an
+// expired deadline is Upstream, an *Error is its own kind, and anything
 // else is a bug.
-func CodeOf(err error) Code {
+func KindOf(err error) Kind {
 	if err == nil {
 		return OK
 	}
@@ -112,7 +93,7 @@ func CodeOf(err error) Code {
 	}
 	var e *Error
 	if errors.As(err, &e) {
-		return e.Code
+		return e.Kind
 	}
 	return Bug
 }

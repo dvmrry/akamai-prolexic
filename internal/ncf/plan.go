@@ -105,7 +105,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	p.Checks.LiveChecksRan = true
 	all, err := store.ListAliases(ctx)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeOf(err), err, "list aliases")
+		return nil, apperr.Wrap(apperr.KindOf(err), err, "list aliases")
 	}
 	byID, byName := map[int64]LiveAlias{}, map[string]LiveAlias{}
 	for _, l := range all {
@@ -121,7 +121,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	if opts.OwnASNs != nil {
 		asns, err := opts.OwnASNs(ctx)
 		if err != nil {
-			return nil, apperr.Wrap(apperr.CodeOf(err), err, "own AS numbers from Prolexic Analytics")
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "own AS numbers from Prolexic Analytics")
 		}
 		for _, a := range asns {
 			if _, seen := ownASNs[a.ASN]; !seen {
@@ -138,7 +138,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		if l, ok := byID[a.ID]; ok && len(l.ProdRules) > 0 {
 			deployed, err := store.DeployedRules(ctx)
 			if err != nil {
-				return nil, apperr.Wrap(apperr.CodeOf(err), err, "read the deployed ACL rules")
+				return nil, apperr.Wrap(apperr.KindOf(err), err, "read the deployed ACL rules")
 			}
 			rules = RulesByIndex(deployed)
 			p.Checks.DeployedRules = len(deployed)
@@ -167,7 +167,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		}
 		full, err := withEntries(ctx, store, l)
 		if err != nil {
-			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get alias %s", a.Name)
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "get alias %s", a.Name)
 		}
 		// The deployed rules' side wins over the file's; a disagreement is an
 		// error, since the file's role would switch own-space checks off or on
@@ -312,7 +312,7 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 		}
 		full, err := withEntries(ctx, store, l)
 		if err != nil {
-			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get own-space alias %s", name)
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "get own-space alias %s", name)
 		}
 		for _, s := range full.Entries {
 			v, err := ParseLive(s)
@@ -327,7 +327,7 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 	if extra != nil {
 		more, err := extra(ctx)
 		if err != nil {
-			return nil, apperr.Wrap(apperr.CodeOf(err), err, "own space from Prolexic Analytics")
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "own space from Prolexic Analytics")
 		}
 		out = append(out, more...)
 	}

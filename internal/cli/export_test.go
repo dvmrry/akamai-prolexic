@@ -88,7 +88,7 @@ func TestExportBootstrapAccountProblemsWriteNothing(t *testing.T) {
 			api.json("GET /network-cloud-firewall/v2/aliases", 200, aliases)
 			p := filepath.Join(t.TempDir(), "desired.json")
 			r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-			if _, err := os.Stat(p); r.code != int(apperr.Validation) || err == nil {
+			if _, err := os.Stat(p); r.code != exitCode(apperr.Validation) || err == nil {
 				t.Errorf("exit = %d, file written: %v", r.code, err == nil)
 			}
 		})
@@ -193,7 +193,7 @@ func TestExportAllAppendsEditableAliases(t *testing.T) {
 func TestExportRefusesAndWritesNothing(t *testing.T) {
 	tests := map[string]struct {
 		file string
-		code apperr.Code
+		code apperr.Kind
 	}{
 		"id not live":    {strings.Replace(exportExisting, `"id": 101`, `"id": 555`, 1), apperr.Validation},
 		"name mismatch":  {strings.Replace(exportExisting, `"block-v4"`, `"renamed"`, 1), apperr.Validation},
@@ -207,8 +207,8 @@ func TestExportRefusesAndWritesNothing(t *testing.T) {
 			api := exportAPI(t)
 			p := writeDesired(t, tt.file)
 			r := runCLI(t, ncfEnv(api.env()), "export", "--file", p, "--all")
-			if r.code != int(tt.code) || readFile(t, p) != tt.file {
-				t.Errorf("exit = %d, want %d; file changed: %v", r.code, tt.code, readFile(t, p) != tt.file)
+			if r.code != exitCode(tt.code) || readFile(t, p) != tt.file {
+				t.Errorf("exit = %d, want %s; file changed: %v", r.code, tt.code, readFile(t, p) != tt.file)
 			}
 			noManagedFetch(t, api)
 		})
@@ -221,7 +221,7 @@ func TestExportUnparsableLiveEntryWritesNothing(t *testing.T) {
 	  "ipVersion": "V6", "version": "V1", "isActive": true, "entries": ["2001:db8::1", "garbage"], "entriesCount": 2}`)
 	p := filepath.Join(t.TempDir(), "desired.json")
 	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-	if _, err := os.Stat(p); r.code != int(apperr.Upstream) || err == nil ||
+	if _, err := os.Stat(p); r.code != exitCode(apperr.Upstream) || err == nil ||
 		!strings.Contains(r.stderr, "allow-v6") || !strings.Contains(r.stderr, "garbage") {
 		t.Errorf("exit = %d, written: %v, stderr: %s", r.code, err == nil, r.stderr)
 	}
@@ -233,7 +233,7 @@ func TestExportUsage(t *testing.T) {
 		{"export"},
 		{"export", "--file", filepath.Join(t.TempDir(), "d.json"), "--role", "maybe"},
 	} {
-		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d", args, r.code)
 		}
 	}

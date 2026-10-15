@@ -146,7 +146,7 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 				continue
 			}
 			return &apperr.Error{
-				Code: apperr.Upstream, Message: fmt.Sprintf("%s %s", req.Method, req.Path), Err: err,
+				Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s", req.Method, req.Path), Err: err,
 				Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Ambiguous: !safe},
 			}
 		}
@@ -184,13 +184,13 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 	b, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseSize+1))
 	if err == nil && len(b) > MaxResponseSize {
 		return &apperr.Error{
-			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: response larger than %d bytes", req.Method, req.Path, MaxResponseSize),
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: response larger than %d bytes", req.Method, req.Path, MaxResponseSize),
 			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
 		}
 	}
 	if err != nil {
 		return &apperr.Error{
-			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: read response", req.Method, req.Path), Err: err,
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: read response", req.Method, req.Path), Err: err,
 			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
 		}
 	}
@@ -204,7 +204,7 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 		// A write that got a 2xx took effect even if its body is unreadable:
 		// ambiguous, so the caller proves the outcome instead of assuming failure.
 		return &apperr.Error{
-			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: decode response", req.Method, req.Path), Err: err,
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: decode response", req.Method, req.Path), Err: err,
 			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
 		}
 	}
@@ -262,10 +262,10 @@ func statusError(req Request, status int, body []byte) error {
 	if s := firstNonEmpty(d.Detail, d.Title, d.ErrorCode); s != "" {
 		msg += ": " + s
 	}
-	return &apperr.Error{Code: codeForStatus(status), Message: msg, Upstream: d}
+	return &apperr.Error{Kind: kindForStatus(status), Message: msg, Upstream: d}
 }
 
-func codeForStatus(status int) apperr.Code {
+func kindForStatus(status int) apperr.Kind {
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return apperr.Credentials

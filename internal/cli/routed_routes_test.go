@@ -57,7 +57,7 @@ func TestRoutedRoutesSortsAndFilters(t *testing.T) {
 
 func TestRoutedRoutesBadPrefix(t *testing.T) {
 	r := runCLI(t, newFakeAPI(t).env(), "routed", "routes", "--prefix", "nope")
-	if r.code != int(apperr.Usage) {
+	if r.code != exitCode(apperr.Usage) {
 		t.Errorf("exit = %d, want 2", r.code)
 	}
 }
@@ -66,7 +66,7 @@ func TestRoutedRoutesReportsFailedNames(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("POST /prolexic-analytics/v2/routed/tunnel/routes", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	r := runCLI(t, api.env(), "routed", "routes", "--customer", "example-bad", "--format", "text")
-	if r.code != int(apperr.Credentials) || !strings.Contains(r.stdout, "failed: example-bad") {
+	if r.code != exitCode(apperr.Credentials) || !strings.Contains(r.stdout, "failed: example-bad") {
 		t.Errorf("exit %d, stdout:\n%s", r.code, r.stdout)
 	}
 }

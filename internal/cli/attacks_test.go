@@ -75,7 +75,7 @@ func TestAttacksListUsageErrors(t *testing.T) {
 		{"--since", "-1h"},
 	} {
 		r := runCLI(t, api.env(), append([]string{"attacks", "list", "--customer", "example-a"}, args...)...)
-		if r.code != int(apperr.Usage) {
+		if r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}
@@ -104,7 +104,7 @@ func TestAttacksListEnvelopeFailure(t *testing.T) {
 	env.Now = func() time.Time { return fixedNow }
 	r := runCLI(t, env, "attacks", "list", "--customer", "example-a")
 	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
-	if r.code != int(apperr.Upstream) || len(doc.Failures) != 1 || !strings.Contains(doc.Failures[0].Message, "range too long") {
+	if r.code != exitCode(apperr.Upstream) || len(doc.Failures) != 1 || !strings.Contains(doc.Failures[0].Message, "range too long") {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
 }
@@ -127,13 +127,13 @@ func TestAttacksShow(t *testing.T) {
 	}
 
 	for _, args := range [][]string{{"--id", "901"}, {"--customer", "example-a"}} {
-		if r := runCLI(t, api.env(), append([]string{"attacks", "show"}, args...)...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, api.env(), append([]string{"attacks", "show"}, args...)...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}
 
 	api.json("GET /prolexic-analytics/v2/attack-report/contract/example-a/attack-id/5", 200, `{"status":true,"data":[]}`)
-	if r := runCLI(t, api.env(), "attacks", "show", "--id", "5", "--customer", "example-a"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, api.env(), "attacks", "show", "--id", "5", "--customer", "example-a"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("empty report: exit = %d, want 4", r.code)
 	}
 }

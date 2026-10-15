@@ -12,10 +12,9 @@ import (
 // Failure is a customer name whose query failed. Commands report failures in
 // their document instead of dropping the name.
 type Failure struct {
-	Customer string `json:"customer"`
-	Code     int    `json:"code" doc:"The exit code this failure alone would have."`
-	Kind     string `json:"kind"`
-	Message  string `json:"message"`
+	Customer string      `json:"customer"`
+	Kind     apperr.Kind `json:"kind" enum:"bug,usage,credentials,not_found,upstream,validation,drift,conflict,cancelled"`
+	Message  string      `json:"message"`
 }
 
 // fanOutLimit bounds concurrent queries per command.
@@ -23,7 +22,7 @@ const fanOutLimit = 4
 
 // FanOut runs query once per customer name, concurrently, and concatenates
 // the rows in the names' order. A failed name becomes a Failure; if any
-// failed, the error says how many, with the failures' common exit code (or
+// failed, the error says how many, with the failures' common kind (or
 // Upstream when they differ). Rows from the names that worked are returned
 // either way. A cancelled context returns the context's error.
 func FanOut[T any](ctx context.Context, customers []string, query func(context.Context, string) ([]T, error)) ([]T, []Failure, error) {
@@ -51,8 +50,7 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 	var failures []Failure
 	for i, r := range results {
 		if r.err != nil {
-			code := apperr.CodeOf(r.err)
-			failures = append(failures, Failure{Customer: customers[i], Code: int(code), Kind: code.Kind(), Message: r.err.Error()})
+			failures = append(failures, Failure{Customer: customers[i], Kind: apperr.KindOf(r.err), Message: r.err.Error()})
 			continue
 		}
 		rows = append(rows, r.rows...)
@@ -60,17 +58,17 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 	if len(failures) == 0 {
 		return rows, nil, nil
 	}
-	code := apperr.Code(failures[0].Code)
+	kind := failures[0].Kind
 	for _, f := range failures[1:] {
-		if apperr.Code(f.Code) != code {
-			code = apperr.Upstream
+		if f.Kind != kind {
+			kind = apperr.Upstream
 		}
 	}
 	names := make([]string, len(failures))
 	for i, f := range failures {
 		names[i] = f.Customer
 	}
-	return rows, failures, apperr.New(code, "%d of %d customer names failed: %s", len(failures), len(customers), strings.Join(names, ", "))
+	return rows, failures, apperr.New(kind, "%d of %d customer names failed: %s", len(failures), len(customers), strings.Join(names, ", "))
 }
 
 // ResolveCustomers returns the names to query: the explicit ones if any
@@ -79,7 +77,7 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 func ResolveCustomers(ctx context.Context, c *Client, explicit []string) ([]string, error) {
 	all, err := c.CustomerNames(ctx)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
+		return nil, apperr.Wrap(apperr.KindOf(err), err, "resolve customer names")
 	}
 	if len(explicit) > 0 {
 		// Check explicit names against the account: several endpoints

@@ -77,14 +77,14 @@ func TestMetricTypesErrors(t *testing.T) {
 	c := testAPI(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte(`{"status":false,"statusMsg":"no such customer"}`))
 	})
-	if _, err := c.MetricTypes(context.Background(), "example-a"); apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "no such customer") {
+	if _, err := c.MetricTypes(context.Background(), "example-a"); apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "no such customer") {
 		t.Errorf("status=false: err = %v", err)
 	}
-	if _, err := c.MetricTypes(context.Background(), "a/b"); apperr.CodeOf(err) != apperr.Usage {
+	if _, err := c.MetricTypes(context.Background(), "a/b"); apperr.KindOf(err) != apperr.Usage {
 		t.Errorf("slash in name: err = %v", err)
 	}
 	c = testAPI(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(404) })
-	if _, err := c.MetricTypes(context.Background(), "example-a"); apperr.CodeOf(err) != apperr.NotFound {
+	if _, err := c.MetricTypes(context.Background(), "example-a"); apperr.KindOf(err) != apperr.NotFound {
 		t.Errorf("404: err = %v", err)
 	}
 }

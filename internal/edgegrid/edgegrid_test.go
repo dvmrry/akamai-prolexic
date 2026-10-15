@@ -160,7 +160,7 @@ func TestLoadErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := Load(tt.opts)
-			if apperr.CodeOf(err) != apperr.Credentials || !strings.Contains(err.Error(), tt.want) {
+			if apperr.KindOf(err) != apperr.Credentials || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want credentials error containing %q", err, tt.want)
 			}
 		})

@@ -104,12 +104,12 @@ func (d *ErrorDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-// NewErrorDoc describes err for stderr.
-func NewErrorDoc(err error) *ErrorDoc {
-	code := apperr.CodeOf(err)
+// NewErrorDoc describes err for stderr, with the exit code the front chose
+// for it.
+func NewErrorDoc(err error, exitCode int) *ErrorDoc {
 	return &ErrorDoc{
-		Code:     int(code),
-		Kind:     code.Kind(),
+		Code:     exitCode,
+		Kind:     string(apperr.KindOf(err)),
 		Message:  err.Error(),
 		Upstream: apperr.UpstreamOf(err),
 	}

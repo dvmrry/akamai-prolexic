@@ -63,7 +63,7 @@ func TestRoutedCheckPresentSatisfied(t *testing.T) {
 func TestRoutedCheckNotSatisfiedIsDrift(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesOne })
 	r := runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24")
-	if r.code != int(apperr.Drift) || !strings.Contains(r.stderr, "1 of 2 sessions") {
+	if r.code != exitCode(apperr.Drift) || !strings.Contains(r.stderr, "1 of 2 sessions") {
 		t.Errorf("exit = %d, stderr: %s", r.code, r.stderr)
 	}
 	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
@@ -80,7 +80,7 @@ func TestRoutedCheckAbsent(t *testing.T) {
 	}
 	api, _ = checkAPI(t, func(int) string { return routesOne })
 	r = runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--expect", "absent")
-	if r.code != int(apperr.Drift) {
+	if r.code != exitCode(apperr.Drift) {
 		t.Errorf("absent, still carried: exit = %d", r.code)
 	}
 }
@@ -95,7 +95,7 @@ func TestRoutedCheckSiteAndFamily(t *testing.T) {
 	// route list has no v6 route, so the one expected session is off.
 	r = runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "2001:db8:1::/48")
 	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
-	if r.code != int(apperr.Drift) || len(doc.Sessions) != 1 || len(doc.Skipped) != 1 || doc.Skipped[0].RouterName != "edge-2" {
+	if r.code != exitCode(apperr.Drift) || len(doc.Sessions) != 1 || len(doc.Skipped) != 1 || doc.Skipped[0].RouterName != "edge-2" {
 		t.Errorf("exit = %d, doc = %+v", r.code, doc)
 	}
 }
@@ -103,7 +103,7 @@ func TestRoutedCheckSiteAndFamily(t *testing.T) {
 func TestRoutedCheckNoExpectedSessionsIsNotFound(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesBoth })
 	r := runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--site", "DC-NOWHERE")
-	if r.code != int(apperr.NotFound) {
+	if r.code != exitCode(apperr.NotFound) {
 		t.Errorf("exit = %d, want 4: %s", r.code, r.stderr)
 	}
 }
@@ -116,7 +116,7 @@ func TestRoutedCheckUsageErrors(t *testing.T) {
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--expect", "maybe"},
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "1m", "--interval", "0s"},
 	} {
-		if r := runCLI(t, api.env(), args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, api.env(), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}
@@ -150,7 +150,7 @@ func TestRoutedCheckWaitTimesOut(t *testing.T) {
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "70s", "--interval", "30s")
 	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	// Attempts at 0s, 30s, 60s and 70s: the last sleep is clipped to the deadline.
-	if r.code != int(apperr.Drift) || doc.Attempts != 4 || len(*slept) != 3 || (*slept)[2] != 10*time.Second {
+	if r.code != exitCode(apperr.Drift) || doc.Attempts != 4 || len(*slept) != 3 || (*slept)[2] != 10*time.Second {
 		t.Errorf("exit = %d, attempts = %d, slept = %v", r.code, doc.Attempts, *slept)
 	}
 }
@@ -166,7 +166,7 @@ func TestRoutedCheckHonoursCancellation(t *testing.T) {
 	env.Stdout, env.Stderr = &strings.Builder{}, &strings.Builder{}
 	env.Home = t.TempDir()
 	code := Run(ctx, []string{"routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "5m"}, env)
-	if code == 0 || code == int(apperr.Drift) {
+	if code == 0 || code == exitCode(apperr.Drift) {
 		t.Errorf("exit = %d, want a cancellation error", code)
 	}
 }
@@ -175,7 +175,7 @@ func TestRoutedCheckFailedNameIsNotSatisfied(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesBoth })
 	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	r := runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--expect", "absent")
-	if r.code != int(apperr.Credentials) {
+	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d, want 3", r.code)
 	}
 }

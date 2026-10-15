@@ -73,7 +73,7 @@ func TestGetGivesUpAfterMaxAttempts(t *testing.T) {
 		w.WriteHeader(502)
 	})
 	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
-	if apperr.CodeOf(err) != apperr.Upstream || n.Load() != 4 {
+	if apperr.KindOf(err) != apperr.Upstream || n.Load() != 4 {
 		t.Errorf("err = %v after %d calls", err, n.Load())
 	}
 }
@@ -123,7 +123,7 @@ func TestProblemShapes(t *testing.T) {
 		name     string
 		status   int
 		body     string
-		wantCode apperr.Code
+		wantCode apperr.Kind
 		wantMsg  string
 	}{
 		{"gateway", 403, `{"type":"https://problems.luna.akamaiapis.net/-/pep-authz/deny","title":"Forbidden","detail":"The client does not have the grant needed","code":"403.0"}`, apperr.Credentials, "does not have the grant"},
@@ -137,8 +137,8 @@ func TestProblemShapes(t *testing.T) {
 				w.Write([]byte(tt.body))
 			})
 			err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
-			if apperr.CodeOf(err) != tt.wantCode || !strings.Contains(err.Error(), tt.wantMsg) {
-				t.Errorf("err = %v (code %d)", err, apperr.CodeOf(err))
+			if apperr.KindOf(err) != tt.wantCode || !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Errorf("err = %v (kind %s)", err, apperr.KindOf(err))
 			}
 		})
 	}
@@ -171,7 +171,7 @@ func TestResponseSizeCap(t *testing.T) {
 		w.Write(make([]byte, MaxResponseSize+1))
 	})
 	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
-	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "larger than") {
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -183,8 +183,8 @@ func TestDeadlineIsAnUpstreamFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	err := c.Do(ctx, Request{Method: "GET", Path: "/p"}, nil)
-	if apperr.CodeOf(err) != apperr.Upstream {
-		t.Errorf("err = %v (code %d), want exit 5", err, apperr.CodeOf(err))
+	if apperr.KindOf(err) != apperr.Upstream {
+		t.Errorf("err = %v (kind %s), want upstream", err, apperr.KindOf(err))
 	}
 }
 
@@ -215,7 +215,7 @@ func TestAnalyticsErrorPathsAreSurfaced(t *testing.T) {
 func TestUncleanPathsAreRefused(t *testing.T) {
 	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("sent %s", r.URL.Path) })
 	for _, p := range []string{"/a/../b", "/a/./b", "/a//b", "/a/", "a"} {
-		if err := c.Do(context.Background(), Request{Method: "GET", Path: p}, nil); apperr.CodeOf(err) != apperr.Usage {
+		if err := c.Do(context.Background(), Request{Method: "GET", Path: p}, nil); apperr.KindOf(err) != apperr.Usage {
 			t.Errorf("%q: err = %v, want a usage error", p, err)
 		}
 	}

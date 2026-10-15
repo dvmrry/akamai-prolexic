@@ -70,11 +70,11 @@ func TestTargetsShow(t *testing.T) {
 	if r := runCLI(t, api.env(), "targets", "show", "--id", "20", "--format", "text"); !strings.Contains(r.stdout, "example-a-tcp") {
 		t.Errorf("text:\n%s", r.stdout)
 	}
-	if r := runCLI(t, api.env(), "targets", "show", "--id", "99"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, api.env(), "targets", "show", "--id", "99"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("missing: exit = %d, want 4", r.code)
 	}
 	for _, args := range [][]string{{}, {"--id", "a/b"}} {
-		if r := runCLI(t, api.env(), append([]string{"targets", "show"}, args...)...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, api.env(), append([]string{"targets", "show"}, args...)...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}

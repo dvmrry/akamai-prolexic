@@ -84,14 +84,15 @@ func Run(ctx context.Context, args []string, env Env) int {
 	if err != nil {
 		return a.fail(err)
 	}
-	return int(apperr.OK)
+	return exitCode(apperr.OK)
 }
 
 func (a *app) fail(err error) int {
-	if werr := output.Write(a.env.Stderr, a.format, output.NewErrorDoc(err)); werr != nil {
+	code := exitCode(apperr.KindOf(err))
+	if werr := output.Write(a.env.Stderr, a.format, output.NewErrorDoc(err, code)); werr != nil {
 		fmt.Fprintf(a.env.Stderr, "prolexic: %v\n", err)
 	}
-	return int(apperr.CodeOf(err))
+	return code
 }
 
 func sleep(ctx context.Context, d time.Duration) error {

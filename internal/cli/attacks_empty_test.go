@@ -34,7 +34,7 @@ func TestAttacksListEmptyWindowIs404(t *testing.T) {
 		t.Errorf("exit %d, attacks %d", r.code, len(doc.Attacks))
 	}
 	r = runCLI(t, env, "attacks", "list", "--customer", "example-a,example-c")
-	if r.code != int(apperr.Credentials) {
+	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d, want 3", r.code)
 	}
 }
@@ -42,7 +42,7 @@ func TestAttacksListEmptyWindowIs404(t *testing.T) {
 func TestAttacksShowMissingIs404(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("GET /prolexic-analytics/v2/attack-report/contract/example-a/attack-id/9", 404, `{"errorCode":"NOT_FOUND","message":"no such attack"}`)
-	if r := runCLI(t, api.env(), "attacks", "show", "--id", "9", "--customer", "example-a"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, api.env(), "attacks", "show", "--id", "9", "--customer", "example-a"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("exit = %d, want 4", r.code)
 	}
 }

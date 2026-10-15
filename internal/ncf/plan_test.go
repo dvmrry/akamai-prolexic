@@ -199,7 +199,7 @@ func TestPlanOwnSpaceSourceFailureFailsThePlan(t *testing.T) {
 			return nil, apperr.New(apperr.Upstream, "analytics down")
 		},
 	})
-	if apperr.CodeOf(err) != apperr.Upstream || !errors.Is(err, err) {
+	if apperr.KindOf(err) != apperr.Upstream || !errors.Is(err, err) {
 		t.Errorf("err = %v; a plan must not pass without its own-space sources", err)
 	}
 }
@@ -326,7 +326,7 @@ func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
 	}
 
 	failing := ncf.PlanOptions{OwnASNs: func(context.Context) ([]ncf.OwnASN, error) { return nil, apperr.New(apperr.Upstream, "down") }}
-	if _, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, failing); apperr.CodeOf(err) != apperr.Upstream {
+	if _, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, failing); apperr.KindOf(err) != apperr.Upstream {
 		t.Errorf("err = %v; the plan must not pass without its own-ASN source", err)
 	}
 }

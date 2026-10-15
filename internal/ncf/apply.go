@@ -208,13 +208,13 @@ func (r *applyRun) activate(ctx context.Context) error {
 		// No ETag: re-read the token right before activating, so another
 		// writer's activation during phase 1 is never silently replaced.
 		if cur, err := activeVersion(ctx, r.read, a.ID); err != nil {
-			return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s before activating", a.Name))
+			return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.KindOf(err), err, "re-read %s before activating", a.Name))
 		} else if cur != planned {
 			return r.failAndRollBack(ctx, i, apperr.New(apperr.Conflict, "%s changed during this apply (activeVersion %q, now %q); its version %s was left inactive; re-plan", a.Name, planned, cur, a.Version))
 		}
 		if err := r.write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
-				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
+				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.KindOf(err), err, "activate %s version %s", a.Name, a.Version))
 			}
 			cur, rerr := activeVersion(context.WithoutCancel(ctx), r.read, a.ID)
 			if rerr != nil || cur != a.Version {
@@ -268,7 +268,7 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 		// no entries, so a BIG alias isn't re-downloaded every interval.
 		all, err := r.read.ListAliases(ctx)
 		if err != nil {
-			return apperr.Wrap(apperr.CodeOf(err), err, "poll aliases")
+			return apperr.Wrap(apperr.KindOf(err), err, "poll aliases")
 		}
 		prods := make(map[int64]string, len(all))
 		for _, l := range all {
@@ -295,7 +295,7 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 		if pending == 0 {
 			d, err := r.read.Deployment(ctx)
 			if err != nil {
-				return apperr.Wrap(apperr.CodeOf(err), err, "read ACL deployment status")
+				return apperr.Wrap(apperr.KindOf(err), err, "read ACL deployment status")
 			}
 			if why := d.Failure(); why != "" {
 				return apperr.New(apperr.Upstream, "production carries the target versions but the ACL deployment is unhealthy: %s", why)
@@ -351,14 +351,14 @@ func (r *applyRun) timeoutError(ctx context.Context, target map[int]string, prod
 func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan, comment string) (string, bool, error) {
 	cur, err := read.GetAlias(ctx, ap.ID)
 	if err != nil {
-		return "", false, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s", ap.Name)
+		return "", false, apperr.Wrap(apperr.KindOf(err), err, "re-read %s", ap.Name)
 	}
 	if cur.ActiveVersion != ap.ActiveVersion {
 		return "", false, apperr.New(apperr.Conflict, "%s changed since the plan (activeVersion %q, now %q); re-plan", ap.Name, ap.ActiveVersion, cur.ActiveVersion)
 	}
 	before, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
-		return "", false, apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
+		return "", false, apperr.Wrap(apperr.KindOf(err), err, "list versions of %s", ap.Name)
 	}
 
 	// A retry of this same reviewed apply re-uses the inactive version an
@@ -376,7 +376,7 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	created, err := write.CreateVersion(ctx, cur, ap.desired, comment)
 	if err != nil {
 		if !ambiguous(err) {
-			return "", false, apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
+			return "", false, apperr.Wrap(apperr.KindOf(err), err, "create a version of %s", ap.Name)
 		}
 		// Prove the outcome from the version list; never re-send.
 		created, err = landed(context.WithoutCancel(ctx), read, ap, before, comment, err)
@@ -395,7 +395,7 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	live := created.Active || (err == nil && got.Active) || (err != nil && ap.Type == "BIG")
 	if !live {
 		if err != nil {
-			return v, false, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s; it was left inactive", ap.Name, v)
+			return v, false, apperr.Wrap(apperr.KindOf(err), err, "re-read %s version %s; it was left inactive", ap.Name, v)
 		}
 		return v, false, apperr.New(apperr.Upstream, "%s version %s doesn't hold the desired entries; it was left inactive", ap.Name, v)
 	}

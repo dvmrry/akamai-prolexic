@@ -1,0 +1,26 @@
+package cli
+
+import "github.com/dvmrry/akamai-prolexic/internal/apperr"
+
+// exitCodes maps each error kind to the process exit code. The numbers are a
+// public contract (pipelines branch on them) and appear nowhere else.
+var exitCodes = map[apperr.Kind]int{
+	apperr.OK:          0,
+	apperr.Bug:         1,
+	apperr.Usage:       2,
+	apperr.Credentials: 3,
+	apperr.NotFound:    4,
+	apperr.Upstream:    5,
+	apperr.Validation:  6,
+	apperr.Drift:       7,
+	apperr.Conflict:    8,
+	apperr.Cancelled:   130,
+}
+
+// exitCode is k's exit code; an unknown kind is a bug.
+func exitCode(k apperr.Kind) int {
+	if c, ok := exitCodes[k]; ok {
+		return c
+	}
+	return exitCodes[apperr.Bug]
+}

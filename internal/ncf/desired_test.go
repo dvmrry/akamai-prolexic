@@ -88,7 +88,7 @@ func TestDecodeIsStrict(t *testing.T) {
 	}
 	for name, in := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, _, err := Decode(strings.NewReader(in)); apperr.CodeOf(err) != apperr.Validation {
+			if _, _, err := Decode(strings.NewReader(in)); apperr.KindOf(err) != apperr.Validation {
 				t.Errorf("err = %v, want a validation error", err)
 			}
 		})

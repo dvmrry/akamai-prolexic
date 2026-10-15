@@ -135,7 +135,7 @@ func TestDispatch(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       []string
-		wantCode   apperr.Code
+		wantCode   apperr.Kind
 		wantStdout string
 		wantStderr string
 	}{
@@ -156,8 +156,8 @@ func TestDispatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := runCLI(t, Env{}, tt.args...)
-			if r.code != int(tt.wantCode) {
-				t.Errorf("exit = %d, want %d\nstderr: %s", r.code, tt.wantCode, r.stderr)
+			if r.code != exitCode(tt.wantCode) {
+				t.Errorf("exit = %d, want %s\nstderr: %s", r.code, tt.wantCode, r.stderr)
 			}
 			if !strings.Contains(r.stdout, tt.wantStdout) {
 				t.Errorf("stdout = %q, want %q", r.stdout, tt.wantStdout)
@@ -199,7 +199,7 @@ func TestDoctor(t *testing.T) {
 	}
 
 	r = runCLI(t, Env{}, "doctor")
-	if r.code != int(apperr.Credentials) {
+	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("no credentials: exit = %d, want 3", r.code)
 	}
 }
@@ -260,7 +260,7 @@ func TestRoutedSessionsReportsFailedNames(t *testing.T) {
 	}
 
 	r := runCLI(t, api.env(), "routed", "sessions", "--customer", "example-a,example-bad")
-	if r.code != int(apperr.Credentials) {
+	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d, want 3 (the failures' common code)", r.code)
 	}
 	doc := decode[RoutedSessionsDoc](t, r.stdout, "prolexic.routed-sessions.v1")
@@ -299,7 +299,7 @@ func TestReviewRound4Contracts(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		wantCode apperr.Code
+		wantCode apperr.Kind
 		wantErr  string
 	}{
 		{"help for an unknown topic", []string{"help", "bogus"}, apperr.Usage, "unknown help topic"},
@@ -315,8 +315,8 @@ func TestReviewRound4Contracts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := runCLI(t, api.env(), tt.args...)
-			if r.code != int(tt.wantCode) || !strings.Contains(r.stderr, tt.wantErr) {
-				t.Errorf("exit = %d (want %d), stderr = %s", r.code, tt.wantCode, r.stderr)
+			if r.code != exitCode(tt.wantCode) || !strings.Contains(r.stderr, tt.wantErr) {
+				t.Errorf("exit = %d (want %s), stderr = %s", r.code, tt.wantCode, r.stderr)
 			}
 		})
 	}

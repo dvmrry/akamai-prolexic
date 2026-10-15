@@ -181,7 +181,7 @@ func (s *V2) CreateVersion(ctx context.Context, alias ncf.LiveAlias, entries []s
 	if v.Version == "" {
 		// Created, but we can't tell which version: as ambiguous as a lost
 		// response, so the caller proves it from the version list.
-		return ncf.AliasVersion{}, &apperr.Error{Code: apperr.Upstream, Message: "create version: the response names no version",
+		return ncf.AliasVersion{}, &apperr.Error{Kind: apperr.Upstream, Message: "create version: the response names no version",
 			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Ambiguous: true}}
 	}
 	return ncf.AliasVersion{Version: v.Version, Active: v.IsActive}, nil

@@ -12,7 +12,7 @@ import (
 
 func TestWriteJSONStampsSchema(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Write(&buf, Auto, NewErrorDoc(apperr.New(apperr.Drift, "digest moved"))); err != nil {
+	if err := Write(&buf, Auto, NewErrorDoc(apperr.New(apperr.Drift, "digest moved"), 7)); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
@@ -26,7 +26,7 @@ func TestWriteJSONStampsSchema(t *testing.T) {
 
 func TestWriteText(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Write(&buf, Text, NewErrorDoc(fmt.Errorf("boom"))); err != nil {
+	if err := Write(&buf, Text, NewErrorDoc(fmt.Errorf("boom"), 1)); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "prolexic: boom") {
@@ -35,7 +35,7 @@ func TestWriteText(t *testing.T) {
 }
 
 func TestParseFormat(t *testing.T) {
-	if _, err := ParseFormat("yaml"); apperr.CodeOf(err) != apperr.Usage {
+	if _, err := ParseFormat("yaml"); apperr.KindOf(err) != apperr.Usage {
 		t.Errorf("ParseFormat(yaml) err = %v, want usage", err)
 	}
 }

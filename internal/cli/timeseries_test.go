@@ -74,7 +74,7 @@ func TestTimeSeriesFlagErrors(t *testing.T) {
 		{"time-series", "--destination", "203.0.113.1", "--source", "x"},
 		{"time-series", "--destination", "203.0.113.1", "--samples", "-1"},
 	} {
-		if r := runCLI(t, env, args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, env, args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}

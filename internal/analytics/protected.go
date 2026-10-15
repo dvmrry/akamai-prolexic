@@ -70,7 +70,7 @@ func AllCustomers(ctx context.Context, c *Client, explicit []string) ([]string, 
 	}
 	all, err := c.CustomerNames(ctx)
 	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
+		return nil, apperr.Wrap(apperr.KindOf(err), err, "resolve customer names")
 	}
 	var out []string
 	for _, n := range all {

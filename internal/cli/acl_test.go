@@ -110,7 +110,7 @@ func TestACLShowVersionAndText(t *testing.T) {
 func TestACLShowNothingInProduction(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("GET "+aclBase+"/deployment-status", 200, `{"ruleSets":[{"deploymentStatus":"PROCESSING","version":8}]}`)
-	if r := runCLI(t, ncfEnv(api.env()), "acl", "show"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, ncfEnv(api.env()), "acl", "show"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("exit = %d: %s", r.code, r.stderr)
 	}
 }

@@ -34,7 +34,7 @@ func apply(t *testing.T, s *ncftest.Store, f *ncf.File, mutate func(*ncf.ApplyOp
 	return res, err
 }
 
-var ambiguous = &apperr.Error{Code: apperr.Upstream, Message: "POST: EOF", Upstream: &apperr.UpstreamDetail{Method: "POST", Ambiguous: true}}
+var ambiguous = &apperr.Error{Kind: apperr.Upstream, Message: "POST: EOF", Upstream: &apperr.UpstreamDetail{Method: "POST", Ambiguous: true}}
 
 func TestApplyCreatesVerifiesActivatesAndWaits(t *testing.T) {
 	s := world()
@@ -67,7 +67,7 @@ func TestApplyNothingToDo(t *testing.T) {
 func TestApplyRefusesAMovedDigest(t *testing.T) {
 	s := world()
 	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.ExpectDigest = "sha256:reviewed-something-else" })
-	if apperr.CodeOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v, calls %v", err, s.Calls)
 	}
 }
@@ -76,7 +76,7 @@ func TestApplyRefusesPlanErrors(t *testing.T) {
 	s := world()
 	f := desired("192.0.2.0/25", "203.0.113.0/24") // own space via protected-dst
 	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults})
-	if apperr.CodeOf(err) != apperr.Validation || s.Count("CreateVersion") != 0 {
+	if apperr.KindOf(err) != apperr.Validation || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -94,7 +94,7 @@ func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
 		}
 	}}
 	_, res, err := checker().Apply(context.Background(), read, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest})
-	if apperr.CodeOf(err) != apperr.Conflict || s.Count("CreateVersion") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
+	if apperr.KindOf(err) != apperr.Conflict || s.Count("CreateVersion") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }
@@ -127,7 +127,7 @@ func TestApplyAmbiguousCreateThatDidNotLand(t *testing.T) {
 	s := world()
 	s.CreateErr = ambiguous
 	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "did not land; safe to re-run") || s.Count("CreateVersion") != 1 {
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "did not land; safe to re-run") || s.Count("CreateVersion") != 1 {
 		t.Errorf("err = %v, calls %v", err, s.Calls)
 	}
 }
@@ -137,7 +137,7 @@ func TestApplyAmbiguousCreateWithAConcurrentWriter(t *testing.T) {
 	s.CreateErr, s.CreateLands = ambiguous, true
 	s.BeforeCreate = func(s *ncftest.Store) { s.AddVersions(101, 1) }
 	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.Conflict {
+	if apperr.KindOf(err) != apperr.Conflict {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestApplyLeavesAMismatchedVersionInactive(t *testing.T) {
 	s := world()
 	s.Corrupt = func(es []string) []string { return append(es, "198.51.100.200") }
 	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.Upstream || s.Count("Activate") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
+	if apperr.KindOf(err) != apperr.Upstream || s.Count("Activate") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 	if s.Live(101).ActiveVersion != "V1" {
@@ -198,7 +198,7 @@ func TestApplyTimesOutWaitingForProduction(t *testing.T) {
 	s := world()
 	s.ProdLag = 1000
 	res, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
-	if apperr.CodeOf(err) != apperr.Upstream || res.Aliases[0].Status != ncf.StatusActive {
+	if apperr.KindOf(err) != apperr.Upstream || res.Aliases[0].Status != ncf.StatusActive {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }
@@ -207,7 +207,7 @@ func TestApplyReportsFailedRules(t *testing.T) {
 	s := world()
 	s.Deploy = ncf.Deployment{FailedRules: 2}
 	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "2 failed rules") || res.Aliases[0].Status != ncf.StatusActive {
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "2 failed rules") || res.Aliases[0].Status != ncf.StatusActive {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
 }
@@ -237,7 +237,7 @@ func TestApplyOnAnUnversionedAPIIsUnsupported(t *testing.T) {
 	s := world()
 	s.Unversioned = true
 	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.NotFound || s.Count("CreateVersion") != 0 {
+	if apperr.KindOf(err) != apperr.NotFound || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v, calls %v", err, s.Calls)
 	}
 }
@@ -307,7 +307,7 @@ func TestApplyRollsBackABadBigUpload(t *testing.T) {
 	}
 	res, err := apply(t, s, f, nil)
 	big := res.Aliases[0] // sorted by name: block-big first
-	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "V1 was re-activated") ||
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "V1 was re-activated") ||
 		s.Live(104).ActiveVersion != "V1" || big.Status != ncf.StatusRolledBack || big.Error == "" || s.Count("Activate") != 1 {
 		t.Errorf("err = %v, big = %+v, calls = %v", err, big, s.Calls)
 	}
@@ -362,7 +362,7 @@ func TestApplyRollsBackAnUploadItCannotReRead(t *testing.T) {
 	s, f, _ := bigWorld()
 	f.Aliases = f.Aliases[1:] // just the BIG alias
 	s.BigActivates = true
-	s.GetVersionErr = &apperr.Error{Code: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionErr = &apperr.Error{Kind: apperr.Upstream, Message: "HTTP 503"}
 	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" } // only the upload
 	res, err := apply(t, s, f, nil)
 	if err == nil || !strings.Contains(err.Error(), "couldn't be re-read") || s.Live(104).ActiveVersion != "V1" {
@@ -420,7 +420,7 @@ func TestApplyReRunFinishesAProductionWait(t *testing.T) {
 	s := world()
 	s.ProdLag = 1000
 	f := desired("192.0.2.0/25")
-	if _, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute }); apperr.CodeOf(err) != apperr.Upstream {
+	if _, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute }); apperr.KindOf(err) != apperr.Upstream {
 		t.Fatalf("first run: err = %v, want a production timeout", err)
 	}
 	// Production lands a few reads in: after the re-run's plan, during its wait.
@@ -435,7 +435,7 @@ func TestApplyReRunFinishesAProductionWait(t *testing.T) {
 func TestApplyStillRefusesAMovedDigestWhenThereIsWorkToDo(t *testing.T) {
 	s := world()
 	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.ExpectDigest = "sha256:stale" })
-	if apperr.CodeOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -487,7 +487,7 @@ func TestApplyTimeoutWhileTheDeploymentIsProcessing(t *testing.T) {
 	s := world()
 	s.Deploy = ncf.Deployment{Version: 7, State: "PRODUCTION", Processing: true}
 	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
-	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "still processing") || strings.Contains(err.Error(), "wrote nothing") {
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "still processing") || strings.Contains(err.Error(), "wrote nothing") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -539,7 +539,7 @@ func TestApplyNeverOverwritesAnActivationMadeDuringIt(t *testing.T) {
 		}
 	}}
 	_, err := applyWith(t, read, w, desired("192.0.2.0/25"))
-	if apperr.CodeOf(err) != apperr.Conflict || s.Live(101).ActiveVersion != "V3" {
+	if apperr.KindOf(err) != apperr.Conflict || s.Live(101).ActiveVersion != "V3" {
 		t.Errorf("err = %v, active = %s; the other writer's V3 must stay", err, s.Live(101).ActiveVersion)
 	}
 }
@@ -604,7 +604,7 @@ func TestApplyRollsBackABigUploadItCannotConfirm(t *testing.T) {
 	f.Aliases = f.Aliases[1:]
 	s.BigActivates = true
 	w := &hideActive{Store: s}
-	s.GetVersionErr = &apperr.Error{Code: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionErr = &apperr.Error{Kind: apperr.Upstream, Message: "HTTP 503"}
 	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" }
 	_, err := applyWith(t, s, w, f)
 	if err == nil || s.Live(104).ActiveVersion != "V1" {
@@ -642,7 +642,7 @@ func TestApplyAmbiguousCreateNeverAdoptsAnotherWritersVersion(t *testing.T) {
 	s.CreateErr = ambiguous                                           // ours didn't land...
 	s.BeforeCreate = func(s *ncftest.Store) { s.AddVersions(101, 1) } // ...but someone else's did
 	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
-	if apperr.CodeOf(err) != apperr.Conflict || s.Count("Activate") != 0 {
+	if apperr.KindOf(err) != apperr.Conflict || s.Count("Activate") != 0 {
 		t.Errorf("err = %v, calls = %v; the one new version isn't this apply's", err, s.Calls)
 	}
 }

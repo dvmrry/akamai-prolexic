@@ -68,11 +68,11 @@ func TestManagedUsage(t *testing.T) {
 		{"managed", "acl", "--policy-domain", "a/b"},
 		{"managed", "rule-hits", "--policy-domain", "example-domain", "--since", "1h"}, // a window needs --rule
 	} {
-		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d", args, r.code)
 		}
 	}
-	if r := runCLI(t, ncfEnv(api.env()), "managed", "rule-hits", "--policy-domain", "example-domain", "--rule", "cccccccc"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, ncfEnv(api.env()), "managed", "rule-hits", "--policy-domain", "example-domain", "--rule", "cccccccc"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("unknown rule: exit = %d", r.code)
 	}
 }

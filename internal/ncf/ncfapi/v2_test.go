@@ -87,7 +87,7 @@ func TestV2ListAndGetAlias(t *testing.T) {
 	if l.ActiveVersion != "V3" || l.ProdVersion != "V2" || len(l.Entries) != 2 || l.Type != "SOURCE" {
 		t.Errorf("alias = %+v", l)
 	}
-	if _, err := s.GetAlias(context.Background(), 7); apperr.CodeOf(err) != apperr.NotFound {
+	if _, err := s.GetAlias(context.Background(), 7); apperr.KindOf(err) != apperr.NotFound {
 		t.Errorf("missing alias: err = %v", err)
 	}
 }

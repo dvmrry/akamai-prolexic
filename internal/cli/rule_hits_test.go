@@ -84,11 +84,11 @@ func TestRuleHitsShowUsage(t *testing.T) {
 		{"rule-hits", "show", "--rule", "a/b"},
 		{"rule-hits", "show", "--rule", ruleA, "--since", "1h", "--start", "2026-10-14T00:00:00Z"},
 	} {
-		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d", args, r.code)
 		}
 	}
-	if r := runCLI(t, ncfEnv(api.env()), "rule-hits", "show", "--rule", ruleB); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, ncfEnv(api.env()), "rule-hits", "show", "--rule", ruleB); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("unknown rule: exit = %d", r.code)
 	}
 }
@@ -97,7 +97,7 @@ func TestRuleHitsRejectsDotPathSegments(t *testing.T) {
 	api := newFakeAPI(t)
 	for _, id := range []string{".", ".."} {
 		r := runCLI(t, api.env(), "rule-hits", "show", "--rule", id)
-		if r.code != int(apperr.Usage) || len(api.calls) != 0 {
+		if r.code != exitCode(apperr.Usage) || len(api.calls) != 0 {
 			t.Errorf("--rule %q: exit = %d, calls = %d", id, r.code, len(api.calls))
 		}
 	}

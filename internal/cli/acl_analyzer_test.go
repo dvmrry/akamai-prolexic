@@ -211,7 +211,7 @@ func TestACLTestUsageErrors(t *testing.T) {
 	}
 	for name, args := range cases {
 		r := runCLI(t, ncfEnv(api.env()), append([]string{"acl", "test"}, args...)...)
-		if r.code != int(apperr.Usage) {
+		if r.code != exitCode(apperr.Usage) {
 			t.Errorf("%s: exit = %d: %s%s", name, r.code, r.stdout, r.stderr)
 		}
 	}
@@ -231,7 +231,7 @@ func TestACLTest403IsCredentials(t *testing.T) {
 	analyzerFixtures(api)
 	api.json(analyzerRoute, 403, `{"errorCode":"INSUFFICIENT_PRIVILEGES","message":"You do not have permission to perform this action."}`)
 	r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--src", "192.0.2.9", "--dst", "198.51.100.5")
-	if r.code != int(apperr.Credentials) || !strings.Contains(r.stderr+r.stdout, "different API grant") {
+	if r.code != exitCode(apperr.Credentials) || !strings.Contains(r.stderr+r.stdout, "different API grant") {
 		t.Errorf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
 }
@@ -241,7 +241,7 @@ func TestACLTestNoRulesOfFamily(t *testing.T) {
 	analyzerFixtures(api)
 	api.json("GET "+aclBase+"/8", 200, `{"version":8,"ruleSet":[{"index":1,"ipVersion":"V6","aclText":"permit ipv6 any any"}]}`)
 	r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--version", "8", "--src", "192.0.2.9", "--dst", "198.51.100.5")
-	if r.code != int(apperr.NotFound) {
+	if r.code != exitCode(apperr.NotFound) {
 		t.Errorf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
 }
@@ -257,7 +257,7 @@ func TestACLTestResultsMustMatchPacketIDs(t *testing.T) {
 			analyzerFixtures(api)
 			api.json(analyzerRoute, 200, `{"analysisType":"PACKET_TESTING","results":`+results+`}`)
 			r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--src", "192.0.2.9", "--dst", "198.51.100.5")
-			if r.code != int(apperr.Upstream) || r.stdout != "" {
+			if r.code != exitCode(apperr.Upstream) || r.stdout != "" {
 				t.Errorf("exit = %d, stdout = %q, stderr = %s", r.code, r.stdout, r.stderr)
 			}
 		})

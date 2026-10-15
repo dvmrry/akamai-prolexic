@@ -69,11 +69,11 @@ func TestAliasesShowManagedOnlyWhenNamed(t *testing.T) {
 func TestAliasesShowUsage(t *testing.T) {
 	api := ncfAPI(t)
 	for _, args := range [][]string{{"aliases", "show"}, {"aliases", "show", "--name", "block-v4", "--id", "101"}} {
-		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, ncfEnv(api.env()), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d", args, r.code)
 		}
 	}
-	if r := runCLI(t, ncfEnv(api.env()), "aliases", "show", "--name", "nope"); r.code != int(apperr.NotFound) {
+	if r := runCLI(t, ncfEnv(api.env()), "aliases", "show", "--name", "nope"); r.code != exitCode(apperr.NotFound) {
 		t.Errorf("unknown alias: exit = %d", r.code)
 	}
 }

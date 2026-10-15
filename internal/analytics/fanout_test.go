@@ -20,7 +20,7 @@ func TestForCustomersReportsFailuresWithTheResult(t *testing.T) {
 			}
 			return []string{name}, nil
 		})
-	if res == nil || apperr.CodeOf(err) != apperr.Credentials {
+	if res == nil || apperr.KindOf(err) != apperr.Credentials {
 		t.Fatalf("res = %+v, err = %v", res, err)
 	}
 	if len(res.Rows) != 1 || len(res.Failures) != 1 || res.Failures[0].Customer != "example-b" || len(res.Customers) != 2 {
@@ -55,7 +55,7 @@ func TestForCustomersResolveErrorGivesNoResult(t *testing.T) {
 	}
 	res, err := ForCustomers(context.Background(), nil, failing, []string{"x"},
 		func(context.Context, string) ([]string, error) { t.Error("queried"); return nil, nil })
-	if res != nil || apperr.CodeOf(err) != apperr.NotFound {
+	if res != nil || apperr.KindOf(err) != apperr.NotFound {
 		t.Errorf("res = %+v, err = %v", res, err)
 	}
 }

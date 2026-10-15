@@ -78,7 +78,7 @@ func TestMetricsEmptyWindowIs404AndFailuresReported(t *testing.T) {
 		t.Errorf("exit %d, series %d", r.code, len(doc.Series))
 	}
 	r = runCLI(t, env, "metrics", "--customer", "example-a,example-c", "--type", "routed:bandwidthIn")
-	if r.code != int(apperr.Credentials) {
+	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d, want 3", r.code)
 	}
 }
@@ -95,7 +95,7 @@ func TestMetricsFlagErrors(t *testing.T) {
 		{"metrics", "--type", "routed:bandwidthIn", "--since", "2400h"},
 		{"metrics", "--type", "routed:bandwidthIn", "--samples", "0"},
 	} {
-		if r := runCLI(t, env, args...); r.code != int(apperr.Usage) {
+		if r := runCLI(t, env, args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
 		}
 	}
@@ -104,7 +104,7 @@ func TestMetricsFlagErrors(t *testing.T) {
 func TestMetricsFBMNeedsSubnetOrIPBeforeAnyRequest(t *testing.T) {
 	api := newFakeAPI(t)
 	r := runCLI(t, api.env(), "metrics", "--customer", "example-a", "--type", "fbm:bandwidth:total")
-	if r.code != int(apperr.Usage) || !strings.Contains(r.stderr, "fbm types need --subnet or --ip") || len(api.calls) != 0 {
+	if r.code != exitCode(apperr.Usage) || !strings.Contains(r.stderr, "fbm types need --subnet or --ip") || len(api.calls) != 0 {
 		t.Errorf("exit = %d, calls = %d, stderr = %s", r.code, len(api.calls), r.stderr)
 	}
 }

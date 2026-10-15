@@ -8,7 +8,7 @@ checking against a real account.
 
 | package | owns |
 | --- | --- |
-| `internal/apperr` | the exit codes (a public contract) and the error type that carries them |
+| `internal/apperr` | the error model every layer shares: kinds (a public contract) and upstream detail |
 | `internal/output` | one Document per command; JSON off a terminal, text on one; the error document |
 | `internal/jsonschema` | schemas derived from Go types; `TestSchemas` keeps `schemas/` in step |
 | `internal/edgegrid` | credentials (env, then `.edgerc`) and EG1-HMAC-SHA256 signing, pinned by Akamai's published vectors |
@@ -63,7 +63,7 @@ A check lives at the lowest layer that has the information. Higher layers may re
 
 - **Extension:** "retry only GETs" becomes "retry only reads". The Analytics routed endpoints are POSTs that only query, marked `ReadOnly`, so they retry like GETs and are never ambiguous.
 - A write that fails with a transport error, a 5xx or a cancellation after sending is marked `ambiguous`. Callers prove the outcome by reading; they never resend.
-- Status → exit code: 401/403 → 3; 404 → 4; 409/412 → 8; everything else → 5.
+- Status → error kind: 401/403 → `credentials`; 404 → `not_found`; 409/412 → `conflict`; everything else → `upstream`. The CLI maps kinds to exit codes in one table (`internal/cli/exit.go`).
 - An expired deadline exits 5 (upstream), not 1. Responses over 16 MB fail. Error documents keep the gateway's `incidentId`.
 - The tool reports what it reads, unredacted. Keeping account data out of the repo is the maintainers' job (`internal/hygiene` and the local commit guard), not the tool's. Only credential values are never printed.
 

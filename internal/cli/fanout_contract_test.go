@@ -49,7 +49,7 @@ func TestFanOutFailedNamesGiveADocument(t *testing.T) {
 			if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 				t.Fatalf("no document (exit %d): %v\n%s", r.code, err, r.stderr)
 			}
-			if r.code != int(apperr.Credentials) || len(doc.Failures) != 2 {
+			if r.code != exitCode(apperr.Credentials) || len(doc.Failures) != 2 {
 				t.Errorf("exit = %d, failures = %+v", r.code, doc.Failures)
 			}
 		})
@@ -72,7 +72,7 @@ func TestFanOutCancelledGivesNoDocument(t *testing.T) {
 			var stdout, stderr strings.Builder
 			env.Stdout, env.Stderr, env.Home = &stdout, &stderr, t.TempDir()
 			code := Run(ctx, append(args, "--customer", "example-a,example-b"), env)
-			if code != int(apperr.Cancelled) || stdout.Len() != 0 {
+			if code != exitCode(apperr.Cancelled) || stdout.Len() != 0 {
 				t.Errorf("exit = %d, stdout = %q", code, stdout.String())
 			}
 		})
