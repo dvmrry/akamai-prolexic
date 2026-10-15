@@ -81,6 +81,7 @@ func commands() []*command {
 			{name: "list", summary: "every target of the account", run: runTargetsList},
 			{name: "show", summary: "one target by id", run: runTargetsShow},
 		}},
+		{name: "time-series", summary: "flow usage and attack traffic per destination (read-only)", run: runTimeSeries},
 		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
 		{name: "version", summary: "print the version", run: runVersion},
 	}

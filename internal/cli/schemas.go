@@ -30,6 +30,7 @@ func documents() []output.Document {
 		&StatusDoc{},
 		&TargetDoc{},
 		&TargetsDoc{},
+		&TimeSeriesDoc{},
 		&VersionDoc{},
 		&ValidateDoc{},
 	}
