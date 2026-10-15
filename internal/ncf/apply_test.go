@@ -308,7 +308,7 @@ func TestApplyRollsBackABadBigUpload(t *testing.T) {
 	res, err := apply(t, s, f, nil)
 	big := res.Aliases[0] // sorted by name: block-big first
 	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "V1 was re-activated") ||
-		s.Live(104).ActiveVersion != "V1" || big.Status != ncf.StatusFailed || s.Count("Activate") != 1 {
+		s.Live(104).ActiveVersion != "V1" || big.Status != ncf.StatusRolledBack || big.Error == "" || s.Count("Activate") != 1 {
 		t.Errorf("err = %v, big = %+v, calls = %v", err, big, s.Calls)
 	}
 	if s.Live(101).ActiveVersion != "V1" {
@@ -353,7 +353,7 @@ func TestApplyRollsBackEveryUploadThatWentLive(t *testing.T) {
 	for _, a := range res.Aliases {
 		got[a.Name] = a.Status
 	}
-	if got["block-big"] != ncf.StatusRolledBack || got["block-big-2"] != ncf.StatusFailed || got["block-v4"] != ncf.StatusCreated {
+	if got["block-big"] != ncf.StatusRolledBack || got["block-big-2"] != ncf.StatusRolledBack || got["block-v4"] != ncf.StatusCreated {
 		t.Errorf("statuses = %v", got)
 	}
 }

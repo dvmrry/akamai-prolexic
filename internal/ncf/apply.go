@@ -3,6 +3,7 @@ package ncf
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -137,7 +138,12 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			if rerr := rollBack(ctx, write, plan, res, todo); rerr != nil {
 				err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
 			}
-			return fail(i, err)
+			p, r, ferr := fail(i, err)
+			var rb *rolledBack
+			if errors.As(err, &rb) {
+				r.Aliases[i].Status = StatusRolledBack // its own upload was put back
+			}
+			return p, r, ferr
 		}
 		res.Aliases[i].Status = StatusCreated
 		if active {
@@ -288,8 +294,14 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	if rerr := write.Activate(context.WithoutCancel(ctx), ap.ID, ap.ActiveVersion); rerr != nil {
 		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s, and re-activating %s failed (%v): fix it by hand", ap.Name, v, why, ap.ActiveVersion, rerr)
 	}
-	return v, false, apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s; %s was re-activated", ap.Name, v, why, ap.ActiveVersion)
+	return v, false, &rolledBack{apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s; %s was re-activated", ap.Name, v, why, ap.ActiveVersion)}
 }
+
+// rolledBack marks an error after which the failing alias's own upload
+// was put back, so its status is rolled_back rather than failed.
+type rolledBack struct{ error }
+
+func (r *rolledBack) Unwrap() error { return r.error }
 
 // rollBack re-activates the replaced version of every alias that went live
 // on upload during this apply's create phase. It tries them all and names

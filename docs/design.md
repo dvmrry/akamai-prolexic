@@ -84,6 +84,9 @@ checking against a real account.
 - **NCF v2:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v2 spec is login-only (kept in `spec/`, not vendored). v2 has no get-one-alias, so `GetAlias` lists aliases and reads the listed active version by id (live `/versions/active` carries no entries); create sends `isActive: false` and `sourceVersion` (BIG uploads are multipart and may activate on arrival).
 - **Entries stay off the wire:** v2's alias list carries no entries (v1 listed them, managed aliases included), so `plan`, `status` and `export` never download an Akamai-managed alias's entries.
 
+- **Rollback depth (deliberate):** a rollback re-activates the version the apply replaced, but doesn't re-verify it (it was live before, and verified by its own apply) or wait for production. An unhealthy deployment after production carries the new versions is reported (exit 5), not rolled back: the fault may not be ours, and the reviewed recovery is `git revert` then apply.
+- Checked against the v2 spec: the BIG upload form has only `aliasName`, `ipVersion` and `file` (no `sourceVersion`, no comment, so BIG versions carry no audit comment); the JSON create's note field is `comments`, at most 255 characters; the version list takes `size` up to 100.
+
 ## add and remove
 
 - These commands write either the canonical file or nothing. Any error blocks the write, and so does a warning about an entry being added. Warnings about untouched entries (for example an unrelated expiry) are reported but don't block.
