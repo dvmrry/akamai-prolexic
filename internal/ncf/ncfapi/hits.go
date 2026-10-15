@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 // RuleHit is one rule's match statistics. Timestamps are as the API sends
@@ -127,6 +128,9 @@ func (s *V2) RuleTimeSeries(ctx context.Context, rule string, start, end time.Ti
 	var w seriesWire
 	req := akamai.Request{Method: http.MethodGet, Path: v2Path + "/rule-hits/rules/" + rule + "/time-series", Query: windowQuery(start, end)}
 	if err := s.c.Do(ctx, req, &w); err != nil {
+		if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
+			return w.series(start, end), nil // 404: no hits in this window, not a failure
+		}
 		return HitSeries{}, err
 	}
 	return w.series(start, end), nil

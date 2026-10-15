@@ -102,3 +102,17 @@ func TestRuleHitsRejectsDotPathSegments(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleHitsShowSeries404IsAnEmptyWindow(t *testing.T) {
+	api := newFakeAPI(t)
+	ruleHitsFixtures(t, api)
+	api.json("GET "+hitsBase+"/"+ruleA+"/time-series", 404, `{"title":"Not Found","status":404}`)
+	r := runCLI(t, ncfEnv(api.env()), "rule-hits", "show", "--rule", ruleA, "--since", "24h")
+	if r.code != 0 {
+		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+	doc := decode[RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
+	if doc.Series == nil || doc.Series.TotalMatches != 0 || doc.Series.Points == nil || len(doc.Series.Points) != 0 {
+		t.Errorf("series = %+v", doc.Series)
+	}
+}

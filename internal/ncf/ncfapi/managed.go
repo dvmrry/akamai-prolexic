@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 func managedPath(domain string) string {
@@ -86,6 +87,9 @@ func (s *V2) ManagedRuleTimeSeries(ctx context.Context, domain, rule string, sta
 	var w seriesWire
 	req := akamai.Request{Method: http.MethodGet, Path: managedPath(domain) + "/rule-hits/rules/" + rule + "/time-series", Query: windowQuery(start, end)}
 	if err := s.c.Do(ctx, req, &w); err != nil {
+		if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
+			return w.series(start, end), nil // 404: no hits in this window, not a failure
+		}
 		return HitSeries{}, err
 	}
 	return w.series(start, end), nil
