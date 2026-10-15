@@ -59,10 +59,19 @@ func (a *fakeAlias) listItem() map[string]any {
 		"accountId": "A-EXAMPLE", "aliasId": a.ID, "aliasName": a.Name, "aliasType": a.Type,
 		"ipVersion": a.IPVer, "isCustomerEditable": a.Editable, "inUse": true,
 		"activeVersion": map[string]any{"version": vname(a.Active), "entriesCount": a.count(a.Active)},
-		"prodVersion":   map[string]any{"version": vname(a.Prod), "entriesCount": a.count(a.Prod), "aclRuleIndexes": []int{1}},
+		"prodVersion":   map[string]any{"version": vname(a.Prod), "entriesCount": a.count(a.Prod), "aclRuleIndexes": []int{a.ruleIndex()}},
 		"versions":      a.names(),
 		"createdBy":     "example-user",
 	}
+}
+
+// ruleIndex is the deployed rule that uses the alias: rule 1 denies block-v4,
+// rule 2 permits allow-v6, and any other alias sits in rule 2 unnamed.
+func (a *fakeAlias) ruleIndex() int {
+	if a.Name == "block-v4" {
+		return 1
+	}
+	return 2
 }
 
 func (a *fakeAlias) versionBody(i int) map[string]any {
@@ -124,7 +133,9 @@ func (f *fakeAPI) ncfV2(aliases ...*fakeAlias) *fakeNCF {
 	f.json("GET "+base+"/acls/versions/7", 200, `{"version":7,"state":"DEPLOYED","ruleSet":[
 	  {"index":0,"aclText":"remark example"},
 	  {"index":1,"aclText":"deny ip block-v4 protected-dst","parsed":{"action":"deny",
-	   "sourceAddress":"SRC::A-EXAMPLE::block-v4","destinationAddress":"protected-dst"}}]}`)
+	   "sourceAddress":"SRC::A-EXAMPLE::block-v4","destinationAddress":"protected-dst"}},
+	  {"index":2,"aclText":"permit ip allow-v6 any","parsed":{"action":"permit",
+	   "sourceAddress":"SRC::A-EXAMPLE::allow-v6","destinationAddress":"any"}}]}`)
 	f.json("GET "+base+"/stats", 200, `{"aliases":[
 	  {"type":"SOURCE","limit":100,"enabledCount":3,"disabledCount":1},
 	  {"type":"BIG","limit":5,"enabledCount":1,"disabledCount":0}]}`)

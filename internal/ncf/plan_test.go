@@ -262,3 +262,17 @@ func TestPlanDerivesTheRoleFromDeployedRules(t *testing.T) {
 		})
 	}
 }
+
+func TestPlanUnrecognisedRuleFormFallsBackToTheFile(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "protected-dst"}}
+	s.UseInRule(101, 1)
+	p := plan(t, s, desired("192.0.2.0/25", "203.0.113.0/26"), ncf.PlanOptions{MaxRemovals: -1})
+	got := findingCodes(p.Findings)
+	want := []string{"warning role_unverified block-v4", "error own_space block-v4 203.0.113.0/26"}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) || p.Aliases[0].RoleSource != "file" {
+		t.Errorf("findings = %q, roleSource = %q; an unrecognised form must keep checks on", got, p.Aliases[0].RoleSource)
+	}
+}

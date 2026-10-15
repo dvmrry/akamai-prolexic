@@ -138,9 +138,11 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		if derived, ok := DerivedRole(a.Name, l.ProdRules, rules); ok {
 			roleSource = RoleFromRules
 			if derived != a.Role {
-				add(Error, "role_mismatch", a.Name, "", "the file says role %s, but the deployed rules use the alias on the %s side", a.Role, derived)
+				add(Error, "role_mismatch", a.Name, "", "the file says role %s, but the deployed rules use the alias %s", a.Role, sideOf(derived))
 			}
 			a.Role = derived
+		} else if len(l.ProdRules) > 0 {
+			add(Warning, "role_unverified", a.Name, "", "deployed rules %v reference the alias but don't name it in a recognised form; using the file's role %s", l.ProdRules, a.Role)
 		}
 		ap, ok := c.diff(a, full, add)
 		if !ok {

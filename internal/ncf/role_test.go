@@ -23,6 +23,7 @@ func TestDerivedRole(t *testing.T) {
 		{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"},
 		{Index: 2, Action: "permit", Source: "SRC::A-EXAMPLE::trusted", Destination: "protected-dst"},
 		{Index: 3, Action: "DENY", Source: "SRC::A-EXAMPLE::trusted", Destination: "any"},
+		{Index: 4, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "any"},
 	})
 	tests := []struct {
 		name    string
@@ -36,6 +37,10 @@ func TestDerivedRole(t *testing.T) {
 		{"trusted", []int{2, 3}, RoleDeny, true}, // any deny-source use makes it deny
 		{"unused", nil, "", false},
 		{"block-v4", []int{9}, "", false}, // index not in the deployed version
+		// An index that resolves to a rule not naming the alias in a known
+		// form is unknown, never allow: that would switch checks off.
+		{"block-v4", []int{4}, "", false},
+		{"BLOCK-V4", []int{1}, RoleDeny, true}, // case-insensitive
 	}
 	for _, tt := range tests {
 		got, ok := DerivedRole(tt.name, tt.indexes, rules)
