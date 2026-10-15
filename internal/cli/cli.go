@@ -77,6 +77,10 @@ func commands() []*command {
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
 		{name: "export", summary: "write live editable aliases to the desired file (bootstrap, or adopt drift)", run: runExport},
 		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
+		{name: "managed", summary: "managed-services ACLs and rule hits (read-only)", sub: []*command{
+			{name: "acl", summary: "a policy domain's latest managed-services ACL version", run: runManagedACL},
+			{name: "rule-hits", summary: "a policy domain's rule statistics, and one rule's time series", run: runManagedRuleHits},
+		}},
 		{name: "metrics", summary: "traffic metrics per customer name (read-only)", run: runMetrics},
 		{name: "plan", summary: "diff the desired file against live and validate it", run: runPlan},
 		{name: "protected", summary: "prefixes and AS numbers treated as own space, per customer name (read-only)", run: runProtected},

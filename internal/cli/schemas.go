@@ -26,6 +26,8 @@ func documents() []output.Document {
 		&EventsDoc{},
 		&ExportDoc{},
 		&FmtDoc{},
+		&ManagedACLDoc{},
+		&ManagedRuleHitsDoc{},
 		&MetricsDoc{},
 		&PlanDoc{},
 		&DoctorDoc{},

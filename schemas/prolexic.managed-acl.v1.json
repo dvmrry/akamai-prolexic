@@ -1,0 +1,71 @@
+{
+  "$id": "prolexic.managed-acl.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "policyDomain": {
+      "type": "string"
+    },
+    "rules": {
+      "description": "In index order.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "aclText": {
+            "type": "string"
+          },
+          "anyDestination": {
+            "type": "boolean"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ruleUuid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "locations"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "updated": {
+      "type": "string"
+    },
+    "updatedBy": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "policyDomain",
+    "rules",
+    "schema",
+    "state",
+    "version"
+  ],
+  "type": "object"
+}
