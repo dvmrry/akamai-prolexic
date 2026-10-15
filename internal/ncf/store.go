@@ -36,6 +36,7 @@ type LiveAlias struct {
 // AliasVersion is one version of an alias.
 type AliasVersion struct {
 	Version string
+	Active  bool // the alias's active version
 	// Entries is nil unless fetched with GetVersion.
 	Entries []string
 }
@@ -75,9 +76,12 @@ type Limit struct {
 //
 // Contract:
 //   - ListAliases never returns entries (EntriesCount only).
-//   - CreateVersion creates an inactive version holding exactly entries,
-//     using the multipart upload for BIG aliases. It is never retried: on an
-//     ambiguous failure the caller lists versions to prove the outcome.
+//   - CreateVersion creates a version holding exactly entries, derived from
+//     alias.ActiveVersion, with comment as its audit note. It asks for an
+//     inactive version; a BIG alias takes a multipart upload, which may
+//     activate on arrival, and the returned Active says so. It is never
+//     retried: on an ambiguous failure the caller lists versions to prove
+//     the outcome.
 //   - Activate makes version the alias's active version; production follows
 //     after a deployment window (ProdVersion).
 //   - A method the API can't serve returns an apperr.NotFound error that says
@@ -87,7 +91,7 @@ type Store interface {
 	GetAlias(ctx context.Context, id int64) (LiveAlias, error)
 	ListVersions(ctx context.Context, id int64) ([]AliasVersion, error)
 	GetVersion(ctx context.Context, id int64, version string) (AliasVersion, error)
-	CreateVersion(ctx context.Context, alias LiveAlias, entries []string) (string, error)
+	CreateVersion(ctx context.Context, alias LiveAlias, entries []string, comment string) (AliasVersion, error)
 	Activate(ctx context.Context, id int64, version string) error
 	Deployment(ctx context.Context) (Deployment, error)
 	Limits(ctx context.Context) ([]Limit, error)

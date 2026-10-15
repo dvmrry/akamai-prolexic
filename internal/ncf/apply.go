@@ -1,7 +1,9 @@
 package ncf
 
 import (
+	"cmp"
 	"context"
+	"slices"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
@@ -112,19 +114,33 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		return plan, res, err
 	}
 
+	// BIG aliases go last: their upload may activate on arrival, so every
+	// other alias should have verified before one is created.
+	slices.SortStableFunc(todo, func(x, y int) int {
+		return cmp.Compare(boolInt(plan.Aliases[x].Type == "BIG"), boolInt(plan.Aliases[y].Type == "BIG"))
+	})
+	comment := "prolexic apply " + plan.Digest
+
 	// Phase 1: create and verify.
 	for _, i := range todo {
 		ap := plan.Aliases[i]
-		v, err := c.createVerified(ctx, read, write, ap)
+		v, active, err := c.createVerified(ctx, read, write, ap, comment)
+		res.Aliases[i].Version = v
 		if err != nil {
 			return fail(i, err)
 		}
-		res.Aliases[i].Version, res.Aliases[i].Status = v, StatusCreated
+		res.Aliases[i].Status = StatusCreated
+		if active {
+			res.Aliases[i].Status = StatusActive
+		}
 	}
 
 	// Phase 2: activate.
 	for _, i := range todo {
 		a := &res.Aliases[i]
+		if a.Status == StatusActive {
+			continue // the API activated it on creation (BIG upload)
+		}
 		if err := write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
 				return fail(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
@@ -184,68 +200,85 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 }
 
 // createVerified creates ap's version and proves it holds exactly the
-// desired entries.
-func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan) (string, error) {
+// desired entries. It reports whether the API activated the version on
+// creation (a BIG upload may); such a version that fails verification is
+// rolled back by re-activating the version it replaced.
+func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan, comment string) (string, bool, error) {
 	cur, err := read.GetAlias(ctx, ap.ID)
 	if err != nil {
-		return "", apperr.Wrap(apperr.CodeOf(err), err, "re-read %s", ap.Name)
+		return "", false, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s", ap.Name)
 	}
 	if cur.ActiveVersion != ap.ActiveVersion {
-		return "", apperr.New(apperr.Conflict, "%s changed since the plan (activeVersion %q, now %q); re-plan", ap.Name, ap.ActiveVersion, cur.ActiveVersion)
+		return "", false, apperr.New(apperr.Conflict, "%s changed since the plan (activeVersion %q, now %q); re-plan", ap.Name, ap.ActiveVersion, cur.ActiveVersion)
 	}
 	before, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
-		return "", apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
+		return "", false, apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
 	}
 
-	v, err := write.CreateVersion(ctx, cur, ap.desired)
+	created, err := write.CreateVersion(ctx, cur, ap.desired, comment)
 	if err != nil {
 		if !ambiguous(err) {
-			return "", apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
+			return "", false, apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
 		}
 		// Prove the outcome from the version list; never re-send.
-		v, err = landed(context.WithoutCancel(ctx), read, ap, before, err)
+		created, err = landed(context.WithoutCancel(ctx), read, ap, before, err)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 	}
+	v := created.Version
 
 	got, err := read.GetVersion(ctx, ap.ID, v)
 	if err != nil {
-		return v, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s", ap.Name, v)
+		return v, created.Active, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s", ap.Name, v)
 	}
-	if !SameEntries(got.Entries, ap.desired) {
-		return v, apperr.New(apperr.Upstream, "%s version %s doesn't hold the desired entries; it was left inactive", ap.Name, v)
+	if SameEntries(got.Entries, ap.desired) {
+		return v, created.Active || got.Active, nil
 	}
-	return v, nil
+	if !created.Active && !got.Active {
+		return v, false, apperr.New(apperr.Upstream, "%s version %s doesn't hold the desired entries; it was left inactive", ap.Name, v)
+	}
+	// Activated on creation and wrong: put back what was live.
+	if rerr := write.Activate(context.WithoutCancel(ctx), ap.ID, ap.ActiveVersion); rerr != nil {
+		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries, and re-activating %s failed (%v): fix it by hand", ap.Name, v, ap.ActiveVersion, rerr)
+	}
+	return v, false, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries; %s was re-activated", ap.Name, v, ap.ActiveVersion)
 }
 
 // landed decides an ambiguous create: exactly one new version means it
 // landed (verification follows); none means it didn't; more means someone
 // else is writing.
-func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, cause error) (string, error) {
+func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, cause error) (AliasVersion, error) {
 	after, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
-		return "", apperr.Wrap(apperr.Upstream, cause, "create a version of %s: unknown whether it landed, and listing versions failed (%v); check status before re-running", ap.Name, err)
+		return AliasVersion{}, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: unknown whether it landed, and listing versions failed (%v); check status before re-running", ap.Name, err)
 	}
 	seen := map[string]bool{}
 	for _, v := range before {
 		seen[v.Version] = true
 	}
-	var fresh []string
+	var fresh []AliasVersion
 	for _, v := range after {
 		if !seen[v.Version] {
-			fresh = append(fresh, v.Version)
+			fresh = append(fresh, v)
 		}
 	}
 	switch len(fresh) {
 	case 0:
-		return "", apperr.Wrap(apperr.Upstream, cause, "create a version of %s: it did not land; safe to re-run", ap.Name)
+		return AliasVersion{}, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: it did not land; safe to re-run", ap.Name)
 	case 1:
 		return fresh[0], nil
 	default:
-		return "", apperr.New(apperr.Conflict, "create a version of %s: %d new versions appeared (%v); someone else is writing", ap.Name, len(fresh), fresh)
+		return AliasVersion{}, apperr.New(apperr.Conflict, "create a version of %s: %d new versions appeared; someone else is writing", ap.Name, len(fresh))
 	}
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func ambiguous(err error) bool {

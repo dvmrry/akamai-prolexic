@@ -2,6 +2,7 @@ package ncf_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -238,5 +239,79 @@ func TestApplyOnAnUnversionedAPIIsUnsupported(t *testing.T) {
 	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
 	if apperr.CodeOf(err) != apperr.NotFound || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+}
+
+// bigWorld adds a BIG alias (51+ entries) next to world's SOURCE alias.
+func bigWorld() (*ncftest.Store, *ncf.File, []string) {
+	s := world()
+	var live []string
+	for i := range 60 {
+		live = append(live, fmt.Sprintf("198.51.100.%d", i))
+	}
+	s.Add(ncf.LiveAlias{ID: 104, Name: "block-big", Type: "BIG", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, live...)
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-big", ID: 104, Type: "BIG", Role: ncf.RoleDeny, Entries: entries(append(live[1:], "198.51.100.200")...)})
+	return s, f, live
+}
+
+func TestApplyCommentsCarryTheDigest(t *testing.T) {
+	s := world()
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if err != nil || len(s.Comments) != 1 || s.Comments[0] != "prolexic apply "+res.Digest {
+		t.Errorf("err = %v, comments = %q", err, s.Comments)
+	}
+}
+
+func TestApplyBigUploadThatActivatesOnArrival(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	res, err := apply(t, s, f, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Count("Activate") != 1 { // only the SOURCE alias; the BIG one was active already
+		t.Errorf("calls = %v", s.Calls)
+	}
+	if got := s.Calls[slices.Index(s.Calls, "CreateVersion")+1:]; slices.Index(got, "CreateVersion") < 0 {
+		t.Errorf("expected two creates, calls = %v", s.Calls)
+	}
+	for _, a := range res.Aliases {
+		if a.Status != ncf.StatusDeployed {
+			t.Errorf("%s: %s", a.Name, a.Status)
+		}
+	}
+}
+
+func TestApplyCreatesBigVersionsLast(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	// The SOURCE alias fails verification: the BIG upload, which would go
+	// live on arrival, must never be sent.
+	s.Corrupt = func(es []string) []string { return append(es, "203.0.113.200") }
+	_, err := apply(t, s, f, nil)
+	if err == nil || s.Count("CreateVersion") != 1 || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, calls = %v", err, s.Calls)
+	}
+}
+
+func TestApplyRollsBackABadBigUpload(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	n := 0
+	s.Corrupt = func(es []string) []string {
+		if n++; n == 2 { // the BIG upload, created second
+			return es[1:]
+		}
+		return es
+	}
+	res, err := apply(t, s, f, nil)
+	big := res.Aliases[0] // sorted by name: block-big first
+	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "V1 was re-activated") ||
+		s.Live(104).ActiveVersion != "V1" || big.Status != ncf.StatusFailed || s.Count("Activate") != 1 {
+		t.Errorf("err = %v, big = %+v, calls = %v", err, big, s.Calls)
+	}
+	if s.Live(101).ActiveVersion != "V1" {
+		t.Error("the SOURCE alias was activated although the apply failed")
 	}
 }

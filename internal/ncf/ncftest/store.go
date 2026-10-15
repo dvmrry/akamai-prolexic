@@ -41,6 +41,11 @@ type Store struct {
 	ActivateLands bool
 	// Corrupt, when set, rewrites the entries a created version stores.
 	Corrupt func([]string) []string
+	// BigActivates makes a BIG alias's new version active on creation, as
+	// the multipart upload may.
+	BigActivates bool
+	// Comments records each CreateVersion comment.
+	Comments []string
 	// BeforeCreate runs at the start of CreateVersion (e.g. to simulate a
 	// concurrent writer).
 	BeforeCreate func(*Store)
@@ -171,7 +176,7 @@ func (s *Store) ListVersions(_ context.Context, id int64) ([]ncf.AliasVersion, e
 	}
 	out := make([]ncf.AliasVersion, len(a.versions))
 	for i := range a.versions {
-		out[i] = ncf.AliasVersion{Version: versionID(i + 1)}
+		out[i] = ncf.AliasVersion{Version: versionID(i + 1), Active: versionID(i+1) == a.live.ActiveVersion}
 	}
 	return out, nil
 }
@@ -188,10 +193,10 @@ func (s *Store) GetVersion(_ context.Context, id int64, v string) (ncf.AliasVers
 	if !ok || i < 0 || i >= len(a.versions) {
 		return ncf.AliasVersion{}, notFound(id)
 	}
-	return ncf.AliasVersion{Version: v, Entries: slices.Clone(a.versions[i])}, nil
+	return ncf.AliasVersion{Version: v, Active: v == a.live.ActiveVersion, Entries: slices.Clone(a.versions[i])}, nil
 }
 
-func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []string) (string, error) {
+func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []string, comment string) (ncf.AliasVersion, error) {
 	if s.BeforeCreate != nil {
 		s.BeforeCreate(s)
 	}
@@ -199,27 +204,33 @@ func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []stri
 	defer s.mu.Unlock()
 	s.record("CreateVersion")
 	if s.Unversioned {
-		return "", unsupported
+		return ncf.AliasVersion{}, unsupported
 	}
 	a, ok := s.aliases[l.ID]
 	if !ok {
-		return "", notFound(l.ID)
+		return ncf.AliasVersion{}, notFound(l.ID)
 	}
 	if len(a.versions) >= ncf.MaxVersions {
-		return "", apperr.New(apperr.Upstream, "version limit reached")
+		return ncf.AliasVersion{}, apperr.New(apperr.Upstream, "version limit reached")
 	}
+	s.Comments = append(s.Comments, comment)
 	if s.CreateErr != nil && !s.CreateLands {
-		return "", s.CreateErr
+		return ncf.AliasVersion{}, s.CreateErr
 	}
 	stored := slices.Clone(entries)
 	if s.Corrupt != nil {
 		stored = s.Corrupt(stored)
 	}
 	a.versions = append(a.versions, stored)
-	if s.CreateErr != nil {
-		return "", s.CreateErr
+	v := versionID(len(a.versions))
+	active := s.BigActivates && a.live.Type == "BIG"
+	if active {
+		a.live.ActiveVersion, a.pending, a.lag = v, v, s.ProdLag
 	}
-	return versionID(len(a.versions)), nil
+	if s.CreateErr != nil {
+		return ncf.AliasVersion{}, s.CreateErr
+	}
+	return ncf.AliasVersion{Version: v, Active: active}, nil
 }
 
 func (s *Store) Activate(_ context.Context, id int64, v string) error {

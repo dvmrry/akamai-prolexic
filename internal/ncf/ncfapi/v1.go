@@ -84,8 +84,8 @@ func (s *V1) GetVersion(context.Context, int64, string) (ncf.AliasVersion, error
 	return ncf.AliasVersion{}, errNeedsV2
 }
 
-func (s *V1) CreateVersion(context.Context, ncf.LiveAlias, []string) (string, error) {
-	return "", errNeedsV2
+func (s *V1) CreateVersion(context.Context, ncf.LiveAlias, []string, string) (ncf.AliasVersion, error) {
+	return ncf.AliasVersion{}, errNeedsV2
 }
 
 func (s *V1) Activate(context.Context, int64, string) error { return errNeedsV2 }
