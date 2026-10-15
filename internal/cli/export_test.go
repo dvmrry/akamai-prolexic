@@ -62,10 +62,11 @@ func TestExportBootstrap(t *testing.T) {
 		t.Errorf("validate: exit = %d: %s", r.code, r.stdout)
 	}
 
-	// Role from --role, and a second run changes nothing.
+	// The deployed rules decide the role where one references the alias:
+	// rule 1 denies block-v4 as a source, so --role allow can't override it.
 	p2 := filepath.Join(t.TempDir(), "allow.json")
 	runCLI(t, ncfEnv(api.env()), "export", "--file", p2, "--role", "allow")
-	if strings.Contains(readFile(t, p2), `"deny"`) || !strings.Contains(readFile(t, p2), `"allow"`) {
+	if !strings.Contains(readFile(t, p2), "\"name\": \"block-v4\",\n      \"role\": \"deny\"") {
 		t.Errorf("--role allow:\n%s", readFile(t, p2))
 	}
 	r = runCLI(t, ncfEnv(api.env()), "export", "--file", p)
@@ -145,7 +146,7 @@ func TestExportRefreshesOnlyNamedAliases(t *testing.T) {
 	}
 	got := readFile(t, p)
 	for _, want := range []string{
-		`"$schema": "https://example.invalid/desired.json"`, `"role": "allow"`, `"protected"`, `"203.0.113.0/24"`,
+		`"$schema": "https://example.invalid/desired.json"`, `"role": "deny"` /* from the deployed rule, not the file's allow */, `"protected"`, `"203.0.113.0/24"`,
 		`"ticket": "SEC-1"`, `"reason": "scanner"`, `"added": "2026-01-02"`, `"198.51.100.7/32"`, `"GEO::DE"`,
 	} {
 		if !strings.Contains(got, want) {

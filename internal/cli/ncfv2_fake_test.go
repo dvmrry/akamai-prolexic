@@ -59,7 +59,7 @@ func (a *fakeAlias) listItem() map[string]any {
 		"accountId": "A-EXAMPLE", "aliasId": a.ID, "aliasName": a.Name, "aliasType": a.Type,
 		"ipVersion": a.IPVer, "isCustomerEditable": a.Editable, "inUse": true,
 		"activeVersion": map[string]any{"version": vname(a.Active), "entriesCount": a.count(a.Active)},
-		"prodVersion":   map[string]any{"version": vname(a.Prod), "entriesCount": a.count(a.Prod), "aclRules": []int{1}},
+		"prodVersion":   map[string]any{"version": vname(a.Prod), "entriesCount": a.count(a.Prod), "aclRuleIndexes": []int{1}},
 		"versions":      a.names(),
 		"createdBy":     "example-user",
 	}
@@ -119,6 +119,12 @@ func (f *fakeAPI) ncfV2(aliases ...*fakeAlias) *fakeNCF {
 		}
 		reply(w, 200, map[string]any{"accountId": "A-EXAMPLE", "ruleSets": sets})
 	}
+	// The deployed ACL version (7): rule 1 denies block-v4 as a source (live
+	// qualifies source aliases) towards a destination alias.
+	f.json("GET "+base+"/acls/versions/7", 200, `{"version":7,"state":"DEPLOYED","ruleSet":[
+	  {"index":0,"aclText":"remark example"},
+	  {"index":1,"aclText":"deny ip block-v4 protected-dst","parsed":{"action":"deny",
+	   "sourceAddress":"SRC::A-EXAMPLE::block-v4","destinationAddress":"protected-dst"}}]}`)
 	f.json("GET "+base+"/stats", 200, `{"aliases":[
 	  {"type":"SOURCE","limit":100,"enabledCount":3,"disabledCount":1},
 	  {"type":"BIG","limit":5,"enabledCount":1,"disabledCount":0}]}`)

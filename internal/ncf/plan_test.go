@@ -218,3 +218,47 @@ func TestPlanNeverFetchesAManagedOwnSpaceAlias(t *testing.T) {
 		}
 	}
 }
+
+func TestPlanDerivesTheRoleFromDeployedRules(t *testing.T) {
+	deny := []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	permit := []ncf.ACLRule{{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	tests := []struct {
+		name     string
+		rules    []ncf.ACLRule
+		use      bool
+		fileRole ncf.Role
+		entries  []string
+		want     []string
+		source   string
+	}{
+		{"deny rule, file deny", deny, true, ncf.RoleDeny, []string{"192.0.2.0/25"}, nil, "rules"},
+		{"deny rule, file allow", deny, true, ncf.RoleAllow, []string{"192.0.2.0/25"}, []string{"error role_mismatch block-v4"}, "rules"},
+		{"permit rule, file deny", permit, true, ncf.RoleDeny, []string{"192.0.2.0/25"}, []string{"error role_mismatch block-v4"}, "rules"},
+		// Own space (protected-dst) in a permit-side alias is fine once the
+		// rules say so: the export round trip upstream hit.
+		{"permit rule, own space", permit, true, ncf.RoleAllow, []string{"203.0.113.0/26"}, nil, "rules"},
+		{"deny rule, own space", deny, true, ncf.RoleDeny, []string{"203.0.113.0/26"}, []string{"error own_space block-v4 203.0.113.0/26"}, "rules"},
+		{"no deployed rule", nil, false, ncf.RoleDeny, []string{"192.0.2.0/25"}, nil, "file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := world()
+			s.Rules = tt.rules
+			if tt.use {
+				s.UseInRule(101, 1)
+			}
+			f := desired(tt.entries...)
+			f.Aliases[0].Role = tt.fileRole
+			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1})
+			if got := findingCodes(p.Findings); !slices.Equal(got, tt.want) {
+				t.Errorf("findings = %q, want %q", got, tt.want)
+			}
+			if p.Aliases[0].RoleSource != tt.source {
+				t.Errorf("roleSource = %q, want %q", p.Aliases[0].RoleSource, tt.source)
+			}
+			if !tt.use && s.Count("DeployedRules") != 0 {
+				t.Error("fetched the deployed rules although no alias in the file is referenced")
+			}
+		})
+	}
+}

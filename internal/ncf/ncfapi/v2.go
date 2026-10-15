@@ -47,6 +47,9 @@ type v2Alias struct {
 	} `json:"activeVersion"`
 	ProdVersion *struct {
 		Version string `json:"version"`
+		// Live sends aclRuleIndexes; the spec says aclRules. Read both.
+		ACLRuleIndexes []int `json:"aclRuleIndexes"`
+		ACLRules       []int `json:"aclRules"`
 	} `json:"prodVersion"`
 }
 
@@ -60,6 +63,10 @@ func (a v2Alias) live() ncf.LiveAlias {
 	}
 	if a.ProdVersion != nil {
 		l.ProdVersion = a.ProdVersion.Version
+		l.ProdRules = a.ProdVersion.ACLRuleIndexes
+		if len(l.ProdRules) == 0 {
+			l.ProdRules = a.ProdVersion.ACLRules
+		}
 	}
 	return l
 }
@@ -232,6 +239,41 @@ func (s *V2) Deployment(ctx context.Context) (ncf.Deployment, error) {
 
 func (s *V2) Limits(ctx context.Context) ([]ncf.Limit, error) {
 	return limits(ctx, s.c, v2Path)
+}
+
+// DeployedRules reads the production ACL version (from deployment status)
+// with details, and returns each rule's index, action and parsed addresses.
+// Rules without parsed details (remarks) are skipped.
+func (s *V2) DeployedRules(ctx context.Context) ([]ncf.ACLRule, error) {
+	d, err := s.Deployment(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if d.State != "PRODUCTION" || d.Version == 0 {
+		return nil, nil
+	}
+	var resp struct {
+		RuleSet []struct {
+			Index  int `json:"index"`
+			Parsed *struct {
+				Action             string `json:"action"`
+				SourceAddress      string `json:"sourceAddress"`
+				DestinationAddress string `json:"destinationAddress"`
+			} `json:"parsed"`
+		} `json:"ruleSet"`
+	}
+	q := url.Values{"details": {"true"}}
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v2Path + "/acls/versions/" + strconv.Itoa(d.Version), Query: q}, &resp); err != nil {
+		return nil, err
+	}
+	var out []ncf.ACLRule
+	for _, r := range resp.RuleSet {
+		if r.Parsed == nil {
+			continue
+		}
+		out = append(out, ncf.ACLRule{Index: r.Index, Action: r.Parsed.Action, Source: r.Parsed.SourceAddress, Destination: r.Parsed.DestinationAddress})
+	}
+	return out, nil
 }
 
 func (s *V2) aliasPath(id int64) string {

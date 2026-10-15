@@ -60,7 +60,7 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 	fs := a.flags()
 	file := fileFlag(fs)
 	all := fs.Bool("all", false, "also add editable live aliases the file doesn't name")
-	roleFlag := fs.String("role", string(ncf.RoleDeny), "role for aliases new to the file: deny or allow")
+	roleFlag := fs.String("role", string(ncf.RoleDeny), "role for aliases no deployed rule references (deployed rules decide the rest): deny or allow")
 	if err := a.parse(fs, args, false); err != nil {
 		return nil, err
 	}
@@ -91,6 +91,26 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 	byID := map[int64]ncf.LiveAlias{}
 	for _, l := range live {
 		byID[l.ID] = l
+	}
+
+	// The deployed rules decide each alias's role where one references it
+	// (plan rejects a file that disagrees); --role covers the rest.
+	var rules map[int]ncf.ACLRule
+	for _, l := range live {
+		if l.Editable && len(l.ProdRules) > 0 {
+			deployed, err := store.DeployedRules(ctx)
+			if err != nil {
+				return nil, err
+			}
+			rules = ncf.RulesByIndex(deployed)
+			break
+		}
+	}
+	roleOf := func(l ncf.LiveAlias, fallback ncf.Role) ncf.Role {
+		if r, ok := ncf.DerivedRole(l.Name, l.ProdRules, rules); ok {
+			return r
+		}
+		return fallback
 	}
 
 	// fetch reads one editable alias's entries, normalised and deduplicated.
@@ -196,6 +216,7 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 			}
 		}
 		al.Entries = entries
+		al.Role = roleOf(byID[al.ID], al.Role)
 		aliases = append(aliases, al)
 		doc.Aliases = append(doc.Aliases, ex)
 	}
@@ -208,7 +229,7 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 			if err != nil {
 				return nil, err
 			}
-			al := ncf.Alias{Name: l.Name, ID: l.ID, Type: l.Type, Role: role, Entries: []ncf.Entry{}}
+			al := ncf.Alias{Name: l.Name, ID: l.ID, Type: l.Type, Role: roleOf(l, role), Entries: []ncf.Entry{}}
 			for _, v := range vals {
 				al.Entries = append(al.Entries, ncf.Entry{CIDR: v.String()})
 			}

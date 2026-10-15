@@ -26,7 +26,8 @@ type AliasPlan struct {
 	ID            int64   `json:"id"`
 	Type          string  `json:"type"`
 	IPVersion     string  `json:"ipVersion"`
-	Role          Role    `json:"role"`
+	Role          Role    `json:"role" doc:"The effective role: derived from the deployed rules when one references the alias, else the file's."`
+	RoleSource    string  `json:"roleSource" enum:"rules,file"`
 	ActiveVersion string  `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
 	ProdVersion   string  `json:"prodVersion"`
 	Add           []Entry `json:"add"`
@@ -93,6 +94,20 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		return nil, err
 	}
 
+	// Deployed rules decide each alias's side; fetch them once, and only
+	// when some alias in the file is referenced by one.
+	var rules map[int]ACLRule
+	for _, a := range f.Aliases {
+		if l, ok := byID[a.ID]; ok && len(l.ProdRules) > 0 {
+			deployed, err := store.DeployedRules(ctx)
+			if err != nil {
+				return nil, apperr.Wrap(apperr.CodeOf(err), err, "read the deployed ACL rules")
+			}
+			rules = RulesByIndex(deployed)
+			break
+		}
+	}
+
 	for _, a := range f.Aliases {
 		l, ok := byID[a.ID]
 		switch {
@@ -116,10 +131,22 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		if err != nil {
 			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get alias %s", a.Name)
 		}
+		// The deployed rules' side wins over the file's; a disagreement is an
+		// error, since the file's role would switch own-space checks off or on
+		// wrongly.
+		roleSource := RoleFromFile
+		if derived, ok := DerivedRole(a.Name, l.ProdRules, rules); ok {
+			roleSource = RoleFromRules
+			if derived != a.Role {
+				add(Error, "role_mismatch", a.Name, "", "the file says role %s, but the deployed rules use the alias on the %s side", a.Role, derived)
+			}
+			a.Role = derived
+		}
 		ap, ok := c.diff(a, full, add)
 		if !ok {
 			continue
 		}
+		ap.RoleSource = roleSource
 		c.liveChecks(a, full, &ap, own, opts, add)
 		p.Aliases = append(p.Aliases, ap)
 	}

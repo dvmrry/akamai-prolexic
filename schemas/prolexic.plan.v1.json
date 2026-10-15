@@ -101,6 +101,14 @@
             "type": "array"
           },
           "role": {
+            "description": "The effective role: derived from the deployed rules when one references the alias, else the file's.",
+            "type": "string"
+          },
+          "roleSource": {
+            "enum": [
+              "rules",
+              "file"
+            ],
             "type": "string"
           },
           "type": {
@@ -119,6 +127,7 @@
           "prodVersion",
           "remove",
           "role",
+          "roleSource",
           "type",
           "unchanged"
         ],

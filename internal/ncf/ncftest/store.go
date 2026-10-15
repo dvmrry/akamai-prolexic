@@ -46,6 +46,8 @@ type Store struct {
 	ActivateFails map[int64]error
 	// GetVersionErr, when set, is returned by GetVersion.
 	GetVersionErr error
+	// Rules is the deployed ACL version's rules (see UseInRule).
+	Rules []ncf.ACLRule
 	// BigActivates makes a BIG alias's new version active on creation, as
 	// the multipart upload may.
 	BigActivates bool
@@ -282,6 +284,23 @@ func (s *Store) Deployment(context.Context) (ncf.Deployment, error) {
 	defer s.mu.Unlock()
 	s.record("Deployment")
 	return s.Deploy, nil
+}
+
+// DeployedRules returns Rules.
+func (s *Store) DeployedRules(context.Context) ([]ncf.ACLRule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.record("DeployedRules")
+	return s.Rules, nil
+}
+
+// UseInRule makes the deployed rule at index reference an alias (its
+// prodVersion.aclRuleIndexes).
+func (s *Store) UseInRule(id int64, index int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.aliases[id]
+	a.live.ProdRules = append(a.live.ProdRules, index)
 }
 
 func (s *Store) Limits(context.Context) ([]ncf.Limit, error) {

@@ -3,6 +3,7 @@ package ncfapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -230,5 +231,35 @@ func TestV2CreateNeedsASourceVersion(t *testing.T) {
 	_, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE"}, []string{"192.0.2.0/25"}, "")
 	if err == nil || !strings.Contains(err.Error(), "no source version") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestV2DeployedRulesAndRuleIndexes(t *testing.T) {
+	s, f := newV2(t)
+	f.json("GET /aliases", `[{"aliasId":101,"aliasName":"block-v4","aliasType":"BIG","isCustomerEditable":true,
+	  "activeVersion":{"version":"V2"},"prodVersion":{"version":"V2","entriesCount":60,"aclRuleIndexes":[1]}},
+	 {"aliasId":102,"aliasName":"old-shape","aliasType":"SOURCE","isCustomerEditable":true,
+	  "activeVersion":{"version":"V1"},"prodVersion":{"version":"V1","aclRules":[3]}},
+	 {"aliasId":103,"aliasName":"unused","aliasType":"SOURCE","isCustomerEditable":true,"activeVersion":{"version":"V1"},"prodVersion":null}]`)
+	f.json("GET /acls/versions/deployment-status", `{"ruleSets":[{"deploymentStatus":"PRODUCTION","version":7}]}`)
+	var query string
+	f.routes["GET /acls/versions/7"] = func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		query = r.URL.RawQuery
+		w.Write([]byte(`{"version":7,"ruleSet":[{"index":0,"aclText":"remark x"},
+		  {"index":1,"parsed":{"action":"deny","sourceAddress":"SRC::A-EXAMPLE::block-v4","destinationAddress":"protected-dst"}}]}`))
+	}
+	all, err := s.ListAliases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(all[0].ProdRules, all[1].ProdRules, all[2].ProdRules) != "[1] [3] []" {
+		t.Errorf("rule indexes = %v %v %v", all[0].ProdRules, all[1].ProdRules, all[2].ProdRules)
+	}
+	rules, err := s.DeployedRules(context.Background())
+	if err != nil || len(rules) != 1 || rules[0].Index != 1 || rules[0].Source != "SRC::A-EXAMPLE::block-v4" || rules[0].Action != "deny" {
+		t.Errorf("rules = %+v, err = %v", rules, err)
+	}
+	if query != "details=true" {
+		t.Errorf("query = %q", query)
 	}
 }

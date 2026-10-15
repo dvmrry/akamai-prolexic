@@ -21,6 +21,9 @@ type LiveAlias struct {
 	// expose versions. There is no per-alias version limit.
 	ActiveVersion string
 	ProdVersion   string
+	// ProdRules are the indexes of the deployed ACL rules that reference the
+	// alias (prodVersion.aclRuleIndexes); empty when no deployed rule does.
+	ProdRules []int
 
 	EntriesCount int
 	// Entries is nil unless fetched with GetAlias. Never fetch them for an
@@ -58,6 +61,16 @@ func (d Deployment) Failure() string {
 	return ""
 }
 
+// ACLRule is one rule of the deployed ACL version, as far as deriving an
+// alias's side needs it. Source and Destination are the parsed addresses,
+// which name an alias bare ("block-v4") or qualified ("SRC::<account>::block-v4").
+type ACLRule struct {
+	Index       int
+	Action      string
+	Source      string
+	Destination string
+}
+
 // Limit is the account's alias limit for one type.
 type Limit struct {
 	Type     string
@@ -90,6 +103,9 @@ type Store interface {
 	Activate(ctx context.Context, id int64, version string) error
 	Deployment(ctx context.Context) (Deployment, error)
 	Limits(ctx context.Context) ([]Limit, error)
+	// DeployedRules returns the rules of the ACL version in production, or
+	// none when nothing is deployed.
+	DeployedRules(ctx context.Context) ([]ACLRule, error)
 }
 
 // OwnSpacePrefix is one own-space prefix and where it came from.

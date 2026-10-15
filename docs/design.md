@@ -54,7 +54,7 @@ checking against a real account.
 }
 ```
 
-- **Extension: `role` (`deny` or `allow`)** per alias. The brief says the own-space check applies to "deny-side" entries, but nothing in an alias says which side it is on, so the file asserts it. `export` defaults to `deny`, which means more checks rather than fewer. With NCF v2's `prodVersion.aclRuleIndexes`, plan should derive the side from live rules and reject a file whose `role` disagrees.
+- **Extension: `role` (`deny` or `allow`)** per alias. Plan derives the side from the deployed rules: an alias is deny-side when a deployed `deny` rule uses it as its source (live names a source alias `SRC::<account>::<name>`, a destination alias bare; matching the name or a `::<name>` suffix covers both). The derived role wins, the plan reports `roleSource: rules`, and a file whose `role` disagrees fails with `role_mismatch`. An alias no deployed rule references keeps the file's role (`roleSource: file`), with deny the default, so checks stay on. `export` writes the derived role. A DIPA alias is never own-space checked: it lists destinations.
 - **Extension: `ownSpace`** holds the static list and names the protected-destination alias(es). Plan reads those aliases' live entries.
 - The canonical form is: keys sorted at every level, aliases sorted by name, entries sorted v4 → v6 → GEO → ASN, `[]` never `null`, two-space indent and a trailing newline. `validate` fails a file that isn't byte-identical to it.
 - Entries are normalised on both sides. An authored host-bits typo is rejected, while the same thing from live is masked.
