@@ -205,7 +205,9 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		if ap.Changed() {
 			want = res.Aliases[i].Version
 		}
-		if ap.ProdVersion != "" && ap.ProdVersion != want {
+		// A changed alias a deployed rule uses always gets the deployment
+		// health check, even if production already carries its version.
+		if ap.ProdVersion != "" && (ap.Changed() || ap.ProdVersion != want) {
 			target[i] = want
 		}
 	}
@@ -266,6 +268,14 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		}
 		if !opts.Now().Before(deadline) {
 			written, outside := lagging(plan, target, prods, res)
+			if len(written)+len(outside) > 0 {
+				// Say what the deployment itself reports, if it's part of it.
+				if d, derr := read.Deployment(ctx); derr == nil {
+					if why := d.Failure(); why != "" {
+						return plan, res, apperr.New(apperr.Upstream, "not deployed after %s, and the ACL deployment is unhealthy: %s", opts.Timeout, why)
+					}
+				}
+			}
 			switch {
 			case len(written) == 0 && len(outside) == 0:
 				return plan, res, apperr.New(apperr.Upstream, "production carries the target versions, but the ACL deployment is still processing after %s; re-run apply to keep waiting", opts.Timeout)
@@ -320,7 +330,7 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 			return "", false, apperr.Wrap(apperr.CodeOf(err), err, "create a version of %s", ap.Name)
 		}
 		// Prove the outcome from the version list; never re-send.
-		created, err = landed(context.WithoutCancel(ctx), read, ap, before, err)
+		created, err = landed(context.WithoutCancel(ctx), read, ap, before, comment, err)
 		if err != nil {
 			return "", false, err
 		}
@@ -430,7 +440,7 @@ func activeVersion(ctx context.Context, read Store, id int64) (string, error) {
 // landed decides an ambiguous create: exactly one new version means it
 // landed (verification follows); none means it didn't; more means someone
 // else is writing.
-func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, cause error) (AliasVersion, error) {
+func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion, comment string, cause error) (AliasVersion, error) {
 	after, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
 		return AliasVersion{}, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: unknown whether it landed, and listing versions failed (%v); check status before re-running", ap.Name, err)
@@ -449,6 +459,12 @@ func landed(ctx context.Context, read Store, ap AliasPlan, before []AliasVersion
 	case 0:
 		return AliasVersion{}, apperr.Wrap(apperr.Upstream, cause, "create a version of %s: it did not land; safe to re-run", ap.Name)
 	case 1:
+		// A SOURCE or DIPA version we created carries our comment and source;
+		// one that doesn't is another writer's. BIG uploads carry no marker,
+		// so for them entry verification is the only check.
+		if v := fresh[0]; ap.Type != "BIG" && (v.Comment != comment || v.Source != ap.ActiveVersion) {
+			return AliasVersion{}, apperr.New(apperr.Conflict, "create a version of %s: unknown whether it landed, and the one new version (%s) isn't this apply's; someone else is writing", ap.Name, v.Version)
+		}
 		return fresh[0], nil
 	default:
 		return AliasVersion{}, apperr.New(apperr.Conflict, "create a version of %s: %d new versions appeared; someone else is writing", ap.Name, len(fresh))

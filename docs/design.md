@@ -79,7 +79,7 @@ checking against a real account.
   3. Wait until `prodVersion` matches for all, the ACL deployment reports no failed rules, no ruleset at or after the production version is FAILED, and nothing is processing.
 - An ambiguous create is resolved from the version list:
   - no new version: it didn't land, and re-running is safe;
-  - exactly one: it landed and goes on to verification;
+  - exactly one: it landed and goes on to verification, if it carries this apply's comment and source version (a SOURCE or DIPA version that doesn't is another writer's: exit 8). BIG uploads carry no marker, so for them entry verification is the only check;
   - more than one: a concurrent writer (exit 8).
 - **NCF v2:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v2 spec is login-only (kept in `spec/`, not vendored). v2 has no get-one-alias, so `GetAlias` lists aliases and reads the listed active version by id (live `/versions/active` carries no entries); create sends `isActive: false` and `sourceVersion` (BIG uploads are multipart and may activate on arrival).
 - **Entries stay off the wire:** v2's alias list carries no entries (v1 listed them, managed aliases included), so `plan`, `status` and `export` never download an Akamai-managed alias's entries.

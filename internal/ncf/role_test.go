@@ -24,6 +24,7 @@ func TestDerivedRole(t *testing.T) {
 		{Index: 2, Action: "permit", Source: "SRC::A-EXAMPLE::trusted", Destination: "protected-dst"},
 		{Index: 3, Action: "DENY", Source: "SRC::A-EXAMPLE::trusted", Destination: "any"},
 		{Index: 4, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "any"},
+		{Index: 5, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "block-v4"},
 	})
 	tests := []struct {
 		name    string
@@ -41,6 +42,9 @@ func TestDerivedRole(t *testing.T) {
 		// form is unknown, never allow: that would switch checks off.
 		{"block-v4", []int{4}, "", false},
 		{"BLOCK-V4", []int{1}, RoleDeny, true}, // case-insensitive
+		// A recognised destination must not mask a deny source in a form we
+		// don't recognise.
+		{"block-v4", []int{5}, "", false},
 	}
 	for _, tt := range tests {
 		got, ok := DerivedRole(tt.name, tt.indexes, rules)

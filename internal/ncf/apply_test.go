@@ -636,3 +636,23 @@ func TestApplyStopsWaitingForAnAliasNoLongerInAnyRule(t *testing.T) {
 		t.Errorf("err = %v; an alias no rule uses has nothing to wait for", err)
 	}
 }
+
+func TestApplyAmbiguousCreateNeverAdoptsAnotherWritersVersion(t *testing.T) {
+	s := world()
+	s.CreateErr = ambiguous                                           // ours didn't land...
+	s.BeforeCreate = func(s *ncftest.Store) { s.AddVersions(101, 1) } // ...but someone else's did
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.CodeOf(err) != apperr.Conflict || s.Count("Activate") != 0 {
+		t.Errorf("err = %v, calls = %v; the one new version isn't this apply's", err, s.Calls)
+	}
+}
+
+func TestApplyTimeoutReportsAnUnhealthyDeployment(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	s.Deploy = ncf.Deployment{Version: 7, State: "PRODUCTION", FailedRules: 3}
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "ACL deployment is unhealthy") {
+		t.Errorf("err = %v", err)
+	}
+}

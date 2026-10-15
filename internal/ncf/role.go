@@ -25,6 +25,12 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 			continue
 		}
 		src, dst := refersTo(r.Source, name), refersTo(r.Destination, name)
+		// An address that mentions the alias in a form we don't recognise
+		// might be it: unknown, so a recognised use elsewhere in the rule
+		// can't mask a deny source.
+		if (mentions(r.Source, name) && !src) || (mentions(r.Destination, name) && !dst) {
+			unknownAction = true
+		}
 		if !src && !dst {
 			continue
 		}
@@ -40,7 +46,7 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 			unknownAction = true
 		}
 	}
-	if !named || unknownAction {
+	if unknownAction || !named {
 		return "", false
 	}
 	return RoleAllow, true
@@ -49,6 +55,11 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 // permitActions are the action words that let traffic through. Only these
 // derive allow; any other word on a source use leaves the side unknown.
 var permitActions = map[string]bool{"permit": true, "accept": true, "allow": true}
+
+// mentions reports whether an address contains the alias name at all.
+func mentions(addr, name string) bool {
+	return strings.Contains(strings.ToLower(addr), strings.ToLower(name))
+}
 
 // refersTo reports whether a parsed rule address names the alias. Live rules
 // name a source alias "SRC::<account>::<name>" and a destination alias bare;
