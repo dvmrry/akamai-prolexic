@@ -263,3 +263,19 @@ func TestV2DeployedRulesAndRuleIndexes(t *testing.T) {
 		t.Errorf("query = %q", query)
 	}
 }
+
+func TestV2EmptyingAnAliasSendsAnEmptyList(t *testing.T) {
+	s, f := newV2(t)
+	var body string
+	f.routes["POST /aliases/101/versions"] = func(w http.ResponseWriter, _ *http.Request, b []byte) {
+		body = string(b)
+		w.WriteHeader(201)
+		w.Write([]byte(`{"version":"V4"}`))
+	}
+	if _, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE", ActiveVersion: "V3"}, nil, "c"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"entries":[]`) {
+		t.Errorf("body = %s; null is not 'empty the alias'", body)
+	}
+}

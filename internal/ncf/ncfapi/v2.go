@@ -177,6 +177,9 @@ func (s *V2) GetVersion(ctx context.Context, id int64, version string) (ncf.Alia
 func (s *V2) CreateVersion(ctx context.Context, alias ncf.LiveAlias, entries []string, comment string) (ncf.AliasVersion, error) {
 	var v v2Version
 	var req akamai.Request
+	if entries == nil {
+		entries = []string{} // "entries": null is not "empty the alias"
+	}
 	if alias.Type == "BIG" {
 		body, contentType, err := bigUpload(alias, entries)
 		if err != nil {

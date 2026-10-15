@@ -5,7 +5,10 @@ import "strings"
 // Role sources, as a plan reports them.
 const (
 	RoleFromRules = "rules" // derived from the deployed ACL rules
-	RoleFromFile  = "file"  // no deployed rule names the alias; the file's role stands
+	RoleFromFile  = "file"  // no deployed rule references the alias; the file's role stands
+	// RoleUnverified: deployed rules reference the alias but its side can't
+	// be read, so it is checked as deny whatever the file says.
+	RoleUnverified = "unverified"
 )
 
 // DerivedRole says which side of the firewall the deployed rules put an
@@ -15,7 +18,7 @@ const (
 // one of the alias's indexes actually names it: a rule in an address form
 // this code doesn't recognise must not turn own-space checks off.
 func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, bool) {
-	named := false
+	named, unknownAction := false, false
 	for _, idx := range prodRules {
 		r, ok := rules[idx]
 		if !ok {
@@ -26,15 +29,26 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 			continue
 		}
 		named = true
-		if src && strings.EqualFold(r.Action, "deny") {
-			return RoleDeny, true
+		switch action := strings.ToLower(r.Action); {
+		case action == "deny":
+			if src {
+				return RoleDeny, true
+			}
+		case !permitActions[action] && src:
+			// An action word we don't know (drop? block?) on a source use
+			// might deny: it must not derive allow.
+			unknownAction = true
 		}
 	}
-	if !named {
+	if !named || unknownAction {
 		return "", false
 	}
 	return RoleAllow, true
 }
+
+// permitActions are the action words that let traffic through. Only these
+// derive allow; any other word on a source use leaves the side unknown.
+var permitActions = map[string]bool{"permit": true, "accept": true, "allow": true}
 
 // refersTo reports whether a parsed rule address names the alias. Live rules
 // name a source alias "SRC::<account>::<name>" and a destination alias bare;

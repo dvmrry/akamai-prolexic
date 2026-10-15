@@ -89,7 +89,7 @@ func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
 	// pre-write re-read: the digest still matches, the token doesn't.
 	calls := 0
 	read := &hookStore{Store: s, onGetAlias: func() {
-		if calls++; calls == 3 { // 1 own-space alias, 2 block-v4 in the re-plan, 3 the pre-write re-read
+		if calls++; calls == 1 { // plans read entries by version id; this is the pre-write re-read
 			s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
 		}
 	}}
@@ -363,6 +363,7 @@ func TestApplyRollsBackAnUploadItCannotReRead(t *testing.T) {
 	f.Aliases = f.Aliases[1:] // just the BIG alias
 	s.BigActivates = true
 	s.GetVersionErr = &apperr.Error{Code: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" } // only the upload
 	res, err := apply(t, s, f, nil)
 	if err == nil || !strings.Contains(err.Error(), "couldn't be re-read") || s.Live(104).ActiveVersion != "V1" {
 		t.Errorf("err = %v, res = %+v, live = %+v", err, res, s.Live(104))
@@ -390,9 +391,9 @@ func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
 	if _, err := apply(t, s, desired("192.0.2.0/25"), nil); err != nil {
 		t.Fatal(err)
 	}
-	// Two plans (the helper's and apply's own, 2 aliases each) plus the
-	// pre-create re-read: 5. Polling on GetAlias would add one per poll.
-	if n := s.Count("GetAlias"); n != 5 {
+	// Plans read entries by version id and the wait polls the list, so the
+	// only GetAlias is the pre-create token re-read.
+	if n := s.Count("GetAlias"); n != 1 {
 		t.Errorf("GetAlias called %d times; polling must use the alias list", n)
 	}
 }
@@ -501,5 +502,137 @@ func TestApplyTimeoutWhenOnlyOutsideActivationsLag(t *testing.T) {
 	_, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
 	if err == nil || !strings.Contains(err.Error(), "new versions are in production") || !strings.Contains(err.Error(), "block-v4-b, activated outside") || strings.Contains(err.Error(), "()") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// activateHook runs before each Activate the store receives.
+type activateHook struct {
+	*ncftest.Store
+	before func(id int64, v string)
+}
+
+func (h *activateHook) Activate(ctx context.Context, id int64, v string) error {
+	h.before(id, v)
+	return h.Store.Activate(ctx, id, v)
+}
+
+func applyWith(t *testing.T, read, write ncf.Store, f *ncf.File) (*ncf.ApplyResult, error) {
+	t.Helper()
+	p, err := checker().MakePlan(context.Background(), read, f, nil, defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), read, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest, Now: clock.now, Sleep: clock.sleep})
+	return res, err
+}
+
+func TestApplyNeverOverwritesAnActivationMadeDuringIt(t *testing.T) {
+	s := world()
+	fired := false
+	// Another writer activates V3 after apply created V2, before it activates.
+	w := &activateHook{Store: s, before: func(int64, string) {}}
+	read := &listHook{Store: s, onList: func() {
+		if s.Count("CreateVersion") == 1 && !fired {
+			fired = true
+			s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7", "198.51.100.8")
+		}
+	}}
+	_, err := applyWith(t, read, w, desired("192.0.2.0/25"))
+	if apperr.CodeOf(err) != apperr.Conflict || s.Live(101).ActiveVersion != "V3" {
+		t.Errorf("err = %v, active = %s; the other writer's V3 must stay", err, s.Live(101).ActiveVersion)
+	}
+}
+
+// listHook runs before each ListAliases.
+type listHook struct {
+	*ncftest.Store
+	onList func()
+	fail   bool
+}
+
+func (h *listHook) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	if h.onList != nil {
+		h.onList()
+	}
+	if h.fail {
+		return nil, apperr.New(apperr.Upstream, "HTTP 503")
+	}
+	return h.Store.ListAliases(ctx)
+}
+
+func TestApplyRollsBackAnActivationWhoseOutcomeIsUnknown(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/26")})
+	lost := false
+	w := &ambiguousActivate{Store: s, id: 103, lost: &lost}
+	read := &listHook{Store: s, onList: func() {}}
+	read.onList = func() {
+		if lost {
+			read.fail = true // the read-back fails too
+		}
+	}
+	_, err := applyWith(t, read, w, f)
+	if err == nil || s.Live(103).ActiveVersion != "V1" || s.Live(101).ActiveVersion != "V1" {
+		t.Errorf("err = %v; 101 = %s, 103 = %s; both must be back on V1", err, s.Live(101).ActiveVersion, s.Live(103).ActiveVersion)
+	}
+}
+
+// ambiguousActivate lands the first activation of alias id but reports an
+// ambiguous failure, as when the response is lost.
+type ambiguousActivate struct {
+	*ncftest.Store
+	id   int64
+	lost *bool
+}
+
+func (a *ambiguousActivate) Activate(ctx context.Context, id int64, v string) error {
+	if id == a.id && !*a.lost {
+		*a.lost = true
+		if err := a.Store.Activate(ctx, id, v); err != nil {
+			return err
+		}
+		return ambiguous
+	}
+	return a.Store.Activate(ctx, id, v)
+}
+
+func TestApplyRollsBackABigUploadItCannotConfirm(t *testing.T) {
+	s, f, _ := bigWorld()
+	f.Aliases = f.Aliases[1:]
+	s.BigActivates = true
+	w := &hideActive{Store: s}
+	s.GetVersionErr = &apperr.Error{Code: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" }
+	_, err := applyWith(t, s, w, f)
+	if err == nil || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, active = %s; an unconfirmed upload must be put back", err, s.Live(104).ActiveVersion)
+	}
+}
+
+// hideActive drops isActive from create responses (a response without it).
+type hideActive struct{ *ncftest.Store }
+
+func (h *hideActive) CreateVersion(ctx context.Context, l ncf.LiveAlias, es []string, c string) (ncf.AliasVersion, error) {
+	v, err := h.Store.CreateVersion(ctx, l, es, c)
+	v.Active = false
+	return v, err
+}
+
+func TestApplyStopsWaitingForAnAliasNoLongerInAnyRule(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	polls := 0
+	read := &listHook{Store: s}
+	read.onList = func() {
+		if polls++; polls == 6 { // mid-wait, the rule using it is removed
+			s.Unused(101)
+		}
+	}
+	_, err := applyWith(t, read, s, desired("192.0.2.0/25"))
+	if err != nil {
+		t.Errorf("err = %v; an alias no rule uses has nothing to wait for", err)
 	}
 }

@@ -263,7 +263,7 @@ func TestPlanDerivesTheRoleFromDeployedRules(t *testing.T) {
 	}
 }
 
-func TestPlanUnrecognisedRuleFormFallsBackToTheFile(t *testing.T) {
+func TestPlanUnrecognisedRuleFormIsCheckedAsDeny(t *testing.T) {
 	s := world()
 	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "protected-dst"}}
 	s.UseInRule(101, 1)
@@ -272,7 +272,40 @@ func TestPlanUnrecognisedRuleFormFallsBackToTheFile(t *testing.T) {
 	want := []string{"warning role_unverified block-v4", "error own_space block-v4 203.0.113.0/26"}
 	slices.Sort(got)
 	slices.Sort(want)
-	if !slices.Equal(got, want) || p.Aliases[0].RoleSource != "file" {
+	if !slices.Equal(got, want) || p.Aliases[0].RoleSource != "unverified" {
 		t.Errorf("findings = %q, roleSource = %q; an unrecognised form must keep checks on", got, p.Aliases[0].RoleSource)
+	}
+}
+
+func TestPlanCannotRelaxChecksWithoutAVerifiedSide(t *testing.T) {
+	tests := map[string][]ncf.ACLRule{
+		"unrecognised form":   {{Index: 1, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "protected-dst"}},
+		"rule without parsed": nil, // dropped by the adapter, so the index resolves to nothing
+		"unknown action word": {{Index: 1, Action: "drop", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}},
+	}
+	for name, rules := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := world()
+			s.Rules = rules
+			s.UseInRule(101, 1)
+			f := desired("192.0.2.0/25", "203.0.113.0/26")
+			f.OwnSpace.Prefixes = []string{"203.0.113.0/26"}
+			f.Aliases[0].Role = ncf.RoleAllow // the file tries to relax the checks
+			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1})
+			got := findingCodes(p.Findings)
+			if !slices.Contains(got, "error own_space block-v4 203.0.113.0/26") || p.Aliases[0].RoleSource != "unverified" {
+				t.Errorf("findings = %q, roleSource = %q; only a verified side may relax own-space checks", got, p.Aliases[0].RoleSource)
+			}
+		})
+	}
+}
+
+func TestPlanOwnSpaceAliasEntryItCannotReadIsAnError(t *testing.T) {
+	s := ncftest.New()
+	s.Add(ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.0/25")
+	s.Add(ncf.LiveAlias{ID: 102, Name: "protected-dst", Type: "DIPA", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "203.0.113.0/26", "not-a-prefix")
+	got := findingCodes(plan(t, s, desired("192.0.2.0/25"), defaults).Findings)
+	if !slices.Equal(got, []string{"error own_space_alias protected-dst not-a-prefix"}) {
+		t.Errorf("findings = %q", got)
 	}
 }

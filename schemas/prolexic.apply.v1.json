@@ -114,7 +114,8 @@
               "roleSource": {
                 "enum": [
                   "rules",
-                  "file"
+                  "file",
+                  "unverified"
                 ],
                 "type": "string"
               },

@@ -27,7 +27,7 @@ type AliasPlan struct {
 	Type          string  `json:"type"`
 	IPVersion     string  `json:"ipVersion"`
 	Role          Role    `json:"role" doc:"The effective role: derived from the deployed rules when one references the alias, else the file's."`
-	RoleSource    string  `json:"roleSource" enum:"rules,file"`
+	RoleSource    string  `json:"roleSource" enum:"rules,file,unverified"`
 	ActiveVersion string  `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
 	ProdVersion   string  `json:"prodVersion"`
 	Add           []Entry `json:"add"`
@@ -127,14 +127,14 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			add(Error, "account_mismatch", a.Name, "", "alias %d belongs to another account", a.ID)
 			continue
 		}
-		full, err := store.GetAlias(ctx, a.ID)
+		full, err := withEntries(ctx, store, l)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get alias %s", a.Name)
 		}
 		// The deployed rules' side wins over the file's; a disagreement is an
 		// error, since the file's role would switch own-space checks off or on
 		// wrongly.
-		roleSource := RoleFromFile
+		roleSource, fileDenySide := RoleFromFile, a.DenySide()
 		if derived, ok := DerivedRole(a.Name, l.ProdRules, rules); ok {
 			roleSource = RoleFromRules
 			if derived != a.Role {
@@ -142,14 +142,24 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			}
 			a.Role = derived
 		} else if len(l.ProdRules) > 0 {
-			add(Warning, "role_unverified", a.Name, "", "deployed rules %v reference the alias but don't name it in a recognised form; using the file's role %s", l.ProdRules, a.Role)
+			// Deployed rules use the alias but its side can't be read: only a
+			// verified derivation may relax checks, so it is checked as deny.
+			roleSource = RoleUnverified
+			add(Warning, "role_unverified", a.Name, "", "deployed rules %v reference the alias in a form or with an action prolexic doesn't recognise; own-space checks apply whatever the file says", l.ProdRules)
+			a.Role = RoleDeny
 		}
 		ap, ok := c.diff(a, full, add)
 		if !ok {
 			continue
 		}
 		ap.RoleSource = roleSource
-		c.liveChecks(a, full, &ap, own, opts, add)
+		checked := own
+		if a.DenySide() && !fileDenySide {
+			// Validate checked the static list against the file's role, which
+			// said allow; the live side is deny, so check it here too.
+			checked = append(staticOwnSpace(f), own...)
+		}
+		c.liveChecks(a, full, &ap, checked, opts, add)
 		p.Aliases = append(p.Aliases, ap)
 	}
 
@@ -165,7 +175,7 @@ func (c *Checker) diff(a Alias, l LiveAlias, add func(Severity, string, string, 
 	ap := AliasPlan{
 		Name: a.Name, ID: a.ID, Type: l.Type, IPVersion: l.IPVersion, Role: a.Role,
 		ActiveVersion: l.ActiveVersion, ProdVersion: l.ProdVersion,
-		Add: []Entry{}, Remove: []Entry{}, live: l,
+		Add: []Entry{}, Remove: []Entry{}, live: l, desired: []string{}, // never nil: emptying an alias sends []
 	}
 	live := map[string]bool{}
 	ok := true
@@ -255,14 +265,18 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 			add(Error, "own_space_alias", name, "", "own-space alias %q is Akamai-managed; list its prefixes in ownSpace.prefixes instead", name)
 			continue
 		}
-		full, err := store.GetAlias(ctx, l.ID)
+		full, err := withEntries(ctx, store, l)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get own-space alias %s", name)
 		}
 		for _, s := range full.Entries {
-			if v, err := ParseLive(s); err == nil && v.Kind() == KindPrefix {
-				out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name})
+			v, err := ParseLive(s)
+			if err != nil || v.Kind() != KindPrefix {
+				// Skipping it would shrink own space silently.
+				add(Error, "own_space_alias", name, s, "own-space alias entry %q isn't a prefix prolexic can read", s)
+				continue
 			}
+			out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name})
 		}
 	}
 	if extra != nil {
@@ -273,6 +287,33 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 		out = append(out, more...)
 	}
 	return out, nil
+}
+
+// withEntries reads a listed alias's entries from its active version by id:
+// the list already gave the token, so a plan makes one list call instead of
+// one per alias. An API without versions falls back to GetAlias.
+func withEntries(ctx context.Context, store Store, l LiveAlias) (LiveAlias, error) {
+	if l.ActiveVersion == "" {
+		return store.GetAlias(ctx, l.ID)
+	}
+	v, err := store.GetVersion(ctx, l.ID, l.ActiveVersion)
+	if err != nil {
+		return LiveAlias{}, err
+	}
+	l.Entries = v.Entries
+	return l, nil
+}
+
+// staticOwnSpace is the desired file's static own-space list, parsed (Validate
+// already reported any it couldn't parse).
+func staticOwnSpace(f *File) []OwnSpacePrefix {
+	var out []OwnSpacePrefix
+	for _, s := range f.OwnSpace.Prefixes {
+		if v, err := ParseAuthored(s); err == nil && v.Kind() == KindPrefix {
+			out = append(out, OwnSpacePrefix{v.Prefix(), "static"})
+		}
+	}
+	return out
 }
 
 // digest pins what apply will do: per alias, its identity, conflict token

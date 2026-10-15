@@ -44,8 +44,10 @@ type Store struct {
 	// ActivateFails makes activating a new version of the given aliases
 	// fail (re-activating the current one still works, for rollbacks).
 	ActivateFails map[int64]error
-	// GetVersionErr, when set, is returned by GetVersion.
+	// GetVersionErr, when set, is returned by GetVersion for the versions
+	// it accepts (all of them when GetVersionFor is nil).
 	GetVersionErr error
+	GetVersionFor func(id int64, v string) bool
 	// Rules is the deployed ACL version's rules (see UseInRule).
 	Rules []ncf.ACLRule
 	// BigActivates makes a BIG alias's new version active on creation, as
@@ -233,7 +235,7 @@ func (s *Store) GetVersion(_ context.Context, id int64, v string) (ncf.AliasVers
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record("GetVersion")
-	if s.GetVersionErr != nil {
+	if s.GetVersionErr != nil && (s.GetVersionFor == nil || s.GetVersionFor(id, v)) {
 		return ncf.AliasVersion{}, s.GetVersionErr
 	}
 	if s.Unversioned {

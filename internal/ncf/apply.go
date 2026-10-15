@@ -143,7 +143,7 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		v, active, err := c.createVerified(ctx, read, write, ap, comment)
 		res.Aliases[i].Version = v
 		if err != nil {
-			if rerr := rollBack(ctx, write, plan, res, todo); rerr != nil {
+			if rerr := rollBack(ctx, read, write, plan, res, todo); rerr != nil {
 				err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
 			}
 			p, r, ferr := fail(i, err)
@@ -162,7 +162,7 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	// Phase 2: activate. A failure rolls back every alias this apply already
 	// activated, so the reviewed change lands whole or not at all.
 	failActivate := func(i int, err error) (*Plan, *ApplyResult, error) {
-		if rerr := rollBack(ctx, write, plan, res, todo); rerr != nil {
+		if rerr := rollBack(ctx, read, write, plan, res, todo); rerr != nil {
 			err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
 		}
 		return fail(i, err)
@@ -172,13 +172,23 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		if a.Status == StatusActive {
 			continue // the API activated it on creation (BIG upload)
 		}
+		// No ETag: re-read the token right before activating, so another
+		// writer's activation during phase 1 is never silently replaced.
+		if cur, err := activeVersion(ctx, read, a.ID); err != nil {
+			return failActivate(i, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s before activating", a.Name))
+		} else if cur != plan.Aliases[i].ActiveVersion {
+			return failActivate(i, apperr.New(apperr.Conflict, "%s changed during this apply (activeVersion %q, now %q); its version %s was left inactive; re-plan", a.Name, plan.Aliases[i].ActiveVersion, cur, a.Version))
+		}
 		if err := write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
 				return failActivate(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
 			}
-			cur, rerr := read.GetAlias(context.WithoutCancel(ctx), a.ID)
-			if rerr != nil || cur.ActiveVersion != a.Version {
-				return failActivate(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect; check status before re-running", a.Name, a.Version))
+			cur, rerr := activeVersion(context.WithoutCancel(ctx), read, a.ID)
+			if rerr != nil || cur != a.Version {
+				// It may have landed: count it as live so the rollback covers
+				// it (re-activating the replaced version is harmless if not).
+				a.Status = StatusActive
+				return failActivate(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect", a.Name, a.Version))
 			}
 		}
 		a.Status = StatusActive
@@ -228,6 +238,10 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 					return plan, res, err // never written by this apply: not its failure
 				}
 				return fail(i, err)
+			}
+			if prod == "" {
+				delete(target, i) // no deployed rule uses it any more: nothing to wait for
+				continue
 			}
 			if prod != want {
 				pending++
@@ -317,7 +331,9 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	if err == nil && SameEntries(got.Entries, ap.desired) {
 		return v, created.Active || got.Active, nil
 	}
-	live := created.Active || (err == nil && got.Active)
+	// A BIG upload may go live on arrival; when that can't be confirmed either
+	// way, treat it as live, so a failure puts the replaced version back.
+	live := created.Active || (err == nil && got.Active) || (err != nil && ap.Type == "BIG")
 	if !live {
 		if err != nil {
 			return v, false, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s; it was left inactive", ap.Name, v)
@@ -363,7 +379,7 @@ func (r *rolledBack) Unwrap() error { return r.error }
 // rollBack re-activates the replaced version of every alias that went live
 // on upload during this apply's create phase. It tries them all and names
 // the ones it couldn't put back.
-func rollBack(ctx context.Context, write Store, plan *Plan, res *ApplyResult, todo []int) error {
+func rollBack(ctx context.Context, read, write Store, plan *Plan, res *ApplyResult, todo []int) error {
 	var failed []string
 	for _, j := range todo {
 		a := &res.Aliases[j]
@@ -371,6 +387,18 @@ func rollBack(ctx context.Context, write Store, plan *Plan, res *ApplyResult, to
 			continue
 		}
 		prev := plan.Aliases[j].ActiveVersion
+		// Put back only what this apply replaced: if someone else has
+		// activated another version since, leave theirs alone.
+		cur, err := activeVersion(context.WithoutCancel(ctx), read, a.ID)
+		if err == nil && cur == prev {
+			a.Status = StatusRolledBack // already back (or never left)
+			continue
+		}
+		if err == nil && cur != a.Version {
+			a.Error = fmt.Sprintf("not rolled back: %s is now active, activated by someone else", cur)
+			failed = append(failed, a.Name)
+			continue
+		}
 		if err := write.Activate(context.WithoutCancel(ctx), a.ID, prev); err != nil {
 			a.Error = fmt.Sprintf("activated on upload; re-activating %s failed: %v", prev, err)
 			failed = append(failed, a.Name)
@@ -379,9 +407,24 @@ func rollBack(ctx context.Context, write Store, plan *Plan, res *ApplyResult, to
 		a.Status = StatusRolledBack
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("%s still live on an unverified upload; fix by hand", strings.Join(failed, ", "))
+		return fmt.Errorf("%s not rolled back; check each alias by hand", strings.Join(failed, ", "))
 	}
 	return nil
+}
+
+// activeVersion reads one alias's active version from the alias list (no
+// entries): the cheap token re-check before a write.
+func activeVersion(ctx context.Context, read Store, id int64) (string, error) {
+	all, err := read.ListAliases(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, l := range all {
+		if l.ID == id {
+			return l.ActiveVersion, nil
+		}
+	}
+	return "", apperr.New(apperr.NotFound, "alias %d is no longer listed", id)
 }
 
 // landed decides an ambiguous create: exactly one new version means it
