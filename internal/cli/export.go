@@ -78,7 +78,7 @@ func newExportCmd(a *app) *cobra.Command {
 
 func export(ctx context.Context, a *app, file string, all bool, roleFlag string) (output.Document, error) {
 	role := ncf.Role(roleFlag)
-	if role != ncf.RoleDeny && role != ncf.RoleAllow {
+	if !role.Valid() {
 		return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", roleFlag)
 	}
 

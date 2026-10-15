@@ -47,6 +47,9 @@ const (
 	RoleAllow Role = "allow"
 )
 
+// Valid reports whether r is a role an alias can have.
+func (r Role) Valid() bool { return r == RoleDeny || r == RoleAllow }
+
 // Alias is one managed alias: keyed by name, pinned by id, type asserted.
 type Alias struct {
 	Name    string  `json:"name"`
