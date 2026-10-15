@@ -104,8 +104,13 @@ type deploymentStatus struct {
 // Deployment summarises the ACL deployment: the production version and its
 // failed rules, and whether anything is processing.
 func (s *V1) Deployment(ctx context.Context) (ncf.Deployment, error) {
+	return deployment(ctx, s.c, v1Path)
+}
+
+// deployment reads deployment-status, which v1 and v2 share.
+func deployment(ctx context.Context, c *akamai.Client, base string) (ncf.Deployment, error) {
 	var resp deploymentStatus
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v1Path + "/acls/versions/deployment-status"}, &resp); err != nil {
+	if err := c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: base + "/acls/versions/deployment-status"}, &resp); err != nil {
 		return ncf.Deployment{}, err
 	}
 	var d ncf.Deployment
@@ -127,6 +132,11 @@ func (s *V1) Deployment(ctx context.Context) (ncf.Deployment, error) {
 
 // Limits reads the per-type alias limits from /stats.
 func (s *V1) Limits(ctx context.Context) ([]ncf.Limit, error) {
+	return limits(ctx, s.c, v1Path)
+}
+
+// limits reads /stats; its alias limits have the same shape in v1 and v2.
+func limits(ctx context.Context, c *akamai.Client, base string) ([]ncf.Limit, error) {
 	var resp struct {
 		Aliases []struct {
 			Type          string `json:"type"`
@@ -135,7 +145,7 @@ func (s *V1) Limits(ctx context.Context) ([]ncf.Limit, error) {
 			DisabledCount int    `json:"disabledCount"`
 		} `json:"aliases"`
 	}
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v1Path + "/stats"}, &resp); err != nil {
+	if err := c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: base + "/stats"}, &resp); err != nil {
 		return nil, err
 	}
 	out := make([]ncf.Limit, len(resp.Aliases))

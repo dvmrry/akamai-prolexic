@@ -1,0 +1,234 @@
+package ncfapi
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+)
+
+const v2Path = "/network-cloud-firewall/v2"
+
+// V2 is ncf.Store over NCF v2, where aliases are versioned.
+//
+// v2 has no "get one alias": the alias list carries each alias's active and
+// production version ids (but no entries), and entries come from the
+// versions endpoints. GetAlias therefore lists aliases and reads the active
+// version.
+type V2 struct {
+	c *akamai.Client
+}
+
+// NewV2 wraps a transport client.
+func NewV2(c *akamai.Client) *V2 { return &V2{c: c} }
+
+var _ ncf.Store = (*V2)(nil)
+
+// v2Alias is one item of GET /aliases.
+type v2Alias struct {
+	AccountID          string `json:"accountId"`
+	AliasID            int64  `json:"aliasId"`
+	AliasName          string `json:"aliasName"`
+	AliasType          string `json:"aliasType"`
+	IPVersion          string `json:"ipVersion"`
+	IsCustomerEditable bool   `json:"isCustomerEditable"`
+	ActiveVersion      *struct {
+		Version      string `json:"version"`
+		EntriesCount int    `json:"entriesCount"`
+	} `json:"activeVersion"`
+	ProdVersion *struct {
+		Version string `json:"version"`
+	} `json:"prodVersion"`
+	Versions []string `json:"versions"`
+}
+
+func (a v2Alias) live() ncf.LiveAlias {
+	l := ncf.LiveAlias{
+		ID: a.AliasID, Name: a.AliasName, Type: a.AliasType, IPVersion: a.IPVersion,
+		Editable: a.IsCustomerEditable, AccountID: a.AccountID, Versions: len(a.Versions),
+	}
+	if a.ActiveVersion != nil {
+		l.ActiveVersion, l.EntriesCount = a.ActiveVersion.Version, a.ActiveVersion.EntriesCount
+	}
+	if a.ProdVersion != nil {
+		l.ProdVersion = a.ProdVersion.Version
+	}
+	return l
+}
+
+// v2Version is the alias-version shape (get, active, create).
+type v2Version struct {
+	AliasID  int64    `json:"aliasId"`
+	Version  string   `json:"version"`
+	IsActive bool     `json:"isActive"`
+	Entries  []string `json:"entries"`
+}
+
+func (s *V2) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	var resp []v2Alias
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v2Path + "/aliases"}, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]ncf.LiveAlias, len(resp))
+	for i, a := range resp {
+		out[i] = a.live()
+	}
+	return out, nil
+}
+
+// GetAlias returns one alias with its active version's entries. The active
+// version id comes from the same response as the entries, so the conflict
+// token always describes the entries returned with it.
+func (s *V2) GetAlias(ctx context.Context, id int64) (ncf.LiveAlias, error) {
+	all, err := s.ListAliases(ctx)
+	if err != nil {
+		return ncf.LiveAlias{}, err
+	}
+	var l ncf.LiveAlias
+	found := false
+	for _, a := range all {
+		if a.ID == id {
+			l, found = a, true
+		}
+	}
+	if !found {
+		return ncf.LiveAlias{}, apperr.New(apperr.NotFound, "no alias %d", id)
+	}
+	var v v2Version
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.aliasPath(id) + "/versions/active"}, &v); err != nil {
+		return ncf.LiveAlias{}, err
+	}
+	l.ActiveVersion, l.Entries = v.Version, v.Entries
+	if l.Entries == nil {
+		l.Entries = []string{}
+	}
+	return l, nil
+}
+
+// ListVersions pages through the full version history (metadata only).
+func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, error) {
+	var out []ncf.AliasVersion
+	for page := 0; ; page++ {
+		var resp struct {
+			Content []v2Version `json:"content"`
+			Last    *bool       `json:"last"`
+		}
+		q := url.Values{"page": {strconv.Itoa(page)}, "size": {"100"}}
+		if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.aliasPath(id) + "/versions", Query: q}, &resp); err != nil {
+			return nil, err
+		}
+		for _, v := range resp.Content {
+			out = append(out, ncf.AliasVersion{Version: v.Version, Active: v.IsActive})
+		}
+		// Stop on the last page, an empty page, or a page shape without
+		// paging fields; never loop forever on a drifted response.
+		if resp.Last == nil || *resp.Last || len(resp.Content) == 0 || page > 100 {
+			return out, nil
+		}
+	}
+}
+
+func (s *V2) GetVersion(ctx context.Context, id int64, version string) (ncf.AliasVersion, error) {
+	var v v2Version
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.versionPath(id, version)}, &v); err != nil {
+		return ncf.AliasVersion{}, err
+	}
+	if v.Entries == nil {
+		v.Entries = []string{}
+	}
+	return ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Entries: v.Entries}, nil
+}
+
+// CreateVersion creates an inactive version for SOURCE and DIPA aliases
+// (isActive must be sent false: the API defaults it to true). BIG aliases
+// take a multipart .txt upload, which has no inactive option; the response
+// says whether it went live.
+func (s *V2) CreateVersion(ctx context.Context, alias ncf.LiveAlias, entries []string, comment string) (ncf.AliasVersion, error) {
+	var v v2Version
+	var req akamai.Request
+	if alias.Type == "BIG" {
+		body, contentType, err := bigUpload(alias, entries)
+		if err != nil {
+			return ncf.AliasVersion{}, err
+		}
+		req = akamai.Request{Method: http.MethodPost, Path: v2Path + "/big-aliases/" + strconv.FormatInt(alias.ID, 10) + "/versions", Body: body, ContentType: contentType}
+	} else {
+		req = akamai.Request{Method: http.MethodPost, Path: s.aliasPath(alias.ID) + "/versions", JSON: struct {
+			Entries       []string `json:"entries"`
+			SourceVersion string   `json:"sourceVersion"`
+			IsActive      bool     `json:"isActive"`
+			Comments      string   `json:"comments,omitempty"`
+		}{entries, alias.ActiveVersion, false, truncate(comment, 255)}}
+	}
+	if err := s.c.Do(ctx, req, &v); err != nil {
+		return ncf.AliasVersion{}, err
+	}
+	if v.Version == "" {
+		// Created, but we can't tell which version: as ambiguous as a lost
+		// response, so the caller proves it from the version list.
+		return ncf.AliasVersion{}, &apperr.Error{Code: apperr.Upstream, Message: "create version: the response names no version",
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Ambiguous: true}}
+	}
+	return ncf.AliasVersion{Version: v.Version, Active: v.IsActive}, nil
+}
+
+// bigUpload is the multipart form of POST /big-aliases/{id}/versions: the
+// entries as a .txt file, one per line, plus aliasName and ipVersion.
+func bigUpload(alias ncf.LiveAlias, entries []string) ([]byte, string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if err := w.WriteField("aliasName", alias.Name); err != nil {
+		return nil, "", err
+	}
+	if err := w.WriteField("ipVersion", alias.IPVersion); err != nil {
+		return nil, "", err
+	}
+	fw, err := w.CreateFormFile("file", alias.Name+".txt")
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := fmt.Fprint(fw, strings.Join(entries, "\n")+"\n"); err != nil {
+		return nil, "", err
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.FormDataContentType(), nil
+}
+
+func (s *V2) Activate(ctx context.Context, id int64, version string) error {
+	return s.c.Do(ctx, akamai.Request{Method: http.MethodPatch, Path: s.versionPath(id, version) + "/activate"}, nil)
+}
+
+// Deployment and Limits have the same shapes as v1 at the v2 path.
+func (s *V2) Deployment(ctx context.Context) (ncf.Deployment, error) {
+	return deployment(ctx, s.c, v2Path)
+}
+
+func (s *V2) Limits(ctx context.Context) ([]ncf.Limit, error) {
+	return limits(ctx, s.c, v2Path)
+}
+
+func (s *V2) aliasPath(id int64) string {
+	return v2Path + "/aliases/" + strconv.FormatInt(id, 10)
+}
+
+func (s *V2) versionPath(id int64, version string) string {
+	// The transport escapes paths itself; version ids are like "V1".
+	return s.aliasPath(id) + "/versions/" + version
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
