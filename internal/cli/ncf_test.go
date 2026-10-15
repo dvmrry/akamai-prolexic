@@ -349,7 +349,7 @@ func TestPlanRejectsOurOwnASNFromBGPSessions(t *testing.T) {
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
 	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != int(apperr.Validation) || len(doc.Findings) != 1 || doc.Findings[0].Code != "own_space" ||
-		!strings.Contains(doc.Findings[0].Message, "our own AS (analytics example-a/DC-A)") {
+		!strings.Contains(doc.Findings[0].Message, "our own AS (analytics example-a)") {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
 	}
 }

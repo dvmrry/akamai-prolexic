@@ -7,13 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math"
-	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -422,88 +419,66 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 			Message: "--no-analytics-own-space: Prolexic Analytics protected prefixes and own AS numbers were not checked"})
 		return opts, warnings
 	}
-	// Both own-space sources need the Analytics client and every customer name
-	// (in use or not: an inactive name's space is still ours); resolve them
-	// once per plan.
-	var (
-		api   *analytics.Client
-		names []string
-	)
-	resolve := func(ctx context.Context) error {
-		if api != nil {
-			return nil
+	// Own space comes from analytics.ProtectedFor, the same data `prolexic
+	// protected` shows, fetched once per plan for every customer name (in use
+	// or not: an inactive name's space is still ours). A failed name fails the
+	// plan: the own-space check can't be partial.
+	var cached []analytics.Protected
+	protected := func(ctx context.Context) ([]analytics.Protected, error) {
+		if cached != nil {
+			return cached, nil
 		}
-		c, err := a.analytics()
+		api, err := a.analytics()
 		if err != nil {
-			return err
-		}
-		all, err := c.CustomerNames(ctx)
-		if err != nil {
-			return apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
-		}
-		for _, n := range all {
-			if !slices.Contains(names, n.Name) {
-				names = append(names, n.Name)
-			}
-		}
-		slices.Sort(names)
-		api = c
-		return nil
-	}
-	opts.OwnSpace = func(ctx context.Context) ([]ncf.OwnSpacePrefix, error) {
-		if err := resolve(ctx); err != nil {
 			return nil, err
 		}
-		// A failed name fails the plan: the own-space check can't be
-		// partial.
-		sets, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.MetricTypes, error) {
-			m, err := api.MetricTypes(ctx, name)
-			return []analytics.MetricTypes{m}, err
+		names, err := analytics.AllCustomers(ctx, api, nil)
+		if err != nil {
+			return nil, err
+		}
+		rows, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.Protected, error) {
+			p, err := api.ProtectedFor(ctx, name)
+			return []analytics.Protected{p}, err
 		})
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range rows {
+			// Empty means unknown, not "nothing protected": say so.
+			if len(p.Prefixes) == 0 {
+				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_empty",
+					Message: fmt.Sprintf("Prolexic Analytics reports no protected prefixes for customer name %s", p.Customer)})
+			}
+			if p.NoRouted {
+				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
+					Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", p.Customer)})
+			}
+		}
+		cached = rows
+		return rows, nil
+	}
+	opts.OwnSpace = func(ctx context.Context) ([]ncf.OwnSpacePrefix, error) {
+		rows, err := protected(ctx)
 		if err != nil {
 			return nil, err
 		}
 		var out []ncf.OwnSpacePrefix
-		for _, m := range sets {
-			if len(m.Prefixes) == 0 {
-				// Empty means unknown, not "nothing protected".
-				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_empty",
-					Message: fmt.Sprintf("Prolexic Analytics reports no protected prefixes for customer name %s", m.Customer)})
-			}
-			for _, p := range m.Prefixes {
-				out = append(out, ncf.OwnSpacePrefix{Prefix: p, Source: "analytics " + m.Customer + "/" + m.Site})
+		for _, p := range rows {
+			for _, prefix := range p.Prefixes {
+				out = append(out, ncf.OwnSpacePrefix{Prefix: prefix, Source: "analytics " + p.Customer + "/" + p.Site})
 			}
 		}
 		return out, nil
 	}
-	var mu sync.Mutex // FanOut runs names concurrently
 	opts.OwnASNs = func(ctx context.Context) ([]ncf.OwnASN, error) {
-		if err := resolve(ctx); err != nil {
-			return nil, err
-		}
-		// The AS our routers announce from, per BGP session; a failed name
-		// fails the plan, as for prefixes.
-		sessions, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.BGPSession, error) {
-			s, err := api.BGPSessions(ctx, name)
-			if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
-				// A customer name without Routed has no BGP sessions; say so,
-				// as for a name with no protected prefixes, so a wrong path or
-				// an outage that 404s every name doesn't pass unnoticed.
-				mu.Lock()
-				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
-					Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", name)})
-				mu.Unlock()
-				return nil, nil
-			}
-			return s, err
-		})
+		rows, err := protected(ctx)
 		if err != nil {
 			return nil, err
 		}
 		var out []ncf.OwnASN
-		for _, s := range sessions {
-			if s.ASN > 0 && s.ASN <= math.MaxUint32 {
-				out = append(out, ncf.OwnASN{ASN: uint32(s.ASN), Source: "analytics " + s.Customer + "/" + s.DataCenter})
+		for _, p := range rows {
+			for _, asn := range p.ASNs {
+				out = append(out, ncf.OwnASN{ASN: uint32(asn), Source: "analytics " + p.Customer})
 			}
 		}
 		return out, nil

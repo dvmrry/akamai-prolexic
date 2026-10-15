@@ -55,6 +55,10 @@
             "description": "The customer name queried.",
             "type": "string"
           },
+          "noRouted": {
+            "description": "No BGP sessions (404): AS numbers unknown.",
+            "type": "boolean"
+          },
           "notes": {
             "description": "What an empty list means.",
             "items": {

@@ -19,6 +19,9 @@ type Protected struct {
 	Prefixes []netip.Prefix `json:"prefixes" doc:"Flow Based Monitoring subnets, masked, sorted."`
 	ASNs     []int64        `json:"asns" doc:"Own AS numbers from the BGP sessions, sorted."`
 	Notes    []string       `json:"notes" doc:"What an empty list means."`
+	// NoRouted is set when the name has no BGP sessions (a 404): its AS
+	// numbers are unknown, not none.
+	NoRouted bool `json:"noRouted,omitempty" doc:"No BGP sessions (404): AS numbers unknown."`
 }
 
 // ProtectedFor gathers one customer name's protected prefixes and own AS
@@ -44,6 +47,7 @@ func (c *Client) ProtectedFor(ctx context.Context, customer string) (Protected, 
 			return out, err
 		}
 		out.Notes = append(out.Notes, "no Routed: no BGP sessions (404), so no AS numbers")
+		out.NoRouted = true
 		return out, nil
 	}
 	for _, s := range sessions {
