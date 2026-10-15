@@ -8,23 +8,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
-
-// TimeSeriesQuery is GET /time-series-data's query. Samples 0 omits
-// samplingSize (the API then returns everything in the window).
-type TimeSeriesQuery struct {
-	Destinations []string
-	Locations    []string
-	Source       string
-	Sum          bool
-	Samples      int
-	Start        time.Time
-	End          time.Time
-}
 
 // TimeSeriesPoint is one value of a destination's facet. Key is the map key
 // the API used, normally an epoch timestamp.
@@ -37,18 +24,22 @@ type TimeSeriesPoint struct {
 }
 
 // TimeSeries returns the flattened points of GET /time-series-data, sorted by
-// destination, facet, then time (then key). A 404 means no data. A response
+// destination, facet, then time (then key). A query with samples 0 omits samplingSize, so the API returns
+// everything in the window. A 404 means no data. A response
 // entry that isn't a map of maps of numbers is skipped.
 func (c *Client) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]TimeSeriesPoint, error) {
+	if !q.ok {
+		return nil, apperr.New(apperr.Bug, "TimeSeries: query not from ParseTimeSeriesQuery")
+	}
 	v := url.Values{}
-	v.Set("destinations", strings.Join(q.Destinations, ","))
-	v.Set("locations", strings.Join(q.Locations, ","))
-	v.Set("source", q.Source)
-	v.Set("sum", strconv.FormatBool(q.Sum))
-	v.Set("startTime", strconv.FormatInt(q.Start.Unix(), 10))
-	v.Set("endTime", strconv.FormatInt(q.End.Unix(), 10))
-	if q.Samples > 0 {
-		v.Set("samplingSize", strconv.Itoa(q.Samples))
+	v.Set("destinations", strings.Join(q.destinations, ","))
+	v.Set("locations", strings.Join(q.locations, ","))
+	v.Set("source", q.source)
+	v.Set("sum", strconv.FormatBool(q.sum))
+	v.Set("startTime", strconv.FormatInt(q.start.Unix(), 10))
+	v.Set("endTime", strconv.FormatInt(q.end.Unix(), 10))
+	if q.samples > 0 {
+		v.Set("samplingSize", strconv.Itoa(q.samples))
 	}
 	var resp map[string]json.RawMessage
 	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: basePath + "/time-series-data", Query: v}, &resp); err != nil {

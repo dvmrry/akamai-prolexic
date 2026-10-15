@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
@@ -28,20 +27,6 @@ func (n *Number) UnmarshalJSON(b []byte) error {
 
 // JSONSchema describes the encoded form: a number.
 func (Number) JSONSchema() map[string]any { return map[string]any{"type": "number"} }
-
-// MetricsMaxSpan is the longest window POST /metrics accepts.
-const MetricsMaxSpan = 90 * 24 * time.Hour
-
-// MetricQuery selects what POST /metrics returns for one customer name.
-// Services maps a service (connect, mitigationPost, mitigationPre, proxy,
-// routed) to metric names; FBM entries are objects and go in FBM.
-type MetricQuery struct {
-	Services map[string][]string
-	FBM      []FBMMetric
-	Start    time.Time
-	End      time.Time
-	Samples  int
-}
 
 // FBMMetric is one Flow Based Monitoring metric. Subnet and IP are exclusive.
 type FBMMetric struct {
@@ -66,18 +51,21 @@ type MetricSeries struct {
 // Metrics runs the metrics query for one customer name. The POST only reads,
 // so it is marked ReadOnly. A 404 means the window holds no data: zero rows.
 func (c *Client) Metrics(ctx context.Context, customer string, q MetricQuery) ([]MetricSeries, error) {
+	if !q.ok {
+		return nil, apperr.New(apperr.Bug, "Metrics: query not from ParseMetricQuery")
+	}
 	types := map[string]any{}
-	for svc, ms := range q.Services {
+	for svc, ms := range q.services {
 		types[svc] = ms
 	}
-	if len(q.FBM) > 0 {
-		types["fbm"] = q.FBM
+	if len(q.fbm) > 0 {
+		types["fbm"] = q.fbm
 	}
 	body := map[string]any{
 		"contract": customer,
-		"start":    q.Start.Unix(),
-		"end":      q.End.Unix(),
-		"samples":  q.Samples,
+		"start":    q.start.Unix(),
+		"end":      q.end.Unix(),
+		"samples":  q.samples,
 		"type":     types,
 	}
 	var resp struct {

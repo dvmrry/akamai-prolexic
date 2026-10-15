@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"regexp"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -41,9 +39,6 @@ func (d *TimeSeriesDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-// locationRE is the API's own pattern for one location.
-var locationRE = regexp.MustCompile(`^([a-z]{3}[0-9]|agr)$`)
-
 func newTimeSeriesCmd(a *app) *cobra.Command {
 	var dests, locs []string
 	var source string
@@ -71,31 +66,11 @@ func newTimeSeriesCmd(a *app) *cobra.Command {
 }
 
 func timeSeries(ctx context.Context, a *app, dests, locs []string, source string, sum bool, samples int, win windowFlags) (output.Document, error) {
-	if len(dests) == 0 {
-		return nil, apperr.New(apperr.Usage, "--destination is required")
-	}
-	for _, d := range dests {
-		if _, err := analytics.ParsePrefix(d); err != nil {
-			return nil, apperr.New(apperr.Usage, "--destination %q: not an address or CIDR block", d)
-		}
-	}
-	if len(locs) == 0 {
-		locs = []string{"agr"}
-	}
-	for _, l := range locs {
-		if !locationRE.MatchString(l) {
-			return nil, apperr.New(apperr.Usage, "--location %q: want a data center like mia4, or agr", l)
-		}
-	}
-	switch source {
-	case "both", "access_flow", "border_flow":
-	default:
-		return nil, apperr.New(apperr.Usage, "--source %q: want both, access_flow or border_flow", source)
-	}
-	if samples < 0 {
-		return nil, apperr.New(apperr.Usage, "--samples can't be negative")
-	}
 	start, end, _, err := win.resolve(a.env.Now())
+	if err != nil {
+		return nil, err
+	}
+	q, err := analytics.ParseTimeSeriesQuery(dests, locs, source, sum, samples, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -103,14 +78,12 @@ func timeSeries(ctx context.Context, a *app, dests, locs []string, source string
 	if err != nil {
 		return nil, err
 	}
-	pts, err := api.TimeSeries(ctx, analytics.TimeSeriesQuery{
-		Destinations: dests, Locations: locs, Source: source, Sum: sum, Samples: samples, Start: start, End: end,
-	})
+	pts, err := api.TimeSeries(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 	return &TimeSeriesDoc{
-		Destinations: dests, Locations: locs, Source: source,
+		Destinations: q.Destinations(), Locations: q.Locations(), Source: q.Source(),
 		Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339), Points: nonNil(pts),
 	}, nil
 }

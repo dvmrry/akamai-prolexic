@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -48,65 +46,7 @@ func (d *MetricsDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-// metricServices are the non-FBM services of the request and their metrics.
-var metricServices = map[string][]string{
-	"connect":        {"bandwidthIn", "packetsIn"},
-	"mitigationPost": {"packets", "bandwidth"},
-	"mitigationPre":  {"packets", "bandwidth"},
-	"proxy":          {"latency", "bandwidthIn", "bandwidthOut", "connections", "packetsOut", "requests", "packetsIn"},
-	"routed":         {"bandwidthIn", "packetsIn"},
-}
-
-var fbmProtocols = []string{"total", "icmp", "igmp", "udp", "tcp"}
-
 const typeHelp = "SERVICE:METRIC, or fbm:METRIC:PROTOCOL (repeatable or comma-separated); e.g. routed:bandwidthIn, fbm:bandwidth:total"
-
-// parseMetricTypes turns --type values into the request's type object.
-func parseMetricTypes(types []string, subnet, ip string) (map[string][]string, []analytics.FBMMetric, error) {
-	if len(types) == 0 {
-		return nil, nil, apperr.New(apperr.Usage, "--type is required: %s", typeHelp)
-	}
-	if subnet != "" && ip != "" {
-		return nil, nil, apperr.New(apperr.Usage, "--subnet and --ip are exclusive")
-	}
-	services := map[string][]string{}
-	var fbm []analytics.FBMMetric
-	for _, t := range types {
-		parts := strings.Split(t, ":")
-		svc := parts[0]
-		if svc == "fbm" {
-			if len(parts) != 3 || !slices.Contains([]string{"bandwidth", "packets"}, parts[1]) || !slices.Contains(fbmProtocols, parts[2]) {
-				return nil, nil, apperr.New(apperr.Usage, "--type %q: want fbm:bandwidth|packets:%s", t, strings.Join(fbmProtocols, "|"))
-			}
-			m := analytics.FBMMetric{Metric: parts[1], Protocol: parts[2], Subnet: subnet, IP: ip}
-			if !slices.Contains(fbm, m) {
-				fbm = append(fbm, m)
-			}
-			continue
-		}
-		allowed, ok := metricServices[svc]
-		if !ok || len(parts) != 2 || !slices.Contains(allowed, parts[1]) {
-			return nil, nil, apperr.New(apperr.Usage, "--type %q: want %s", t, typeHelp)
-		}
-		if !slices.Contains(services[svc], parts[1]) {
-			services[svc] = append(services[svc], parts[1])
-		}
-	}
-	if (subnet != "" || ip != "") && len(fbm) == 0 {
-		return nil, nil, apperr.New(apperr.Usage, "--subnet and --ip apply to fbm types only")
-	}
-	if len(fbm) > 0 && subnet == "" && ip == "" {
-		// The API rejects every such request (400 ILLEGAL_ARGUMENT): catch it here.
-		return nil, nil, apperr.New(apperr.Usage, "fbm types need --subnet or --ip")
-	}
-	for _, ms := range services {
-		slices.Sort(ms)
-	}
-	slices.SortFunc(fbm, func(x, y analytics.FBMMetric) int {
-		return cmp.Or(cmp.Compare(x.Metric, y.Metric), cmp.Compare(x.Protocol, y.Protocol))
-	})
-	return services, fbm, nil
-}
 
 func newMetricsCmd(a *app) *cobra.Command {
 	var customers, types []string
@@ -133,25 +73,18 @@ func newMetricsCmd(a *app) *cobra.Command {
 }
 
 func metrics(ctx context.Context, a *app, customers, types []string, subnet, ip string, samples int, win windowFlags) (output.Document, error) {
-	services, fbm, err := parseMetricTypes(types, subnet, ip)
-	if err != nil {
-		return nil, err
-	}
-	if samples < 1 {
-		return nil, apperr.New(apperr.Usage, "--samples must be at least 1")
-	}
 	start, end, _, err := win.resolve(a.env.Now())
 	if err != nil {
 		return nil, err
 	}
-	if end.Sub(start) > analytics.MetricsMaxSpan {
-		return nil, apperr.New(apperr.Usage, "the window is longer than the API's maximum of 90 days")
+	q, err := analytics.ParseMetricQuery(types, subnet, ip, start, end, samples)
+	if err != nil {
+		return nil, err
 	}
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err
 	}
-	q := analytics.MetricQuery{Services: services, FBM: fbm, Start: start, End: end, Samples: samples}
 	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, func(ctx context.Context, name string) ([]analytics.MetricSeries, error) {
 		return api.Metrics(ctx, name, q)
 	})
