@@ -149,18 +149,14 @@ func metrics(ctx context.Context, a *app, customers, types []string, subnet, ip 
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
-		return nil, err
-	}
 	q := analytics.MetricQuery{Services: services, FBM: fbm, Start: start, End: end, Samples: samples}
-	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.MetricSeries, error) {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, func(ctx context.Context, name string) ([]analytics.MetricSeries, error) {
 		return api.Metrics(ctx, name, q)
 	})
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
+	if res == nil {
+		return nil, err
 	}
-	slices.SortStableFunc(rows, func(x, y analytics.MetricSeries) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.MetricSeries) int {
 		return cmp.Or(
 			cmp.Compare(x.Customer, y.Customer),
 			cmp.Compare(x.Service, y.Service),
@@ -171,7 +167,7 @@ func metrics(ctx context.Context, a *app, customers, types []string, subnet, ip 
 		)
 	})
 	return &MetricsDoc{
-		Customers: names, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
-		Series: nonNil(rows), Failures: nonNil(failures),
+		Customers: res.Customers, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
+		Series: res.Rows, Failures: res.Failures,
 	}, err
 }

@@ -65,17 +65,13 @@ func protected(ctx context.Context, a *app, customers []string) (output.Document
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.AllCustomers(ctx, api, customers)
-	if err != nil {
-		return nil, err
-	}
-	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.Protected, error) {
+	res, err := analytics.ForCustomers(ctx, api, analytics.AllCustomers, customers, func(ctx context.Context, name string) ([]analytics.Protected, error) {
 		p, err := api.ProtectedFor(ctx, name)
 		return []analytics.Protected{p}, err
 	})
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
+	if res == nil {
+		return nil, err
 	}
-	slices.SortStableFunc(rows, func(x, y analytics.Protected) int { return cmp.Compare(x.Customer, y.Customer) })
-	return &ProtectedDoc{Customers: names, Protected: nonNil(rows), Failures: nonNil(failures)}, err
+	slices.SortStableFunc(res.Rows, func(x, y analytics.Protected) int { return cmp.Compare(x.Customer, y.Customer) })
+	return &ProtectedDoc{Customers: res.Customers, Protected: res.Rows, Failures: res.Failures}, err
 }

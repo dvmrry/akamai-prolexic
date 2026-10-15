@@ -36,3 +36,15 @@ func TestUpstreamOfFindsNestedDetail(t *testing.T) {
 		t.Errorf("UpstreamOf = %+v, want status 503", got)
 	}
 }
+
+func TestIsNotFound(t *testing.T) {
+	notFound := Wrap(NotFound, &Error{Code: NotFound, Message: "get", Upstream: &UpstreamDetail{Status: 404}}, "read")
+	if !IsNotFound(notFound) {
+		t.Error("a wrapped upstream 404 is not found")
+	}
+	for _, err := range []error{nil, New(NotFound, "no such alias"), &Error{Code: Upstream, Upstream: &UpstreamDetail{Status: 503}}} {
+		if IsNotFound(err) {
+			t.Errorf("%v: only an upstream 404 counts", err)
+		}
+	}
+}

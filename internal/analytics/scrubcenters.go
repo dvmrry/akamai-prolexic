@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 // ScrubCenters lists the active scrub centers (GET /scrub-centers), sorted and
@@ -14,7 +15,7 @@ import (
 func (c *Client) ScrubCenters(ctx context.Context) ([]string, error) {
 	var raw []json.RawMessage
 	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: basePath + "/scrub-centers"}, &raw); err != nil {
-		if isNotFound(err) {
+		if apperr.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err

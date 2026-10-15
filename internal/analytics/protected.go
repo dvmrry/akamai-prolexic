@@ -43,7 +43,7 @@ func (c *Client) ProtectedFor(ctx context.Context, customer string) (Protected, 
 	}
 	sessions, err := c.BGPSessions(ctx, customer)
 	if err != nil {
-		if !isNotFound(err) {
+		if !apperr.IsNotFound(err) {
 			return out, err
 		}
 		out.Notes = append(out.Notes, "no Routed: no BGP sessions (404), so no AS numbers")

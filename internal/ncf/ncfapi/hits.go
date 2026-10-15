@@ -125,12 +125,15 @@ func windowQuery(start, end time.Time) url.Values {
 
 // RuleTimeSeries reads a rule's matches over [start, end).
 func (s *V2) RuleTimeSeries(ctx context.Context, rule string, start, end time.Time) (HitSeries, error) {
+	return s.ruleSeries(ctx, v2Path+"/rule-hits/rules/"+rule+"/time-series", start, end)
+}
+
+// ruleSeries reads a rule's hit time series. A 404 means no hits in this
+// window, not a failure.
+func (s *V2) ruleSeries(ctx context.Context, path string, start, end time.Time) (HitSeries, error) {
 	var w seriesWire
-	req := akamai.Request{Method: http.MethodGet, Path: v2Path + "/rule-hits/rules/" + rule + "/time-series", Query: windowQuery(start, end)}
-	if err := s.c.Do(ctx, req, &w); err != nil {
-		if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
-			return w.series(start, end), nil // 404: no hits in this window, not a failure
-		}
+	req := akamai.Request{Method: http.MethodGet, Path: path, Query: windowQuery(start, end)}
+	if err := s.c.Do(ctx, req, &w); err != nil && !apperr.IsNotFound(err) {
 		return HitSeries{}, err
 	}
 	return w.series(start, end), nil

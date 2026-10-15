@@ -88,7 +88,7 @@ func (c *Client) AttackReports(ctx context.Context, customer string, start, end 
 	}
 	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &resp); err != nil {
 		// Live answers 404 NOT_FOUND, not an empty list, for a window with no attacks.
-		if u := apperr.UpstreamOf(err); u != nil && u.Status == http.StatusNotFound {
+		if apperr.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err

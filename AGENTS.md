@@ -41,7 +41,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | `internal/jsonschema` | schemas derived from Go types |
 | `internal/edgegrid` | credentials and request signing |
 | `internal/akamai` | the HTTP transport: retries for reads only, ambiguity marking for writes, error classification |
-| `internal/analytics` | Prolexic Analytics client; `FanOut` over customer names |
+| `internal/analytics` | Prolexic Analytics client; `ForCustomers` runs a query once per customer name (commands use it, not `FanOut` directly) |
 | `internal/networkhealth` | Network Health client |
 | `internal/ncf` | the desired-state core: entries, desired file, checks, role derivation, plan, apply, the `Store` port |
 | `internal/ncf/ncfapi` | `Store` and reads over NCF v2 |

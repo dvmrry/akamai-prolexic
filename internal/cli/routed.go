@@ -62,15 +62,11 @@ func routedSessions(ctx context.Context, a *app, customers []string) (output.Doc
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, api.BGPSessions)
+	if res == nil {
 		return nil, err
 	}
-	rows, failures, err := analytics.FanOut(ctx, names, api.BGPSessions)
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
-	}
-	slices.SortStableFunc(rows, func(x, y analytics.BGPSession) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.BGPSession) int {
 		return cmp.Or(
 			cmp.Compare(x.Customer, y.Customer),
 			cmp.Compare(x.DataCenter, y.DataCenter),
@@ -79,7 +75,7 @@ func routedSessions(ctx context.Context, a *app, customers []string) (output.Doc
 			cmp.Compare(rowKey(x), rowKey(y)), // full tie-break: stable output whatever the API order
 		)
 	})
-	return &RoutedSessionsDoc{Customers: names, Sessions: nonNil(rows), Failures: nonNil(failures)}, err
+	return &RoutedSessionsDoc{Customers: res.Customers, Sessions: res.Rows, Failures: res.Failures}, err
 }
 
 // analytics is the Prolexic Analytics client, over the read credentials.

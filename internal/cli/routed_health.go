@@ -61,20 +61,16 @@ func routedHealth(ctx context.Context, a *app, customers []string) (output.Docum
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, api.TunnelHealth)
+	if res == nil {
 		return nil, err
 	}
-	rows, failures, err := analytics.FanOut(ctx, names, api.TunnelHealth)
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
-	}
-	slices.SortStableFunc(rows, func(x, y analytics.TunnelHealth) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.TunnelHealth) int {
 		return cmp.Or(
 			cmp.Compare(x.Customer, y.Customer),
 			cmp.Compare(x.AkamaiLocation, y.AkamaiLocation),
 			cmp.Compare(x.RouterName, y.RouterName),
 		)
 	})
-	return &RoutedHealthDoc{Customers: names, Health: nonNil(rows), Failures: nonNil(failures)}, err
+	return &RoutedHealthDoc{Customers: res.Customers, Health: res.Rows, Failures: res.Failures}, err
 }

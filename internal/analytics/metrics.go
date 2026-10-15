@@ -29,11 +29,6 @@ func (n *Number) UnmarshalJSON(b []byte) error {
 // JSONSchema describes the encoded form: a number.
 func (Number) JSONSchema() map[string]any { return map[string]any{"type": "number"} }
 
-func isNotFound(err error) bool {
-	u := apperr.UpstreamOf(err)
-	return u != nil && u.Status == http.StatusNotFound
-}
-
 // MetricsMaxSpan is the longest window POST /metrics accepts.
 const MetricsMaxSpan = 90 * 24 * time.Hour
 
@@ -91,7 +86,7 @@ func (c *Client) Metrics(ctx context.Context, customer string, q MetricQuery) ([
 	}
 	err := c.c.Do(ctx, akamai.Request{Method: http.MethodPost, Path: basePath + "/metrics", JSON: body, ReadOnly: true}, &resp)
 	if err != nil {
-		if isNotFound(err) {
+		if apperr.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err

@@ -80,11 +80,7 @@ func events(ctx context.Context, a *app, customers []string, criticalOnly bool, 
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
-		return nil, err
-	}
-	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.EventRow, error) {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, func(ctx context.Context, name string) ([]analytics.EventRow, error) {
 		crit, err := api.CriticalEvents(ctx, name)
 		if err != nil || criticalOnly {
 			return crit, err
@@ -92,17 +88,17 @@ func events(ctx context.Context, a *app, customers []string, criticalOnly bool, 
 		evs, err := api.Events(ctx, name)
 		return append(crit, evs...), err
 	})
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
+	if res == nil {
+		return nil, err
 	}
-	doc := &EventsDoc{Customers: names}
+	doc := &EventsDoc{Customers: res.Customers}
 	if windowed {
-		rows = slices.DeleteFunc(rows, func(r analytics.EventRow) bool { return !r.Overlaps(start, end) })
+		res.Rows = slices.DeleteFunc(res.Rows, func(r analytics.EventRow) bool { return !r.Overlaps(start, end) })
 		doc.Start, doc.End = start.Format(time.RFC3339), end.Format(time.RFC3339)
 	}
-	slices.SortStableFunc(rows, func(x, y analytics.EventRow) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.EventRow) int {
 		return cmp.Or(cmp.Compare(x.At(), y.At()), cmp.Compare(x.Customer, y.Customer), cmp.Compare(x.Kind, y.Kind), cmp.Compare(rowKey(x), rowKey(y)))
 	})
-	doc.Events, doc.Failures = nonNil(rows), nonNil(failures)
+	doc.Events, doc.Failures = res.Rows, res.Failures
 	return doc, err
 }

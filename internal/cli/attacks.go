@@ -84,17 +84,13 @@ func attacksList(ctx context.Context, a *app, customers []string, win windowFlag
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
-		return nil, err
-	}
-	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.Attack, error) {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, func(ctx context.Context, name string) ([]analytics.Attack, error) {
 		return api.AttackReports(ctx, name, start, end)
 	})
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
+	if res == nil {
+		return nil, err
 	}
-	slices.SortStableFunc(rows, func(x, y analytics.Attack) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.Attack) int {
 		return cmp.Or(
 			cmp.Compare(x.Customer, y.Customer),
 			cmp.Compare(x.StartTime, y.StartTime),
@@ -102,8 +98,8 @@ func attacksList(ctx context.Context, a *app, customers []string, win windowFlag
 		)
 	})
 	return &AttacksDoc{
-		Customers: names, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
-		Attacks: nonNil(rows), Failures: nonNil(failures),
+		Customers: res.Customers, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
+		Attacks: res.Rows, Failures: res.Failures,
 	}, err
 }
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 // TimeSeriesQuery is GET /time-series-data's query. Samples 0 omits
@@ -51,7 +52,7 @@ func (c *Client) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]TimeSerie
 	}
 	var resp map[string]json.RawMessage
 	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: basePath + "/time-series-data", Query: v}, &resp); err != nil {
-		if isNotFound(err) {
+		if apperr.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err

@@ -27,6 +27,9 @@ type fakeAPI struct {
 	mu     sync.Mutex
 	routes map[string]http.HandlerFunc
 	calls  []call
+	// intercept, if set, sees every request first and answers it by returning
+	// true.
+	intercept func(http.ResponseWriter, *http.Request) bool
 }
 
 type call struct {
@@ -56,17 +59,20 @@ func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.calls = append(f.calls, call{r.Method, r.URL.Path, string(body)})
 	h, ok := f.routes[r.Method+" "+r.URL.Path]
+	intercept := f.intercept
 	f.mu.Unlock()
 	if !strings.HasPrefix(r.Header.Get("Authorization"), "EG1-HMAC-SHA256 ") {
 		f.t.Errorf("%s %s: unsigned", r.Method, r.URL.Path)
 	}
-	if !ok {
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	switch {
+	case intercept != nil && intercept(w, r):
+	case ok:
+		h(w, r)
+	default:
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"type":"not-found","title":"Not Found","detail":"no fake route"}`))
-		return
 	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	h(w, r)
 }
 
 // json registers a route that answers with a fixed JSON body.

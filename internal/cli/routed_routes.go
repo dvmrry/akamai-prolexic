@@ -75,18 +75,14 @@ func routedRoutes(ctx context.Context, a *app, customers []string, prefix string
 	if err != nil {
 		return nil, err
 	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
+	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, api.Routes)
+	if res == nil {
 		return nil, err
 	}
-	rows, failures, err := analytics.FanOut(ctx, names, api.Routes)
-	if cerr := ctx.Err(); cerr != nil {
-		return nil, cerr // err may be nil if cancellation came after FanOut returned
-	}
 	if want.IsValid() {
-		rows = slices.DeleteFunc(rows, func(r analytics.Route) bool { return !analytics.SamePrefix(r.Prefix, want) })
+		res.Rows = slices.DeleteFunc(res.Rows, func(r analytics.Route) bool { return !analytics.SamePrefix(r.Prefix, want) })
 	}
-	slices.SortStableFunc(rows, func(x, y analytics.Route) int {
+	slices.SortStableFunc(res.Rows, func(x, y analytics.Route) int {
 		return cmp.Or(
 			cmp.Compare(x.Customer, y.Customer),
 			cmp.Compare(x.Prefix, y.Prefix),
@@ -96,7 +92,7 @@ func routedRoutes(ctx context.Context, a *app, customers []string, prefix string
 			cmp.Compare(rowKey(x), rowKey(y)),
 		)
 	})
-	doc := &RoutedRoutesDoc{Customers: names, Routes: nonNil(rows), Failures: nonNil(failures)}
+	doc := &RoutedRoutesDoc{Customers: res.Customers, Routes: res.Rows, Failures: res.Failures}
 	if want.IsValid() {
 		doc.Prefix = want.String()
 	}

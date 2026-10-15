@@ -113,3 +113,38 @@ func ResolveCustomers(ctx context.Context, c *Client, explicit []string) ([]stri
 	}
 	return out, nil
 }
+
+// Resolver picks the customer names a query covers from the explicit ones
+// given: ResolveCustomers (every in-use name by default) or AllCustomers.
+type Resolver func(ctx context.Context, c *Client, explicit []string) ([]string, error)
+
+// Result is a query run once per customer name. Its lists are never nil.
+type Result[T any] struct {
+	Customers []string  // the names queried
+	Rows      []T       // from the names that answered, in the names' order
+	Failures  []Failure // the names that failed
+}
+
+// ForCustomers resolves the customer names and runs query once per name.
+//   - A failed name is reported in Failures, and the error says how many failed:
+//     the Result and the error come back together.
+//   - Anything else that stops the run (resolving the names, or a cancelled
+//     context) returns no Result, only the error. A cancelled run never yields
+//     a partial Result, even when the cancellation came after every query.
+func ForCustomers[T any](ctx context.Context, c *Client, resolve Resolver, explicit []string, query func(context.Context, string) ([]T, error)) (*Result[T], error) {
+	names, err := resolve(ctx, c, explicit)
+	if err != nil {
+		return nil, err
+	}
+	rows, failures, err := FanOut(ctx, names, query)
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr
+	}
+	if rows == nil {
+		rows = []T{}
+	}
+	if failures == nil {
+		failures = []Failure{}
+	}
+	return &Result[T]{Customers: names, Rows: rows, Failures: failures}, err
+}

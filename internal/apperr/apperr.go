@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 // Code is a process exit code. The values are a public contract: pipelines
@@ -130,4 +131,11 @@ func UpstreamOf(err error) *UpstreamDetail {
 		err = e.Err
 	}
 	return nil
+}
+
+// IsNotFound reports whether err is an upstream 404. Several reads treat that
+// as "nothing here" rather than a failure.
+func IsNotFound(err error) bool {
+	u := UpstreamOf(err)
+	return u != nil && u.Status == http.StatusNotFound
 }
