@@ -15,7 +15,7 @@ checking against a real account.
 | `internal/akamai` | the one HTTP transport: signing, lenient decoding, both problem shapes, retry policy, ambiguity marking |
 | `internal/analytics` | Prolexic Analytics v2 client, fan-out over customer names, the propagation-check join |
 | `internal/ncf` | the desired-state model: entries, desired file, checks, plan, apply, and the `Store` port |
-| `internal/ncf/ncfapi` | `Store` over HTTP (NCF v1, read-only for now) |
+| `internal/ncf/ncfapi` | `Store` over HTTP (NCF v2: versioned aliases, activation, BIG multipart upload) |
 | `internal/ncf/ncftest` | an in-memory versioned `Store` with fault injection |
 | `internal/cli` | the command tree and wiring |
 | `internal/hygiene` | keeps globally routable addresses out of tracked files |
@@ -81,8 +81,8 @@ checking against a real account.
   - no new version: it didn't land, and re-running is safe;
   - exactly one: it landed and goes on to verification;
   - more than one: a concurrent writer (exit 8).
-- **Pending the NCF v2 spec:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v1 adapter serves reads, and its version methods return exit 4, so `apply` refuses before any write. The v2 adapter replaces it.
-- **Verify:** v1's `GET /acls/aliases` may return entries even for Akamai-managed aliases. The adapter discards them, but they still cross the wire.
+- **NCF v2:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v2 spec is login-only (kept in `spec/`, not vendored). v2 has no get-one-alias, so `GetAlias` lists aliases and reads `/versions/active`; create sends `isActive: false` and `sourceVersion` (BIG uploads are multipart and may activate on arrival).
+- **Entries stay off the wire:** v2's alias list carries no entries (v1 listed them, managed aliases included), so `plan`, `status` and `export` never download an Akamai-managed alias's entries.
 
 ## add and remove
 
@@ -101,7 +101,6 @@ checking against a real account.
 
 ## Not built yet
 
-- The NCF v2 adapter (versions, activation, BIG multipart upload).
 - Alias rotation as an explicit command.
 - Network Health targets: create, update and delete (read-only `targets list` and `targets show` exist; targets are per account, and the spec has no paging).
 - Traffic metrics (`/metrics`, `/time-series-data`, `/scrub-centers`).

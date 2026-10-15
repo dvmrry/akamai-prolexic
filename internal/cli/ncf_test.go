@@ -202,27 +202,28 @@ func TestRemove(t *testing.T) {
 	}
 }
 
-// ncfAPI is a fake account over NCF v1 and Analytics.
+// ncfAPI is a fake account over NCF v2 and Analytics.
 func ncfAPI(t *testing.T) *fakeAPI {
+	api, _ := ncfAPIState(t)
+	return api
+}
+
+// ncfAPIState is ncfAPI, also returning the stateful NCF fake.
+func ncfAPIState(t *testing.T) (*fakeAPI, *fakeNCF) {
 	api := newFakeAPI(t)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases", 200, `[
-	  {"aliasId": 101, "aliasName": "block-v4", "aliasListType": "SOURCE", "ipVersion": "V4", "accountId": "A-EXAMPLE",
-	   "isCustomerEditable": true, "entriesCount": 2, "entries": ["192.0.2.0/25", "198.51.100.7"]},
-	  {"aliasId": 900, "aliasName": "akamai-threats", "aliasListType": "BIG", "ipVersion": "V4", "accountId": "A-EXAMPLE",
-	   "isCustomerEditable": false, "entriesCount": 200000}
-	]`)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases/101", 200, `{"aliasId": 101, "aliasName": "block-v4",
-	  "aliasListType": "SOURCE", "ipVersion": "V4", "accountId": "A-EXAMPLE", "isCustomerEditable": true,
-	  "entriesCount": 2, "entries": ["192.0.2.0/25", "198.51.100.7"]}`)
+	ncfState := api.ncfV2(
+		editableAlias(101, "block-v4", "V4", "192.0.2.0/25", "198.51.100.7"),
+		managedAlias(900, "akamai-threats", 200000),
+	)
 	api.json("GET /prolexic-analytics/v2/customer/names", 200, `{"customerNames":[{"name":"example-a","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},{"name":"example-old","contractId":"C-EXAMPLE","accountName":"Example","inUse":false}]}`)
 	api.json("GET /prolexic-analytics/v2/metric-types/example-old", 200, `{"currentContract":"example-old","status":true,
 	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["192.0.2.192/26"]},"packets":{"subnets":[]}}}}}`)
 	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"example-a","status":true,
 	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["198.51.100.128/25"]},"packets":{"subnets":[]}}}}}`)
-	return api
+	return api, ncfState
 }
 
-func TestPlanAgainstV1(t *testing.T) {
+func TestPlanAgainstV2(t *testing.T) {
 	api := ncfAPI(t)
 	p := writeDesired(t, desiredFixture)
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
@@ -230,11 +231,11 @@ func TestPlanAgainstV1(t *testing.T) {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
 	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
-	if doc.Changes || !doc.OwnSpaceAnalytics || len(doc.Aliases) != 1 || doc.Aliases[0].Unchanged != 2 || doc.Aliases[0].VersionsRemaining != nil {
+	if doc.Changes || !doc.OwnSpaceAnalytics || len(doc.Aliases) != 1 || doc.Aliases[0].Unchanged != 2 || doc.Aliases[0].VersionsRemaining == nil || *doc.Aliases[0].VersionsRemaining != 9 {
 		t.Errorf("doc = %+v", doc)
 	}
 	for _, c := range api.calls {
-		if strings.HasSuffix(c.Path, "/aliases/900") {
+		if strings.Contains(c.Path, "/aliases/900") {
 			t.Error("plan fetched a managed alias's entries")
 		}
 	}
@@ -259,27 +260,58 @@ func TestPlanDriftAndOwnSpaceFromAnalytics(t *testing.T) {
 	}
 }
 
-func TestApplyOnV1IsUnsupportedAndWritesNothing(t *testing.T) {
-	api := ncfAPI(t)
+func TestApplyThroughTheCLI(t *testing.T) {
+	api, ncfState := ncfAPIState(t)
 	p := writeDesired(t, desiredFixture)
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
-	digest := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1").Digest
+	plan := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	if plan.Aliases[0].ActiveVersion != "V1" {
+		t.Fatalf("planned active version = %q", plan.Aliases[0].ActiveVersion)
+	}
 
 	env := ncfEnv(api.env())
 	read := env.Getenv
 	env.Getenv = func(k string) string { // the write section resolves to the same fake
 		return read(strings.Replace(k, "AKAMAI_WRITE_", "AKAMAI_", 1))
 	}
-	r = runCLI(t, env, "apply", "--file", p, "--expect-digest", digest)
-	if r.code != int(apperr.NotFound) || !strings.Contains(r.stderr, "NCF v2") {
-		t.Errorf("exit = %d: %s", r.code, r.stderr)
+	r = runCLI(t, env, "apply", "--file", p, "--expect-digest", plan.Digest, "--interval", "1ms", "--timeout", "5s")
+	if r.code != 0 {
+		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
+	doc := decode[ApplyDoc](t, r.stdout, "prolexic.apply.v1")
+	if doc.Result == nil || len(doc.Result.Aliases) != 1 || doc.Result.Aliases[0].Status != ncf.StatusDeployed || doc.Result.Aliases[0].Version != "V2" {
+		t.Errorf("result = %+v", doc.Result)
+	}
+
+	ncfState.mu.Lock()
+	defer ncfState.mu.Unlock()
+	if len(ncfState.Creates) != 1 {
+		t.Fatalf("creates = %v", ncfState.Creates)
+	}
+	if c := ncfState.Creates[0]; c["isActive"] != false || c["sourceVersion"] != "V1" {
+		t.Errorf("create body = %v; want isActive false and sourceVersion V1", c)
+	}
+	if !slices.Equal(ncfState.Activated, []string{"101/V2"}) {
+		t.Errorf("activations = %v", ncfState.Activated)
+	}
+	if a := ncfState.aliases[0]; a.Prod != 2 || a.Active != 2 {
+		t.Errorf("alias active %d, prod %d; want both 2", a.Active, a.Prod)
+	}
+	var writes []string
 	for _, c := range api.calls {
 		if c.Method != "GET" && !strings.Contains(c.Path, "prolexic-analytics") {
-			t.Errorf("apply sent %s %s", c.Method, c.Path)
+			writes = append(writes, c.Method+" "+c.Path)
 		}
 	}
+	want := []string{
+		"POST /network-cloud-firewall/v2/aliases/101/versions",
+		"PATCH /network-cloud-firewall/v2/aliases/101/versions/V2/activate",
+	}
+	if !slices.Equal(writes, want) {
+		t.Errorf("writes = %v", writes)
+	}
+	noManagedFetch(t, api)
 }
 
 func TestApplyNeedsWriteCredentials(t *testing.T) {

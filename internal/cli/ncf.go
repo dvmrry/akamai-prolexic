@@ -479,9 +479,9 @@ func (a *app) ncfRead() (ncf.Store, error) {
 	return a.ncfStore(c), nil
 }
 
-// ncfStore picks the adapter. Only v1 exists until the NCF v2 spec arrives.
+// ncfStore returns the NCF adapter (v2; v1 is retired).
 func (a *app) ncfStore(c *akamai.Client) ncf.Store {
-	return ncfapi.NewV1(c)
+	return ncfapi.NewV2(c)
 }
 
 func fileFlag(fs *flag.FlagSet) *string {

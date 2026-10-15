@@ -11,5 +11,5 @@ Apache-2.0 (see [LICENSE](LICENSE)), pinned at commit
 Re-indented with `jq .`, otherwise unchanged. The live APIs disagree with these
 in places; the live API is right, and the client decodes leniently.
 
-NCF v2 is only published behind the Akamai login; it goes in `spec/` (never
+The CLI uses NCF v2, which is only published behind the Akamai login; its spec goes in `spec/` (never
 committed).

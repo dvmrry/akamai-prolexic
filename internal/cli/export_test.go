@@ -9,25 +9,23 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
-// exportAPI is ncfAPI plus a second editable alias (an allow-list candidate,
-// IPv6, entries in a non-canonical spelling).
+// exportAPI is a fake account with two editable aliases (a deny-list
+// candidate and an allow-list candidate: IPv6, entries in a non-canonical
+// spelling) and a managed one.
 func exportAPI(t *testing.T) *fakeAPI {
 	api := newFakeAPI(t)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases", 200, `[
-	  {"aliasId": 101, "aliasName": "block-v4", "aliasListType": "SOURCE", "ipVersion": "V4", "accountId": "A-EXAMPLE", "isCustomerEditable": true, "entriesCount": 2},
-	  {"aliasId": 102, "aliasName": "allow-v6", "aliasListType": "SOURCE", "ipVersion": "V6", "accountId": "A-EXAMPLE", "isCustomerEditable": true, "entriesCount": 2},
-	  {"aliasId": 900, "aliasName": "akamai-threats", "aliasListType": "BIG", "ipVersion": "V4", "accountId": "A-EXAMPLE", "isCustomerEditable": false, "entriesCount": 200000}]`)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases/101", 200, `{"aliasId": 101, "aliasName": "block-v4", "aliasListType": "SOURCE", "ipVersion": "V4",
-	  "accountId": "A-EXAMPLE", "isCustomerEditable": true, "entries": ["198.51.100.7", "192.0.2.0/25", "geo::de"]}`)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases/102", 200, `{"aliasId": 102, "aliasName": "allow-v6", "aliasListType": "SOURCE", "ipVersion": "V6",
-	  "accountId": "A-EXAMPLE", "isCustomerEditable": true, "entries": ["2001:db8:0:0::1", "2001:db8:1::/48"]}`)
+	api.ncfV2(
+		editableAlias(101, "block-v4", "V4", "198.51.100.7", "192.0.2.0/25", "geo::de"),
+		editableAlias(102, "allow-v6", "V6", "2001:db8:0:0::1", "2001:db8:1::/48"),
+		managedAlias(900, "akamai-threats", 200000),
+	)
 	return api
 }
 
 func noManagedFetch(t *testing.T, api *fakeAPI) {
 	t.Helper()
 	for _, c := range api.calls {
-		if strings.HasSuffix(c.Path, "/aliases/900") {
+		if strings.Contains(c.Path, "/aliases/900") {
 			t.Error("export fetched a managed alias's entries")
 		}
 	}
@@ -79,14 +77,14 @@ func TestExportBootstrap(t *testing.T) {
 
 func TestExportBootstrapAccountProblemsWriteNothing(t *testing.T) {
 	for name, aliases := range map[string]string{
-		"disagree": `[{"aliasId":1,"aliasName":"a","aliasListType":"SOURCE","accountId":"A-EXAMPLE","isCustomerEditable":true},
-		              {"aliasId":2,"aliasName":"b","aliasListType":"SOURCE","accountId":"A-OTHER","isCustomerEditable":true}]`,
-		"none":     `[{"aliasId":1,"aliasName":"a","aliasListType":"SOURCE","isCustomerEditable":true}]`,
+		"disagree": `[{"aliasId":1,"aliasName":"a","aliasType":"SOURCE","accountId":"A-EXAMPLE","isCustomerEditable":true},
+		              {"aliasId":2,"aliasName":"b","aliasType":"SOURCE","accountId":"A-OTHER","isCustomerEditable":true}]`,
+		"none":     `[{"aliasId":1,"aliasName":"a","aliasType":"SOURCE","isCustomerEditable":true}]`,
 		"no alias": `[]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			api := newFakeAPI(t)
-			api.json("GET /network-cloud-firewall/v1/acls/aliases", 200, aliases)
+			api.json("GET /network-cloud-firewall/v2/aliases", 200, aliases)
 			p := filepath.Join(t.TempDir(), "desired.json")
 			r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
 			if _, err := os.Stat(p); r.code != int(apperr.Validation) || err == nil {
@@ -158,7 +156,7 @@ func TestExportRefreshesOnlyNamedAliases(t *testing.T) {
 		t.Errorf("stale or unrequested content:\n%s", got)
 	}
 	for _, c := range api.calls {
-		if strings.HasSuffix(c.Path, "/aliases/102") || strings.HasSuffix(c.Path, "/aliases/900") {
+		if strings.Contains(c.Path, "/aliases/102") || strings.Contains(c.Path, "/aliases/900") {
 			t.Errorf("fetched %s, which the file doesn't name", c.Path)
 		}
 	}
@@ -218,8 +216,8 @@ func TestExportRefusesAndWritesNothing(t *testing.T) {
 
 func TestExportUnparsableLiveEntryWritesNothing(t *testing.T) {
 	api := exportAPI(t)
-	api.json("GET /network-cloud-firewall/v1/acls/aliases/102", 200, `{"aliasId": 102, "aliasName": "allow-v6", "aliasListType": "SOURCE",
-	  "ipVersion": "V6", "accountId": "A-EXAMPLE", "isCustomerEditable": true, "entries": ["2001:db8::1", "garbage"]}`)
+	api.json("GET /network-cloud-firewall/v2/aliases/102/versions/active", 200, `{"aliasId": 102, "aliasName": "allow-v6", "aliasType": "SOURCE",
+	  "ipVersion": "V6", "version": "V1", "isActive": true, "entries": ["2001:db8::1", "garbage"], "entriesCount": 2}`)
 	p := filepath.Join(t.TempDir(), "desired.json")
 	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
 	if _, err := os.Stat(p); r.code != int(apperr.Upstream) || err == nil ||

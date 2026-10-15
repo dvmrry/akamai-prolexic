@@ -43,7 +43,7 @@ Output is JSON when stdout isn't a terminal, and every document names its schema
 | 8 | conflict |
 | 130 | cancelled |
 
-`apply` needs the NCF v2 adapter, which is not built yet. Until then it exits 4 before writing anything.
+`apply` runs against NCF v2: it creates an inactive version of each changed alias (from the planned active version), verifies it, activates it, and waits for production to carry it. Write credentials are required (`--expect-digest` from a reviewed `plan`).
 
 ## Build
 

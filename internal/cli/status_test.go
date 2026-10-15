@@ -7,11 +7,11 @@ import (
 
 // ncfStatusFixtures adds the deployment-status and /stats routes to a fake.
 func ncfStatusFixtures(api *fakeAPI) {
-	api.json("GET /network-cloud-firewall/v1/acls/versions/deployment-status", 200, `{"accountId":"A-EXAMPLE","ruleSets":[
+	api.json("GET /network-cloud-firewall/v2/acls/versions/deployment-status", 200, `{"accountId":"A-EXAMPLE","ruleSets":[
 	  {"deploymentStatus":"PRODUCTION","version":7,"hash":"x","statusRetrievalTimestamp":"2026-10-14T09:00:00Z",
 	   "rulesDeployStats":{"failed":1,"installed":10,"notInstalled":0,"total":11},"ruleSet":[]},
 	  {"deploymentStatus":"PROCESSING","version":8,"rulesDeployStats":{"failed":0,"installed":0,"notInstalled":11,"total":11}}]}`)
-	api.json("GET /network-cloud-firewall/v1/stats", 200, `{"aliases":[
+	api.json("GET /network-cloud-firewall/v2/stats", 200, `{"aliases":[
 	  {"type":"SOURCE","limit":100,"enabledCount":3,"disabledCount":1},
 	  {"type":"BIG","limit":5,"enabledCount":1,"disabledCount":0}]}`)
 }
@@ -28,17 +28,17 @@ func TestStatusUsesListOnly(t *testing.T) {
 		t.Errorf("deployment = %+v", doc.Deployment)
 	}
 	if len(doc.Aliases) != 2 || doc.Aliases[0].Name != "akamai-threats" || doc.Aliases[0].Editable || doc.Aliases[0].EntriesCount != 200000 ||
-		doc.Aliases[1].Name != "block-v4" || doc.Aliases[1].ID != 101 || doc.Aliases[1].VersionsRemaining != nil {
+		doc.Aliases[1].Name != "block-v4" || doc.Aliases[1].ID != 101 || doc.Aliases[1].ActiveVersion != "V1" || doc.Aliases[1].ProdVersion != "V1" || doc.Aliases[1].VersionsRemaining == nil || *doc.Aliases[1].VersionsRemaining != 9 {
 		t.Errorf("aliases = %+v", doc.Aliases)
 	}
 	if len(doc.Limits) != 2 || doc.Limits[0].Type != "BIG" || doc.Limits[1].Limit != 100 || doc.Limits[1].Disabled != 1 {
 		t.Errorf("limits = %+v", doc.Limits)
 	}
-	if strings.Contains(r.stdout, "versionsRemaining") {
-		t.Error("versionsRemaining must be omitted when versions are not exposed")
+	if !strings.Contains(r.stdout, "versionsRemaining") {
+		t.Error("versionsRemaining is missing; v2 exposes versions")
 	}
 	for _, c := range api.calls {
-		if strings.Contains(c.Path, "/acls/aliases/") {
+		if strings.Contains(c.Path, "/versions/V") || strings.HasSuffix(c.Path, "/versions/active") {
 			t.Errorf("status fetched %s; it must only list", c.Path)
 		}
 	}
@@ -55,7 +55,7 @@ func TestStatusText(t *testing.T) {
 }
 
 func TestStatusDocText(t *testing.T) {
-	// The markers need version data that NCF v1 can't supply, so render a
+	// The markers need aliases in the low and pending states, so render a
 	// document directly.
 	two, nine := 2, 9
 	d := &StatusDoc{Aliases: []StatusAlias{
