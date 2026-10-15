@@ -59,3 +59,13 @@ make schemas    # regenerate schemas/ after changing a document type
 Akamai API clients authenticate with EdgeGrid credentials. These come from the environment first (`AKAMAI_HOST`, … for the read section; `AKAMAI_WRITE_HOST`, … for the write section), then from `~/.edgerc`. Only `apply` uses the write section.
 
 Credentials never go in this repo: `.edgerc` is gitignored, `.gitleaks.toml` flags EdgeGrid tokens, and `internal/hygiene` fails on globally routable addresses in tracked files.
+
+## License
+
+prolexic is source-available under the [Business Source License 1.1](LICENSE).
+
+- **Free:** any individual or organization using it for its own purposes, including in production on its own Akamai accounts.
+- **Needs a commercial license:** offering it, or a service built on it, to customers or other third parties for a fee. That includes managed or hosted services, consulting or managed security services delivered to clients, and bundling it into a commercial product. Contact the licensor through [github.com/dvmrry](https://github.com/dvmrry).
+- **Becomes Apache-2.0:** each version converts to the Apache License 2.0 on 2030-10-15, or four years after that version is published, whichever comes first.
+
+The vendored Akamai API specifications in `api/akamai-apis/` and the EdgeGrid signing test vectors stay under their own Apache-2.0 license.
