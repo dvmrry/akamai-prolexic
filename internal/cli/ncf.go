@@ -36,6 +36,13 @@ type ValidateDoc struct {
 
 func (*ValidateDoc) SchemaID() string { return "prolexic.validate.v1" }
 
+func (d *ValidateDoc) Outcome() error {
+	if !d.Valid {
+		return apperr.New(apperr.Validation, "%s has errors", d.File)
+	}
+	return nil
+}
+
 func (d *ValidateDoc) WriteText(w io.Writer) error {
 	if err := writeFindings(w, d.Findings); err != nil {
 		return err
@@ -69,9 +76,6 @@ func validate(a *app, file string) (output.Document, error) {
 	}
 	doc := &ValidateDoc{File: file, Findings: nonNil(a.checker().Validate(f, raw))}
 	doc.Valid = !ncf.HasErrors(doc.Findings)
-	if !doc.Valid {
-		return doc, apperr.New(apperr.Validation, "%s has errors", file)
-	}
 	return doc, nil
 }
 
@@ -81,9 +85,18 @@ type FmtDoc struct {
 	File      string `json:"file"`
 	Canonical bool   `json:"canonical" doc:"Whether the file was already canonical."`
 	Written   bool   `json:"written"`
+
+	check bool // --check: a file that isn't canonical is an error, not rewritten
 }
 
 func (*FmtDoc) SchemaID() string { return "prolexic.fmt.v1" }
+
+func (d *FmtDoc) Outcome() error {
+	if d.check && !d.Canonical {
+		return apperr.New(apperr.Validation, "%s is not in canonical form; run prolexic fmt", d.File)
+	}
+	return nil
+}
 
 func (d *FmtDoc) WriteText(w io.Writer) error {
 	var err error
@@ -123,12 +136,9 @@ func format(file string, check bool) (output.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc := &FmtDoc{File: file, Canonical: bytes.Equal(raw, canon)}
-	switch {
-	case doc.Canonical:
+	doc := &FmtDoc{File: file, Canonical: bytes.Equal(raw, canon), check: check}
+	if doc.Canonical || check {
 		return doc, nil
-	case check:
-		return doc, apperr.New(apperr.Validation, "%s is not in canonical form; run prolexic fmt", file)
 	}
 	if err := writeFileAtomic(file, canon); err != nil {
 		return nil, err
@@ -151,6 +161,13 @@ type ChangeDoc struct {
 }
 
 func (*ChangeDoc) SchemaID() string { return "prolexic.change.v1" }
+
+func (d *ChangeDoc) Outcome() error {
+	if !d.Written {
+		return apperr.New(apperr.Validation, "%s: not written", d.File)
+	}
+	return nil
+}
 
 func (d *ChangeDoc) WriteText(w io.Writer) error {
 	sign := "+"
@@ -304,7 +321,7 @@ func (a *app) commitChange(doc *ChangeDoc, f *ncf.File, raw []byte, added map[st
 		return x.Severity == ncf.Error || (x.Alias == doc.Alias && added[x.Entry])
 	})
 	if blocked {
-		return doc, apperr.New(apperr.Validation, "%s: not written", doc.File)
+		return doc, nil // not written: Outcome reports it
 	}
 	canon, err := ncf.Canonical(f)
 	if err != nil {
@@ -323,9 +340,21 @@ type PlanDoc struct {
 	File string `json:"file"`
 	ncf.Plan
 	OwnSpaceAnalytics bool `json:"ownSpaceAnalytics" doc:"Whether Prolexic Analytics protected prefixes were part of the own-space check."`
+
+	changesAreDrift bool // --exit-code: changes exit as drift
 }
 
 func (*PlanDoc) SchemaID() string { return "prolexic.plan.v1" }
+
+func (d *PlanDoc) Outcome() error {
+	switch {
+	case ncf.HasErrors(d.Findings):
+		return apperr.New(apperr.Validation, "the plan has errors")
+	case d.changesAreDrift && d.Changes:
+		return apperr.New(apperr.Drift, "live differs from %s", d.File)
+	}
+	return nil
+}
 
 func (d *PlanDoc) WriteText(w io.Writer) error {
 	for _, al := range d.Aliases {
@@ -427,14 +456,7 @@ func plan(ctx context.Context, a *app, args planArgs, exitCode bool) (output.Doc
 		return nil, err
 	}
 	p.Findings = append(p.Findings, *warnings...)
-	doc := &PlanDoc{File: args.file, Plan: *p, OwnSpaceAnalytics: !args.noAnalytics}
-	switch {
-	case ncf.HasErrors(p.Findings):
-		return doc, apperr.New(apperr.Validation, "the plan has errors")
-	case exitCode && p.Changes:
-		return doc, apperr.New(apperr.Drift, "live differs from %s", args.file)
-	}
-	return doc, nil
+	return &PlanDoc{File: args.file, Plan: *p, OwnSpaceAnalytics: !args.noAnalytics, changesAreDrift: exitCode}, nil
 }
 
 // ApplyDoc is the result of apply.

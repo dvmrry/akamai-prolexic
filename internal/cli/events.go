@@ -27,6 +27,8 @@ type EventsDoc struct {
 
 func (*EventsDoc) SchemaID() string { return "prolexic.events.v1" }
 
+func (d *EventsDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *EventsDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "TIME\tCUSTOMER\tKIND\tLOCATION\tSUMMARY")
@@ -100,5 +102,5 @@ func events(ctx context.Context, a *app, customers []string, criticalOnly bool, 
 		return cmp.Or(cmp.Compare(x.At(), y.At()), cmp.Compare(x.Customer, y.Customer), cmp.Compare(x.Kind, y.Kind), cmp.Compare(rowKey(x), rowKey(y)))
 	})
 	doc.Events, doc.Failures = res.Rows, res.Failures
-	return doc, err
+	return doc, nil
 }

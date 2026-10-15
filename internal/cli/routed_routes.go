@@ -26,6 +26,8 @@ type RoutedRoutesDoc struct {
 
 func (*RoutedRoutesDoc) SchemaID() string { return "prolexic.routed-routes.v1" }
 
+func (d *RoutedRoutesDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *RoutedRoutesDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tPREFIX\tDATA CENTER\tROUTER\tPEER\tAS PATH\tLOCAL PREF\tMED")
@@ -96,5 +98,5 @@ func routedRoutes(ctx context.Context, a *app, customers []string, prefix string
 	if want.IsValid() {
 		doc.Prefix = want.String()
 	}
-	return doc, err
+	return doc, nil
 }

@@ -55,20 +55,27 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 		}
 		rows = append(rows, r.rows...)
 	}
+	return rows, failures, FailuresError(failures, len(customers))
+}
+
+// FailuresError summarises failed customer names as one error: nil when
+// there are none, otherwise the failures' common kind (Upstream when they
+// differ) and the distinct names that failed, out of total.
+func FailuresError(failures []Failure, total int) error {
 	if len(failures) == 0 {
-		return rows, nil, nil
+		return nil
 	}
 	kind := failures[0].Kind
-	for _, f := range failures[1:] {
+	var names []string
+	for _, f := range failures {
 		if f.Kind != kind {
 			kind = apperr.Upstream
 		}
+		if !slices.Contains(names, f.Customer) {
+			names = append(names, f.Customer)
+		}
 	}
-	names := make([]string, len(failures))
-	for i, f := range failures {
-		names[i] = f.Customer
-	}
-	return rows, failures, apperr.New(kind, "%d of %d customer names failed: %s", len(failures), len(customers), strings.Join(names, ", "))
+	return apperr.New(kind, "%d of %d customer names failed: %s", len(names), total, strings.Join(names, ", "))
 }
 
 // ResolveCustomers returns the names to query: the explicit ones if any
@@ -124,8 +131,8 @@ type Result[T any] struct {
 }
 
 // ForCustomers resolves the customer names and runs query once per name.
-//   - A failed name is reported in Failures, and the error says how many failed:
-//     the Result and the error come back together.
+//   - A failed name is data, not an error: it is reported in Failures, and
+//     FailuresError summarises them for a front that wants one error.
 //   - Anything else that stops the run (resolving the names, or a cancelled
 //     context) returns no Result, only the error. A cancelled run never yields
 //     a partial Result, even when the cancellation came after every query.
@@ -134,7 +141,7 @@ func ForCustomers[T any](ctx context.Context, c *Client, resolve Resolver, expli
 	if err != nil {
 		return nil, err
 	}
-	rows, failures, err := FanOut(ctx, names, query)
+	rows, failures, _ := FanOut(ctx, names, query) // partial failures are in failures
 	if cerr := ctx.Err(); cerr != nil {
 		return nil, cerr
 	}
@@ -144,5 +151,5 @@ func ForCustomers[T any](ctx context.Context, c *Client, resolve Resolver, expli
 	if failures == nil {
 		failures = []Failure{}
 	}
-	return &Result[T]{Customers: names, Rows: rows, Failures: failures}, err
+	return &Result[T]{Customers: names, Rows: rows, Failures: failures}, nil
 }

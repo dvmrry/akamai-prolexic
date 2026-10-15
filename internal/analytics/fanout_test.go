@@ -12,7 +12,8 @@ func fixedNames(names ...string) Resolver {
 	return func(context.Context, *Client, []string) ([]string, error) { return names, nil }
 }
 
-func TestForCustomersReportsFailuresWithTheResult(t *testing.T) {
+// A failed name is data: it is in Failures, and the run itself succeeds.
+func TestForCustomersReportsFailuresAsData(t *testing.T) {
 	res, err := ForCustomers(context.Background(), nil, fixedNames("example-a", "example-b"), nil,
 		func(_ context.Context, name string) ([]string, error) {
 			if name == "example-b" {
@@ -20,8 +21,11 @@ func TestForCustomersReportsFailuresWithTheResult(t *testing.T) {
 			}
 			return []string{name}, nil
 		})
-	if res == nil || apperr.KindOf(err) != apperr.Credentials {
+	if res == nil || err != nil {
 		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if ferr := FailuresError(res.Failures, len(res.Customers)); apperr.KindOf(ferr) != apperr.Credentials {
+		t.Errorf("FailuresError = %v", ferr)
 	}
 	if len(res.Rows) != 1 || len(res.Failures) != 1 || res.Failures[0].Customer != "example-b" || len(res.Customers) != 2 {
 		t.Errorf("res = %+v", res)
@@ -57,5 +61,18 @@ func TestForCustomersResolveErrorGivesNoResult(t *testing.T) {
 		func(context.Context, string) ([]string, error) { t.Error("queried"); return nil, nil })
 	if res != nil || apperr.KindOf(err) != apperr.NotFound {
 		t.Errorf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestFailuresErrorCountsDistinctNames(t *testing.T) {
+	if FailuresError(nil, 3) != nil {
+		t.Error("no failures is no error")
+	}
+	err := FailuresError([]Failure{
+		{Customer: "example-a", Kind: apperr.Credentials},
+		{Customer: "example-a", Kind: apperr.Upstream}, // the same name failing twice (sessions and routes)
+	}, 2)
+	if apperr.KindOf(err) != apperr.Upstream || err.Error() != "1 of 2 customer names failed: example-a" {
+		t.Errorf("err = %v (%s)", err, apperr.KindOf(err))
 	}
 }

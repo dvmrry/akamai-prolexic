@@ -78,3 +78,27 @@ func TestFanOutCancelledGivesNoDocument(t *testing.T) {
 		})
 	}
 }
+
+// Outcomes are data: the operation returns its document and no error, and
+// the document's Outcome says what the CLI exits with.
+func TestOutcomesAreDataNotErrors(t *testing.T) {
+	api := newFakeAPI(t)
+	api.intercept = perName(func(w http.ResponseWriter) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"title":"Forbidden","status":403}`))
+	})
+	env := api.env()
+	env.Home = t.TempDir()
+	a := &app{env: env, section: "default"}
+	doc, err := routedSessions(context.Background(), a, []string{"example-a"})
+	if err != nil {
+		t.Fatalf("a failed name returned an error: %v", err)
+	}
+	o, ok := doc.(outcomer)
+	if !ok || apperr.KindOf(o.Outcome()) != apperr.Credentials {
+		t.Errorf("outcome = %v", o)
+	}
+	if d := doc.(*RoutedSessionsDoc); len(d.Failures) != 1 || d.Failures[0].Kind != apperr.Credentials {
+		t.Errorf("failures = %+v", d.Failures)
+	}
+}

@@ -26,6 +26,8 @@ type ProtectedDoc struct {
 
 func (*ProtectedDoc) SchemaID() string { return "prolexic.protected.v1" }
 
+func (d *ProtectedDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *ProtectedDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tSITE\tPREFIXES\tASNS\tNOTES")
@@ -73,5 +75,5 @@ func protected(ctx context.Context, a *app, customers []string) (output.Document
 		return nil, err
 	}
 	slices.SortStableFunc(res.Rows, func(x, y analytics.Protected) int { return cmp.Compare(x.Customer, y.Customer) })
-	return &ProtectedDoc{Customers: res.Customers, Protected: res.Rows, Failures: res.Failures}, err
+	return &ProtectedDoc{Customers: res.Customers, Protected: res.Rows, Failures: res.Failures}, nil
 }

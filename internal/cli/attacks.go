@@ -29,6 +29,8 @@ type AttacksDoc struct {
 
 func (*AttacksDoc) SchemaID() string { return "prolexic.attacks.v1" }
 
+func (d *AttacksDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *AttacksDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tATTACK\tSTART\tEND\tTYPES\tTARGETS")
@@ -100,7 +102,7 @@ func attacksList(ctx context.Context, a *app, customers []string, win windowFlag
 	return &AttacksDoc{
 		Customers: res.Customers, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
 		Attacks: res.Rows, Failures: res.Failures,
-	}, err
+	}, nil
 }
 
 // AttackDoc is one attack's detail report.

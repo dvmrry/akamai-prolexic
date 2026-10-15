@@ -29,6 +29,8 @@ type MetricsDoc struct {
 
 func (*MetricsDoc) SchemaID() string { return "prolexic.metrics.v1" }
 
+func (d *MetricsDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *MetricsDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tSERVICE\tMETRIC\tPROTOCOL\tTARGET\tPOINTS\tLAST")
@@ -169,5 +171,5 @@ func metrics(ctx context.Context, a *app, customers, types []string, subnet, ip 
 	return &MetricsDoc{
 		Customers: res.Customers, Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339),
 		Series: res.Rows, Failures: res.Failures,
-	}, err
+	}, nil
 }

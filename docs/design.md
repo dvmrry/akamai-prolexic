@@ -41,7 +41,7 @@ One error model, shared by every layer. Each layer has one job with it:
 - **The SDK classifies, at the source.** HTTP status → kind, and an ambiguous write is marked where it happens. It attaches the upstream detail: status, `incidentId`, `errorPaths`.
 - **Operations add context and decide policy.** For example, "a 404 here is an empty window" (`apperr.IsNotFound`), or "a failed name is reported, not fatal". Wrapping keeps the kind; reclassifying is rare and deliberate. Cancellation always wins.
 - **Fronts translate, at the edge.** The CLI maps kind → exit code; an MCP server would map it to a tool error. The exit-code numbers appear in one place.
-- **Outcomes are not errors.** "`routed check` not satisfied", "some names failed" and plan findings are results: they belong in the document, and the CLI turns them into exit codes. Another front returns them as data.
+- **Outcomes are not errors.** "`routed check` not satisfied", "some names failed" and plan findings are results: they belong in the document, and the CLI turns them into exit codes. Another front returns them as data. Such a document has an `Outcome()` derived from its own fields. The operation returns the document with no error, and the CLI runner turns the outcome into the exit code. `apply` is the exception: its refusals and failures are real errors, returned with a report of what happened.
 
 ### Input validation
 

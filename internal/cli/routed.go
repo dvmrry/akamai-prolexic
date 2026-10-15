@@ -25,6 +25,8 @@ type RoutedSessionsDoc struct {
 
 func (*RoutedSessionsDoc) SchemaID() string { return "prolexic.routed-sessions.v1" }
 
+func (d *RoutedSessionsDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *RoutedSessionsDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tDATA CENTER\tROUTER\tTUNNEL\tASN\tPEER V4\tPEER V6\tHEALTH V4\tHEALTH V6")
@@ -75,7 +77,7 @@ func routedSessions(ctx context.Context, a *app, customers []string) (output.Doc
 			cmp.Compare(rowKey(x), rowKey(y)), // full tie-break: stable output whatever the API order
 		)
 	})
-	return &RoutedSessionsDoc{Customers: res.Customers, Sessions: res.Rows, Failures: res.Failures}, err
+	return &RoutedSessionsDoc{Customers: res.Customers, Sessions: res.Rows, Failures: res.Failures}, nil
 }
 
 // analytics is the Prolexic Analytics client, over the read credentials.

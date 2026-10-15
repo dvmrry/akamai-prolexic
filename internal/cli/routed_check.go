@@ -99,40 +99,52 @@ func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixF
 
 	deadline := a.env.Now().Add(wait)
 	doc := &RoutedCheckDoc{Customers: names, Prefix: prefix.String(), Expect: string(expect), Sites: nonNil(sites)}
-	var ferr error
 	for {
 		doc.Attempts++
-		sessions, sfail, serr := analytics.FanOut(ctx, names, api.BGPSessions)
+		sessions, sfail, _ := analytics.FanOut(ctx, names, api.BGPSessions)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		routes, rfail, rerr := analytics.FanOut(ctx, names, api.Routes)
+		routes, rfail, _ := analytics.FanOut(ctx, names, api.Routes)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		doc.Failures = nonNil(append(sfail, rfail...))
-		ferr = serr
-		if ferr == nil {
-			ferr = rerr
-		}
 		res := analytics.EvaluateCheck(sessions, routes, prefix, expect, sites)
 		doc.Sessions, doc.Skipped = nonNil(res.Sessions), nonNil(res.Skipped)
-		doc.Satisfied = res.Satisfied() && ferr == nil
-		if len(res.Sessions) == 0 && ferr == nil {
-			return doc, apperr.New(apperr.NotFound, "no session to check for %s: %d skipped (no peer of that family), the rest filtered out by --site/--customer", prefix, len(res.Skipped))
-		}
-		if doc.Satisfied {
+		doc.Satisfied = res.Satisfied() && len(doc.Failures) == 0
+		// Stop when satisfied, when there is nothing to check (waiting won't
+		// change that), or at the deadline. Outcome says which.
+		if doc.Satisfied || (len(res.Sessions) == 0 && len(doc.Failures) == 0) {
 			return doc, nil
 		}
 		remaining := deadline.Sub(a.env.Now())
 		if remaining <= 0 {
-			if ferr != nil {
-				return doc, ferr
-			}
-			return doc, apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", res.Off, len(res.Sessions), expect, prefix)
+			return doc, nil
 		}
 		if err := a.env.Sleep(ctx, min(interval, remaining)); err != nil {
 			return nil, err
 		}
 	}
+}
+
+// Outcome is how the last attempt ended: failed names, nothing to check, or
+// sessions that don't match the expectation.
+func (d *RoutedCheckDoc) Outcome() error {
+	if err := failuresOutcome(d.Failures, d.Customers); err != nil {
+		return err
+	}
+	if len(d.Sessions) == 0 {
+		return apperr.New(apperr.NotFound, "no session to check for %s: %d skipped (no peer of that family), the rest filtered out by --site/--customer", d.Prefix, len(d.Skipped))
+	}
+	if d.Satisfied {
+		return nil
+	}
+	off := 0
+	for _, s := range d.Sessions {
+		if s.Carried != (d.Expect == string(analytics.ExpectPresent)) {
+			off++
+		}
+	}
+	return apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", off, len(d.Sessions), d.Expect, d.Prefix)
 }

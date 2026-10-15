@@ -42,6 +42,15 @@ type ProxyStatus struct {
 
 func (*DoctorDoc) SchemaID() string { return "prolexic.doctor.v1" }
 
+// Outcome: missing write credentials are normal (read-only use, PR builds);
+// missing read credentials make every other command fail.
+func (d *DoctorDoc) Outcome() error {
+	if !d.Clients[0].Resolved {
+		return apperr.New(apperr.Credentials, "read credentials not resolved")
+	}
+	return nil
+}
+
 func (d *DoctorDoc) WriteText(w io.Writer) error {
 	fmt.Fprintf(w, "prolexic %s\n\n", d.Version.Version)
 	for _, c := range d.Clients {
@@ -80,11 +89,6 @@ func doctor(a *app) (output.Document, error) {
 			HTTPSProxy: a.env.Getenv("HTTPS_PROXY") != "" || a.env.Getenv("https_proxy") != "",
 			NoProxy:    a.env.Getenv("NO_PROXY") != "" || a.env.Getenv("no_proxy") != "",
 		},
-	}
-	// Missing write credentials are normal (read-only use, PR builds);
-	// missing read credentials make every other command fail.
-	if !doc.Clients[0].Resolved {
-		return doc, apperr.New(apperr.Credentials, "read credentials not resolved")
 	}
 	return doc, nil
 }

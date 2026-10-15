@@ -25,6 +25,8 @@ type RoutedHealthDoc struct {
 
 func (*RoutedHealthDoc) SchemaID() string { return "prolexic.routed-health.v1" }
 
+func (d *RoutedHealthDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
+
 func (d *RoutedHealthDoc) WriteText(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "CUSTOMER\tLOCATION\tROUTER\tHEALTHY/TOTAL\tADC HEALTHY/TOTAL\t")
@@ -72,5 +74,5 @@ func routedHealth(ctx context.Context, a *app, customers []string) (output.Docum
 			cmp.Compare(x.RouterName, y.RouterName),
 		)
 	})
-	return &RoutedHealthDoc{Customers: res.Customers, Health: res.Rows, Failures: res.Failures}, err
+	return &RoutedHealthDoc{Customers: res.Customers, Health: res.Rows, Failures: res.Failures}, nil
 }

@@ -25,6 +25,9 @@ func (a *app) run(body func(ctx context.Context, args []string) (output.Document
 		a.ran = true
 		doc, err := body(cmd.Context(), args)
 		a.doc = doc
+		if o, ok := doc.(outcomer); ok && err == nil {
+			err = o.Outcome()
+		}
 		return err
 	}
 }
