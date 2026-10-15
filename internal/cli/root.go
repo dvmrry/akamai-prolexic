@@ -89,7 +89,7 @@ func (a *app) root() *cobra.Command {
 func (a *app) tree() []*cobra.Command {
 	return []*cobra.Command{
 		group("acl", "ACL versions, rules and deployment (read-only)",
-			newACLDeploymentCmd(a), newACLShowCmd(a), newACLVersionsCmd(a)),
+			newACLDeploymentCmd(a), newACLShowCmd(a), newACLTestCmd(a), newACLVersionsCmd(a)),
 		newAddCmd(a),
 		group("aliases", "aliases and their versions (read-only)",
 			newAliasesListCmd(a), newAliasesShowCmd(a), newAliasesVersionsCmd(a)),

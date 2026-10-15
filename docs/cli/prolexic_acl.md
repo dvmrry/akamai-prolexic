@@ -27,5 +27,6 @@ prolexic acl [flags]
 * [prolexic](prolexic.md)	 - A CLI for Akamai Prolexic
 * [prolexic acl deployment](prolexic_acl_deployment.md)	 - deployment-status rulesets and which is in production
 * [prolexic acl show](prolexic_acl_show.md)	 - one ACL version's rules (default: production)
+* [prolexic acl test](prolexic_acl_test.md)	 - test packets against an ACL version's rules (nothing is changed)
 * [prolexic acl versions](prolexic_acl_versions.md)	 - every ACL version
 

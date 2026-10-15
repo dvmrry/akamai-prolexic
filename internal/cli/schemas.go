@@ -15,6 +15,7 @@ func documents() []output.Document {
 		&output.ErrorDoc{},
 		&ACLDeploymentDoc{},
 		&ACLDoc{},
+		&ACLTestDoc{},
 		&ACLVersionsDoc{},
 		&AliasesDoc{},
 		&AliasDoc{},

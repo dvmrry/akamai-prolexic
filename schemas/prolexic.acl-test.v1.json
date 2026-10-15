@@ -1,0 +1,161 @@
+{
+  "$id": "prolexic.acl-test.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "ipVersion": {
+      "description": "V4 or V6: only the version's rules of this family were tested.",
+      "type": "string"
+    },
+    "production": {
+      "description": "That version is in production.",
+      "type": "boolean"
+    },
+    "results": {
+      "description": "One per packet, in the order given.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "description": "ALLOW or DENY.",
+            "type": "string"
+          },
+          "implicitPermit": {
+            "description": "No rule matched; the default permit applied.",
+            "type": "boolean"
+          },
+          "packet": {
+            "additionalProperties": false,
+            "description": "As sent, with its packetId.",
+            "properties": {
+              "dstIp": {
+                "type": "string"
+              },
+              "dstPort": {
+                "description": "TCP and UDP only.",
+                "type": "integer"
+              },
+              "established": {
+                "description": "Part of an established TCP connection; excludes isFragment.",
+                "type": "boolean"
+              },
+              "icmpCode": {
+                "description": "ICMP only.",
+                "type": "integer"
+              },
+              "icmpType": {
+                "description": "ICMP only.",
+                "type": "integer"
+              },
+              "isFragment": {
+                "description": "An IP fragment; excludes established.",
+                "type": "boolean"
+              },
+              "packetId": {
+                "description": "Generated (p1, p2, ...) when absent.",
+                "type": "string"
+              },
+              "packetLength": {
+                "description": "Total size in bytes.",
+                "type": "integer"
+              },
+              "protocol": {
+                "type": "string"
+              },
+              "srcIp": {
+                "type": "string"
+              },
+              "srcPort": {
+                "description": "TCP and UDP only.",
+                "type": "integer"
+              },
+              "tcpFlags": {
+                "description": "TCP only: fin, syn, rst, psh, ack, urg, ece, cwr.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "ttl": {
+                "description": "1-255.",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dstIp",
+              "protocol",
+              "srcIp"
+            ],
+            "type": "object"
+          },
+          "rule": {
+            "additionalProperties": false,
+            "description": "The first rule that matched; null on an implicit permit.",
+            "properties": {
+              "aclText": {
+                "type": "string"
+              },
+              "index": {
+                "description": "The rule's index in the ACL version.",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aclText",
+              "index"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "decision",
+          "implicitPermit",
+          "packet",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "rulesTested": {
+      "type": "integer"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed": {
+          "type": "integer"
+        },
+        "denied": {
+          "type": "integer"
+        },
+        "totalPackets": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "allowed",
+        "denied",
+        "totalPackets"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "description": "The ACL version tested.",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "ipVersion",
+    "production",
+    "results",
+    "rulesTested",
+    "schema",
+    "summary",
+    "version"
+  ],
+  "type": "object"
+}
