@@ -21,8 +21,8 @@ type Store struct {
 	mu      sync.Mutex
 	aliases map[int64]*alias
 
-	// ProdLag is how many GetAlias calls an activation takes to reach
-	// production.
+	// ProdLag is how many alias reads (GetAlias or ListAliases) an
+	// activation takes to reach production.
 	ProdLag int
 	// Deploy is what Deployment returns.
 	Deploy ncf.Deployment
@@ -41,6 +41,11 @@ type Store struct {
 	ActivateLands bool
 	// Corrupt, when set, rewrites the entries a created version stores.
 	Corrupt func([]string) []string
+	// ActivateFails makes activating a new version of the given aliases
+	// fail (re-activating the current one still works, for rollbacks).
+	ActivateFails map[int64]error
+	// GetVersionErr, when set, is returned by GetVersion.
+	GetVersionErr error
 	// BigActivates makes a BIG alias's new version active on creation, as
 	// the multipart upload may.
 	BigActivates bool
@@ -121,6 +126,18 @@ func (s *Store) Live(id int64) ncf.LiveAlias {
 	return s.snapshot(s.aliases[id], true)
 }
 
+// tick moves a pending activation one read closer to production.
+func (a *alias) tick() {
+	if a.pending == "" || a.unused {
+		return
+	}
+	if a.lag <= 0 {
+		a.live.ProdVersion, a.pending = a.pending, ""
+	} else {
+		a.lag--
+	}
+}
+
 func (s *Store) snapshot(a *alias, entries bool) ncf.LiveAlias {
 	l := a.live
 	act := a.versions[versionIndex(l.ActiveVersion)]
@@ -150,6 +167,7 @@ func (s *Store) ListAliases(context.Context) ([]ncf.LiveAlias, error) {
 	s.record("ListAliases")
 	var out []ncf.LiveAlias
 	for _, a := range s.aliases {
+		a.tick()
 		out = append(out, s.snapshot(a, false))
 	}
 	slices.SortFunc(out, func(x, y ncf.LiveAlias) int { return int(x.ID - y.ID) })
@@ -164,13 +182,7 @@ func (s *Store) GetAlias(_ context.Context, id int64) (ncf.LiveAlias, error) {
 	if !ok {
 		return ncf.LiveAlias{}, notFound(id)
 	}
-	if a.pending != "" && !a.unused {
-		if a.lag <= 0 {
-			a.live.ProdVersion, a.pending = a.pending, ""
-		} else {
-			a.lag--
-		}
-	}
+	a.tick()
 	return s.snapshot(a, true), nil
 }
 
@@ -196,6 +208,9 @@ func (s *Store) GetVersion(_ context.Context, id int64, v string) (ncf.AliasVers
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.record("GetVersion")
+	if s.GetVersionErr != nil {
+		return ncf.AliasVersion{}, s.GetVersionErr
+	}
 	if s.Unversioned {
 		return ncf.AliasVersion{}, unsupported
 	}
@@ -251,6 +266,9 @@ func (s *Store) Activate(_ context.Context, id int64, v string) error {
 	a, ok := s.aliases[id]
 	if !ok {
 		return notFound(id)
+	}
+	if err, ok := s.ActivateFails[id]; ok && v != a.live.ActiveVersion {
+		return err
 	}
 	if s.ActivateErr != nil && !s.ActivateLands {
 		return s.ActivateErr

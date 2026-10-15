@@ -203,3 +203,18 @@ func TestPlanOwnSpaceSourceFailureFailsThePlan(t *testing.T) {
 		t.Errorf("err = %v; a plan must not pass without its own-space sources", err)
 	}
 }
+
+func TestPlanNeverFetchesAManagedOwnSpaceAlias(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.OwnSpace.Aliases = []string{"akamai-threats"}
+	got := findingCodes(plan(t, s, f, defaults).Findings)
+	if !slices.Equal(got, []string{"error own_space_alias akamai-threats"}) {
+		t.Errorf("findings = %q", got)
+	}
+	for _, c := range s.Calls {
+		if c == "GetAlias" && s.Count("GetAlias") > 1 {
+			t.Errorf("fetched more than the managed alias allows: %v", s.Calls)
+		}
+	}
+}

@@ -187,3 +187,15 @@ func TestDeadlineIsAnUpstreamFailure(t *testing.T) {
 		t.Errorf("err = %v (code %d), want exit 5", err, apperr.CodeOf(err))
 	}
 }
+
+func TestWriteWithUndecodableSuccessIsAmbiguous(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(201)
+		w.Write([]byte(`{"version": `))
+	})
+	var out struct{ Version string }
+	err := c.Do(context.Background(), Request{Method: "POST", Path: "/p", JSON: 1}, &out)
+	if !IsAmbiguous(err) {
+		t.Errorf("err = %v; a 2xx write took effect, so an unreadable body must be ambiguous", err)
+	}
+}

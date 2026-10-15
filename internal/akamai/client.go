@@ -195,7 +195,12 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 		return nil
 	}
 	if err := json.Unmarshal(b, out); err != nil {
-		return apperr.Wrap(apperr.Upstream, err, "%s %s: decode response", req.Method, req.Path)
+		// A write that got a 2xx took effect even if its body is unreadable:
+		// ambiguous, so the caller proves the outcome instead of assuming failure.
+		return &apperr.Error{
+			Code: apperr.Upstream, Message: fmt.Sprintf("%s %s: decode response", req.Method, req.Path), Err: err,
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
 	}
 	return nil
 }

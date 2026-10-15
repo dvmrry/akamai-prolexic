@@ -145,7 +145,14 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		}
 	}
 
-	// Phase 2: activate.
+	// Phase 2: activate. A failure rolls back every alias this apply already
+	// activated, so the reviewed change lands whole or not at all.
+	failActivate := func(i int, err error) (*Plan, *ApplyResult, error) {
+		if rerr := rollBack(ctx, write, plan, res, todo); rerr != nil {
+			err = fmt.Errorf("%w; and rolling back: %v", err, rerr)
+		}
+		return fail(i, err)
+	}
 	for _, i := range todo {
 		a := &res.Aliases[i]
 		if a.Status == StatusActive {
@@ -153,11 +160,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		}
 		if err := write.Activate(ctx, a.ID, a.Version); err != nil {
 			if !ambiguous(err) {
-				return fail(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
+				return failActivate(i, apperr.Wrap(apperr.CodeOf(err), err, "activate %s version %s", a.Name, a.Version))
 			}
 			cur, rerr := read.GetAlias(context.WithoutCancel(ctx), a.ID)
 			if rerr != nil || cur.ActiveVersion != a.Version {
-				return fail(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect; check status before re-running", a.Name, a.Version))
+				return failActivate(i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect; check status before re-running", a.Name, a.Version))
 			}
 		}
 		a.Status = StatusActive
@@ -178,17 +185,27 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	todo = deployed
 	deadline := opts.Now().Add(opts.Timeout)
 	for {
+		// One alias list per poll: it carries every production version and
+		// no entries, so a BIG alias isn't re-downloaded every interval.
+		all, err := read.ListAliases(ctx)
+		if err != nil {
+			return plan, res, apperr.Wrap(apperr.CodeOf(err), err, "poll aliases")
+		}
+		prods := make(map[int64]string, len(all))
+		for _, l := range all {
+			prods[l.ID] = l.ProdVersion
+		}
 		pending := 0
 		for _, i := range todo {
 			a := &res.Aliases[i]
 			if a.Status == StatusDeployed {
 				continue
 			}
-			cur, err := read.GetAlias(ctx, a.ID)
-			if err != nil {
-				return fail(i, apperr.Wrap(apperr.CodeOf(err), err, "poll %s", a.Name))
+			prod, ok := prods[a.ID]
+			if !ok {
+				return fail(i, apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", a.Name))
 			}
-			if cur.ProdVersion == a.Version {
+			if prod == a.Version {
 				a.Status = StatusDeployed // provisional: confirmed by the deployment check below
 			} else {
 				pending++
@@ -252,20 +269,26 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	v := created.Version
 
 	got, err := read.GetVersion(ctx, ap.ID, v)
-	if err != nil {
-		return v, created.Active, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s", ap.Name, v)
-	}
-	if SameEntries(got.Entries, ap.desired) {
+	if err == nil && SameEntries(got.Entries, ap.desired) {
 		return v, created.Active || got.Active, nil
 	}
-	if !created.Active && !got.Active {
+	live := created.Active || (err == nil && got.Active)
+	if !live {
+		if err != nil {
+			return v, false, apperr.Wrap(apperr.CodeOf(err), err, "re-read %s version %s; it was left inactive", ap.Name, v)
+		}
 		return v, false, apperr.New(apperr.Upstream, "%s version %s doesn't hold the desired entries; it was left inactive", ap.Name, v)
 	}
-	// Activated on creation and wrong: put back what was live.
-	if rerr := write.Activate(context.WithoutCancel(ctx), ap.ID, ap.ActiveVersion); rerr != nil {
-		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries, and re-activating %s failed (%v): fix it by hand", ap.Name, v, ap.ActiveVersion, rerr)
+	// Live on creation and unverified (wrong, or unreadable): put back what
+	// was live.
+	why := "doesn't hold the desired entries"
+	if err != nil {
+		why = fmt.Sprintf("couldn't be re-read to verify (%v)", err)
 	}
-	return v, false, apperr.New(apperr.Upstream, "%s version %s was activated on upload and doesn't hold the desired entries; %s was re-activated", ap.Name, v, ap.ActiveVersion)
+	if rerr := write.Activate(context.WithoutCancel(ctx), ap.ID, ap.ActiveVersion); rerr != nil {
+		return v, true, apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s, and re-activating %s failed (%v): fix it by hand", ap.Name, v, why, ap.ActiveVersion, rerr)
+	}
+	return v, false, apperr.New(apperr.Upstream, "%s version %s was activated on upload and %s; %s was re-activated", ap.Name, v, why, ap.ActiveVersion)
 }
 
 // rollBack re-activates the replaced version of every alias that went live

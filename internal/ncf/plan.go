@@ -220,6 +220,12 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 			add(Error, "own_space_alias", name, "", "own-space alias %q doesn't exist", name)
 			continue
 		}
+		if !l.Editable {
+			// Akamai-managed aliases can hold hundreds of thousands of entries
+			// and are never fetched.
+			add(Error, "own_space_alias", name, "", "own-space alias %q is Akamai-managed; list its prefixes in ownSpace.prefixes instead", name)
+			continue
+		}
 		full, err := store.GetAlias(ctx, l.ID)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.CodeOf(err), err, "get own-space alias %s", name)

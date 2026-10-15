@@ -357,3 +357,42 @@ func TestApplyRollsBackEveryUploadThatWentLive(t *testing.T) {
 		t.Errorf("statuses = %v", got)
 	}
 }
+
+func TestApplyRollsBackAnUploadItCannotReRead(t *testing.T) {
+	s, f, _ := bigWorld()
+	f.Aliases = f.Aliases[1:] // just the BIG alias
+	s.BigActivates = true
+	s.GetVersionErr = &apperr.Error{Code: apperr.Upstream, Message: "HTTP 503"}
+	res, err := apply(t, s, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "couldn't be re-read") || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, res = %+v, live = %+v", err, res, s.Live(104))
+	}
+}
+
+func TestApplyRollsBackActivationsWhenALaterOneFails(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/26")})
+	s.ActivateFails = map[int64]error{103: apperr.New(apperr.Upstream, "HTTP 400: bad")}
+	res, err := apply(t, s, f, nil)
+	if err == nil || s.Live(101).ActiveVersion != "V1" || s.Live(103).ActiveVersion != "V1" {
+		t.Errorf("err = %v, live 101 = %s, 103 = %s", err, s.Live(101).ActiveVersion, s.Live(103).ActiveVersion)
+	}
+	if res.Aliases[0].Status != ncf.StatusRolledBack || res.Aliases[1].Status != ncf.StatusFailed {
+		t.Errorf("statuses = %s, %s", res.Aliases[0].Status, res.Aliases[1].Status)
+	}
+}
+
+func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
+	s := world()
+	s.ProdLag = 5
+	if _, err := apply(t, s, desired("192.0.2.0/25"), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Two plans (the helper's and apply's own, 2 aliases each) plus the
+	// pre-create re-read: 5. Polling on GetAlias would add one per poll.
+	if n := s.Count("GetAlias"); n != 5 {
+		t.Errorf("GetAlias called %d times; polling must use the alias list", n)
+	}
+}
