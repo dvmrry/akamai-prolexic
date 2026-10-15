@@ -71,7 +71,8 @@ func (a *fakeAlias) versionBody(i int) map[string]any {
 		entries = a.Versions[i-1]
 	}
 	return map[string]any{
-		"aliasId": a.ID, "aliasName": a.Name, "aliasType": a.Type, "ipVersion": a.IPVer,
+		// Live version responses carry no aliasType or ipVersion.
+		"aliasId": a.ID, "aliasName": a.Name,
 		"version": vname(i), "isActive": i == a.Active, "entries": entries, "entriesCount": len(entries),
 	}
 }
@@ -130,7 +131,9 @@ func (f *fakeAPI) ncfV2(aliases ...*fakeAlias) *fakeNCF {
 		f.routes["GET "+p+"/active"] = func(w http.ResponseWriter, _ *http.Request) {
 			n.mu.Lock()
 			defer n.mu.Unlock()
-			reply(w, 200, a.versionBody(a.Active))
+			body := a.versionBody(a.Active)
+			delete(body, "entries") // live /versions/active carries no entries
+			reply(w, 200, body)
 		}
 		f.routes["GET "+p] = func(w http.ResponseWriter, _ *http.Request) {
 			n.mu.Lock()

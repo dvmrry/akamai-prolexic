@@ -19,10 +19,10 @@ const v2Path = "/network-cloud-firewall/v2"
 
 // V2 is ncf.Store over NCF v2, where aliases are versioned.
 //
-// v2 has no "get one alias": the alias list carries each alias's active and
-// production version ids (but no entries), and entries come from the
-// versions endpoints. GetAlias therefore lists aliases and reads the active
-// version.
+// v2 has no "get one alias" (live returns 405): the alias list carries each
+// alias's active and production version ids but no entries, and entries come
+// from GET /aliases/{id}/versions/{version}. Live /versions/active carries
+// no entries, so it isn't used.
 type V2 struct {
 	c *akamai.Client
 }
@@ -83,9 +83,9 @@ func (s *V2) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
 	return out, nil
 }
 
-// GetAlias returns one alias with its active version's entries. The active
-// version id comes from the same response as the entries, so the conflict
-// token always describes the entries returned with it.
+// GetAlias returns one alias with its active version's entries. The token is
+// the list's activeVersion, and the entries are read from that exact version
+// (live /versions/active carries no entries), so the two always agree.
 func (s *V2) GetAlias(ctx context.Context, id int64) (ncf.LiveAlias, error) {
 	all, err := s.ListAliases(ctx)
 	if err != nil {
@@ -101,14 +101,14 @@ func (s *V2) GetAlias(ctx context.Context, id int64) (ncf.LiveAlias, error) {
 	if !found {
 		return ncf.LiveAlias{}, apperr.New(apperr.NotFound, "no alias %d", id)
 	}
-	var v v2Version
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.aliasPath(id) + "/versions/active"}, &v); err != nil {
+	if l.ActiveVersion == "" {
+		return ncf.LiveAlias{}, apperr.New(apperr.Upstream, "alias %s (%d) lists no active version", l.Name, id)
+	}
+	v, err := s.GetVersion(ctx, id, l.ActiveVersion)
+	if err != nil {
 		return ncf.LiveAlias{}, err
 	}
-	l.ActiveVersion, l.Entries = v.Version, v.Entries
-	if l.Entries == nil {
-		l.Entries = []string{}
-	}
+	l.Entries = v.Entries
 	return l, nil
 }
 

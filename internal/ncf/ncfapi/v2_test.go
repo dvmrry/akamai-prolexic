@@ -63,7 +63,10 @@ const aliasesV2 = `[
 func TestV2ListAndGetAlias(t *testing.T) {
 	s, f := newV2(t)
 	f.json("GET /aliases", aliasesV2)
-	f.json("GET /aliases/101/versions/active", `{"aliasId":101,"version":"V3","isActive":true,"entries":["192.0.2.0/25","198.51.100.7"]}`)
+	// Live: /versions/active has no entries, and version responses carry
+	// no aliasType or ipVersion. A fake active route proves it's not used.
+	f.json("GET /aliases/101/versions/active", `{"aliasId":101,"version":"V3","isActive":true}`)
+	f.json("GET /aliases/101/versions/V3", `{"aliasId":101,"version":"V3","isActive":true,"entries":["192.0.2.0/25","198.51.100.7"],"createdBy":null}`)
 
 	all, err := s.ListAliases(context.Background())
 	if err != nil {
@@ -88,16 +91,20 @@ func TestV2ListAndGetAlias(t *testing.T) {
 	}
 }
 
-func TestV2GetAliasTakesTheTokenFromTheEntriesResponse(t *testing.T) {
-	// The list says V3 but a version was activated before the entries were
-	// read: the token must match the entries, or apply would pin the wrong
-	// version.
+func TestV2GetAliasReadsEntriesFromTheTokenVersion(t *testing.T) {
+	// The entries must be the planned token's, whatever is active by the
+	// time they are read: apply compares tokens, not entries.
 	s, f := newV2(t)
 	f.json("GET /aliases", aliasesV2)
-	f.json("GET /aliases/101/versions/active", `{"aliasId":101,"version":"V4","isActive":true,"entries":["192.0.2.0/25"]}`)
+	f.json("GET /aliases/101/versions/V3", `{"aliasId":101,"version":"V3","isActive":false,"entries":["192.0.2.0/25"]}`)
 	l, err := s.GetAlias(context.Background(), 101)
-	if err != nil || l.ActiveVersion != "V4" {
+	if err != nil || l.ActiveVersion != "V3" || len(l.Entries) != 1 {
 		t.Errorf("alias = %+v, err = %v", l, err)
+	}
+	for _, k := range f.seen {
+		if strings.Contains(k, "/versions/active") {
+			t.Errorf("read %s; live /versions/active carries no entries", k)
+		}
 	}
 }
 

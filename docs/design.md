@@ -81,7 +81,7 @@ checking against a real account.
   - no new version: it didn't land, and re-running is safe;
   - exactly one: it landed and goes on to verification;
   - more than one: a concurrent writer (exit 8).
-- **NCF v2:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v2 spec is login-only (kept in `spec/`, not vendored). v2 has no get-one-alias, so `GetAlias` lists aliases and reads `/versions/active`; create sends `isActive: false` and `sourceVersion` (BIG uploads are multipart and may activate on arrival).
+- **NCF v2:** the `Store` port uses the brief's vocabulary (`activeVersion`, `prodVersion`, the version list, create, activate). Version ids are opaque strings (live v2 uses `"V1"`). The v2 spec is login-only (kept in `spec/`, not vendored). v2 has no get-one-alias, so `GetAlias` lists aliases and reads the listed active version by id (live `/versions/active` carries no entries); create sends `isActive: false` and `sourceVersion` (BIG uploads are multipart and may activate on arrival).
 - **Entries stay off the wire:** v2's alias list carries no entries (v1 listed them, managed aliases included), so `plan`, `status` and `export` never download an Akamai-managed alias's entries.
 
 ## add and remove

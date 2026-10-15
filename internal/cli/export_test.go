@@ -216,7 +216,7 @@ func TestExportRefusesAndWritesNothing(t *testing.T) {
 
 func TestExportUnparsableLiveEntryWritesNothing(t *testing.T) {
 	api := exportAPI(t)
-	api.json("GET /network-cloud-firewall/v2/aliases/102/versions/active", 200, `{"aliasId": 102, "aliasName": "allow-v6", "aliasType": "SOURCE",
+	api.json("GET /network-cloud-firewall/v2/aliases/102/versions/V1", 200, `{"aliasId": 102, "aliasName": "allow-v6", "aliasType": "SOURCE",
 	  "ipVersion": "V6", "version": "V1", "isActive": true, "entries": ["2001:db8::1", "garbage"], "entriesCount": 2}`)
 	p := filepath.Join(t.TempDir(), "desired.json")
 	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
