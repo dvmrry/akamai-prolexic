@@ -117,7 +117,8 @@ func newGroup(name, short string) *cobra.Command {
 // nativeCommands are the converted commands, by path.
 func nativeCommands() map[string]func(*app) *cobra.Command {
 	return map[string]func(*app) *cobra.Command{
-		"add":             newAddCmd,
+		"add":   newAddCmd,
+		"apply": newApplyCmd, "export": newExportCmd, "fmt": newFmtCmd, "remove": newRemoveCmd, "validate": newValidateCmd,
 		"doctor":          newDoctorCmd,
 		"plan":            newPlanCmd,
 		"routed sessions": newRoutedSessionsCmd,

@@ -10,6 +10,8 @@ import (
 	"os"
 	"slices"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -56,20 +58,28 @@ func (d *ExportDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runExport(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file := fileFlag(fs)
-	all := fs.Bool("all", false, "also add editable live aliases the file doesn't name")
-	roleFlag := fs.String("role", string(ncf.RoleDeny), "role for aliases no deployed rule references (deployed rules decide the rest): deny or allow")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newExportCmd(a *app) *cobra.Command {
+	var file, role string
+	var all bool
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "write live editable aliases to the desired file (bootstrap, or adopt drift)",
+		Long:  "Reads live state (read credentials only) and writes the editable aliases to the desired file in canonical form. A missing or empty file is bootstrapped from every editable alias; an existing file is updated to the live entries of the aliases it names, keeping their metadata.",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return export(ctx, a, file, all, role)
+		}),
 	}
-	if *file == "" {
-		return nil, apperr.New(apperr.Usage, "--file is required")
-	}
-	role := ncf.Role(*roleFlag)
+	fileFlag(cmd, &file)
+	cmd.Flags().BoolVar(&all, "all", false, "also add editable live aliases the file doesn't name")
+	cmd.Flags().StringVar(&role, "role", string(ncf.RoleDeny), "role for aliases no deployed rule references (deployed rules decide the rest): deny or allow")
+	return cmd
+}
+
+func export(ctx context.Context, a *app, file string, all bool, roleFlag string) (output.Document, error) {
+	role := ncf.Role(roleFlag)
 	if role != ncf.RoleDeny && role != ncf.RoleAllow {
-		return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", *roleFlag)
+		return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", roleFlag)
 	}
 
 	// A missing or empty (whitespace-only) file bootstraps: an empty file is a
@@ -77,9 +87,9 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 	created := false
 	var f *ncf.File
 	var err error
-	if b, rerr := os.ReadFile(*file); rerr == nil && len(bytes.TrimSpace(b)) == 0 {
+	if b, rerr := os.ReadFile(file); rerr == nil && len(bytes.TrimSpace(b)) == 0 {
 		created = true
-	} else if f, _, err = readDesired(*file); err != nil {
+	} else if f, _, err = readDesired(file); err != nil {
 		if apperr.CodeOf(err) != apperr.NotFound {
 			return nil, err
 		}
@@ -182,7 +192,7 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 		}
 	}
 
-	doc := &ExportDoc{File: *file, Created: created, Aliases: []ExportAlias{}}
+	doc := &ExportDoc{File: file, Created: created, Aliases: []ExportAlias{}}
 	var aliases []ncf.Alias
 	inFile := map[int64]bool{}
 	for _, al := range f.Aliases {
@@ -225,7 +235,7 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 		aliases = append(aliases, al)
 		doc.Aliases = append(doc.Aliases, ex)
 	}
-	if created || *all { // bootstrap takes every editable alias; otherwise only --all does
+	if created || all { // bootstrap takes every editable alias; otherwise only --all does
 		for _, l := range live {
 			if !l.Editable || inFile[l.ID] {
 				continue
@@ -251,10 +261,10 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 	}
 	// Skip the write when the file already holds exactly these bytes: no
 	// mtime churn, and written=false says nothing was touched.
-	if old, err := readIfExists(*file); err != nil {
+	if old, err := readIfExists(file); err != nil {
 		return nil, err
 	} else if !bytes.Equal(old, canon) {
-		if err := writeFileAtomic(*file, canon); err != nil {
+		if err := writeFileAtomic(file, canon); err != nil {
 			return nil, err
 		}
 		doc.Written = true

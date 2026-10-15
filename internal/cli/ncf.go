@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -49,20 +48,29 @@ func (d *ValidateDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runValidate(_ context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file := fileFlag(fs)
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newValidateCmd(a *app) *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "validate",
+		Short: "offline checks of the desired file: no credentials, no network",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(context.Context, []string) (output.Document, error) {
+			return validate(a, file)
+		}),
 	}
-	f, raw, err := readDesired(*file)
+	fileFlag(cmd, &file)
+	return cmd
+}
+
+func validate(a *app, file string) (output.Document, error) {
+	f, raw, err := readDesired(file)
 	if err != nil {
 		return nil, err
 	}
-	doc := &ValidateDoc{File: *file, Findings: nonNil(a.checker().Validate(f, raw))}
+	doc := &ValidateDoc{File: file, Findings: nonNil(a.checker().Validate(f, raw))}
 	doc.Valid = !ncf.HasErrors(doc.Findings)
 	if !doc.Valid {
-		return doc, apperr.New(apperr.Validation, "%s has errors", *file)
+		return doc, apperr.New(apperr.Validation, "%s has errors", file)
 	}
 	return doc, nil
 }
@@ -90,14 +98,24 @@ func (d *FmtDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func runFmt(_ context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file := fileFlag(fs)
-	check := fs.Bool("check", false, "fail if the file isn't canonical; write nothing")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newFmtCmd(a *app) *cobra.Command {
+	var file string
+	var check bool
+	cmd := &cobra.Command{
+		Use:   "fmt",
+		Short: "rewrite the desired file in canonical form, or --check it (offline)",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(context.Context, []string) (output.Document, error) {
+			return format(file, check)
+		}),
 	}
-	f, raw, err := readDesired(*file)
+	fileFlag(cmd, &file)
+	cmd.Flags().BoolVar(&check, "check", false, "fail if the file isn't canonical; write nothing")
+	return cmd
+}
+
+func format(file string, check bool) (output.Document, error) {
+	f, raw, err := readDesired(file)
 	if err != nil {
 		return nil, err
 	}
@@ -105,14 +123,14 @@ func runFmt(_ context.Context, a *app, args []string) (output.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc := &FmtDoc{File: *file, Canonical: bytes.Equal(raw, canon)}
+	doc := &FmtDoc{File: file, Canonical: bytes.Equal(raw, canon)}
 	switch {
 	case doc.Canonical:
 		return doc, nil
-	case *check:
-		return doc, apperr.New(apperr.Validation, "%s is not in canonical form; run prolexic fmt", *file)
+	case check:
+		return doc, apperr.New(apperr.Validation, "%s is not in canonical form; run prolexic fmt", file)
 	}
-	if err := writeFileAtomic(*file, canon); err != nil {
+	if err := writeFileAtomic(file, canon); err != nil {
 		return nil, err
 	}
 	doc.Written = true
@@ -223,22 +241,30 @@ func add(a *app, args addArgs, pos []string) (output.Document, error) {
 	return a.commitChange(doc, f, raw, added)
 }
 
-func runRemove(_ context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file := fileFlag(fs)
-	ticket := fs.String("ticket", "", "the ticket authorising the change (required)")
-	pos, err := a.parseInterleaved(fs, args)
+func newRemoveCmd(a *app) *cobra.Command {
+	var file, ticket string
+	cmd := &cobra.Command{
+		Use:     "remove --file F <alias> <entry>... --ticket T",
+		Short:   "remove entries from an alias in the desired file (offline)",
+		Long:    "Removes entries from one alias of the desired file and rewrites it in canonical form. Offline validation runs first; on any error nothing is written.",
+		Example: "  prolexic remove --file desired.json block-v4 198.51.100.7 --ticket SEC-123",
+		Args:    cobra.MinimumNArgs(2),
+		RunE: a.run(func(_ context.Context, args []string) (output.Document, error) {
+			return remove(a, file, ticket, args)
+		}),
+	}
+	fileFlag(cmd, &file)
+	cmd.Flags().StringVar(&ticket, "ticket", "", "the ticket authorising the change (required)")
+	_ = cmd.MarkFlagRequired("ticket")
+	return cmd
+}
+
+func remove(a *app, file, ticket string, pos []string) (output.Document, error) {
+	f, raw, err := readDesired(file)
 	if err != nil {
 		return nil, err
 	}
-	if len(pos) < 2 || *ticket == "" {
-		return nil, apperr.New(apperr.Usage, "usage: prolexic remove --file F <alias> <entry>... --ticket T")
-	}
-	f, raw, err := readDesired(*file)
-	if err != nil {
-		return nil, err
-	}
-	doc := &ChangeDoc{File: *file, Action: "remove", Alias: pos[0], Ticket: *ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
+	doc := &ChangeDoc{File: file, Action: "remove", Alias: pos[0], Ticket: ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
 	alias, err := findAlias(f, pos[0])
 	if err != nil {
 		return nil, err
@@ -326,13 +352,6 @@ func (d *PlanDoc) WriteText(w io.Writer) error {
 	return err
 }
 
-func (a *app) planFlags(fs *flag.FlagSet) (file *string, maxRemovals *int, noAnalytics *bool) {
-	file = fileFlag(fs)
-	maxRemovals = fs.Int("max-removals", ncf.DefaultMaxRemovals, "most entries one alias may lose in one apply; -1 for no limit")
-	noAnalytics = fs.Bool("no-analytics-own-space", false, "skip Prolexic Analytics protected prefixes in the own-space check (recorded in the plan)")
-	return
-}
-
 // planArgs are the flags plan and apply share.
 type planArgs struct {
 	file        string
@@ -415,19 +434,30 @@ func (d *ApplyDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-func runApply(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	file, maxRemovals, noAnalytics := a.planFlags(fs)
-	expect := fs.String("expect-digest", "", "the digest of the reviewed plan (required)")
-	timeout := fs.Duration("timeout", ncf.DefaultApplyTimeout, "how long to wait for production to carry the new versions")
-	interval := fs.Duration("interval", ncf.DefaultApplyInterval, "polling period while waiting")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newApplyCmd(a *app) *cobra.Command {
+	var p planArgs
+	var expect string
+	var timeout, interval time.Duration
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "apply a reviewed plan (the only command that writes)",
+		Long:  "Recomputes the plan, refuses unless its digest equals --expect-digest (the digest of the plan you reviewed), then writes with the write credentials and waits for production to carry the new versions.",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return apply(ctx, a, p, expect, timeout, interval)
+		}),
 	}
-	if *expect == "" {
-		return nil, apperr.New(apperr.Usage, "--expect-digest is required: apply only what was reviewed")
-	}
-	f, raw, err := readDesired(*file)
+	p.register(cmd)
+	f := cmd.Flags()
+	f.StringVar(&expect, "expect-digest", "", "the digest of the reviewed plan (required)")
+	f.DurationVar(&timeout, "timeout", ncf.DefaultApplyTimeout, "how long to wait for production to carry the new versions")
+	f.DurationVar(&interval, "interval", ncf.DefaultApplyInterval, "polling period while waiting")
+	_ = cmd.MarkFlagRequired("expect-digest")
+	return cmd
+}
+
+func apply(ctx context.Context, a *app, args planArgs, expect string, timeout, interval time.Duration) (output.Document, error) {
+	f, raw, err := readDesired(args.file)
 	if err != nil {
 		return nil, err
 	}
@@ -439,9 +469,9 @@ func runApply(ctx context.Context, a *app, args []string) (output.Document, erro
 	if err != nil {
 		return nil, err
 	}
-	opts, warnings := a.planOptions(*maxRemovals, *noAnalytics)
+	opts, warnings := a.planOptions(args.maxRemovals, args.noAnalytics)
 	p, res, err := a.checker().Apply(ctx, read, a.ncfStore(wc), f, raw, ncf.ApplyOptions{
-		PlanOptions: opts, ExpectDigest: *expect, Timeout: *timeout, Interval: *interval,
+		PlanOptions: opts, ExpectDigest: expect, Timeout: timeout, Interval: interval,
 		Sleep: a.env.Sleep, Now: a.env.Now,
 	})
 	if p != nil {
@@ -450,7 +480,7 @@ func runApply(ctx context.Context, a *app, args []string) (output.Document, erro
 	if p == nil && res == nil {
 		return nil, err
 	}
-	return &ApplyDoc{File: *file, Plan: p, Result: res}, err
+	return &ApplyDoc{File: args.file, Plan: p, Result: res}, err
 }
 
 // planOptions builds the plan options; the returned findings collect
@@ -552,8 +582,9 @@ func (a *app) ncfStore(c *akamai.Client) ncf.Store {
 	return ncfapi.NewV2(c)
 }
 
-func fileFlag(fs *flag.FlagSet) *string {
-	return fs.String("file", "", "the desired file (required)")
+func fileFlag(cmd *cobra.Command, file *string) {
+	cmd.Flags().StringVar(file, "file", "", "the desired file (required)")
+	_ = cmd.MarkFlagRequired("file")
 }
 
 func readDesired(path string) (*ncf.File, []byte, error) {
@@ -620,24 +651,4 @@ func writeFindings(w io.Writer, fs []ncf.Finding) error {
 		}
 	}
 	return nil
-}
-
-// parseInterleaved parses flags that may come after positional arguments
-// (`add --file F alias 192.0.2.1 --ticket T`) and returns the positionals.
-func (a *app) parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
-	var pos []string
-	for {
-		if err := a.parse(fs, args, true); err != nil {
-			return nil, err
-		}
-		args = fs.Args()
-		if len(args) == 0 {
-			return pos, nil
-		}
-		if args[0] == "--" {
-			return append(pos, args[1:]...), nil
-		}
-		pos = append(pos, args[0])
-		args = args[1:]
-	}
 }

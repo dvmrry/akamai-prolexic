@@ -68,7 +68,7 @@ func commands() []*command {
 			{name: "show", summary: "one alias's entries at a version", run: runAliasesShow},
 			{name: "versions", summary: "one alias's version history", run: runAliasesVersions},
 		}},
-		{name: "apply", summary: "apply a reviewed plan (the only command that writes)", run: runApply},
+		{name: "apply"},
 		{name: "attacks", summary: "attack reports (read-only)", sub: []*command{
 			{name: "list", summary: "attacks in a time window per customer name", run: runAttacksList},
 			{name: "show", summary: "one attack's detail report", run: runAttacksShow},
@@ -76,8 +76,8 @@ func commands() []*command {
 		{name: "customers", summary: "the account's customer names (read-only)", run: runCustomers},
 		{name: "doctor"},
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
-		{name: "export", summary: "write live editable aliases to the desired file (bootstrap, or adopt drift)", run: runExport},
-		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
+		{name: "export"},
+		{name: "fmt"},
 		{name: "managed", summary: "managed-services ACLs and rule hits (read-only)", sub: []*command{
 			{name: "acl", summary: "a policy domain's latest managed-services ACL version", run: runManagedACL},
 			{name: "rule-hits", summary: "a policy domain's rule statistics, and one rule's time series", run: runManagedRuleHits},
@@ -85,7 +85,7 @@ func commands() []*command {
 		{name: "metrics", summary: "traffic metrics per customer name (read-only)", run: runMetrics},
 		{name: "plan"},
 		{name: "protected", summary: "prefixes and AS numbers treated as own space, per customer name (read-only)", run: runProtected},
-		{name: "remove", summary: "remove entries from an alias in the desired file (offline)", run: runRemove},
+		{name: "remove"},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
 			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},
 			{name: "health", summary: "healthy and total tunnels per location and router", run: runRoutedHealth},
@@ -103,7 +103,7 @@ func commands() []*command {
 			{name: "show", summary: "one target by id", run: runTargetsShow},
 		}},
 		{name: "time-series", summary: "flow usage and attack traffic per destination (read-only)", run: runTimeSeries},
-		{name: "validate", summary: "offline checks of the desired file: no credentials, no network", run: runValidate},
+		{name: "validate"},
 		{name: "version"},
 	}
 }
