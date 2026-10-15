@@ -1,0 +1,57 @@
+{
+  "$id": "prolexic.acl-versions.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "versions": {
+      "description": "Newest first.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "description": "As the API reports it.",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "rulesCount": {
+            "type": "integer"
+          },
+          "state": {
+            "description": "CONFIGURATION, DEPLOYED or DEPRECATED.",
+            "type": "string"
+          },
+          "updated": {
+            "description": "As the API reports it.",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rulesCount",
+          "state",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "versions"
+  ],
+  "type": "object"
+}

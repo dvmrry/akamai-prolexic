@@ -13,6 +13,9 @@ import (
 func documents() []output.Document {
 	return []output.Document{
 		&output.ErrorDoc{},
+		&ACLDeploymentDoc{},
+		&ACLDoc{},
+		&ACLVersionsDoc{},
 		&AliasesDoc{},
 		&AliasDoc{},
 		&AliasVersionsDoc{},

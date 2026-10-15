@@ -57,6 +57,11 @@ type command struct {
 // commands is the whole tree. Keep it sorted by name within each level.
 func commands() []*command {
 	return []*command{
+		{name: "acl", summary: "ACL versions, rules and deployment (read-only)", sub: []*command{
+			{name: "deployment", summary: "deployment-status rulesets and which is in production", run: runACLDeployment},
+			{name: "show", summary: "one ACL version's rules (default: production)", run: runACLShow},
+			{name: "versions", summary: "every ACL version", run: runACLVersions},
+		}},
 		{name: "add", summary: "add entries to an alias in the desired file (offline)", run: runAdd},
 		{name: "aliases", summary: "aliases and their versions (read-only)", sub: []*command{
 			{name: "list", summary: "every alias, without entries", run: runAliasesList},
