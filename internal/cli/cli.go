@@ -87,6 +87,10 @@ func commands() []*command {
 			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
 			{name: "sessions", summary: "BGP sessions per customer name", run: runRoutedSessions},
 		}},
+		{name: "rule-hits", summary: "ACL rule match statistics (read-only)", sub: []*command{
+			{name: "list", summary: "match statistics of every rule", run: runRuleHitsList},
+			{name: "show", summary: "one rule's statistics, and its time series with a window", run: runRuleHitsShow},
+		}},
 		{name: "scrub-centers", summary: "active scrub centers (read-only)", run: runScrubCenters},
 		{name: "status", summary: "deployment state, aliases and limits (read-only)", run: runStatus},
 		{name: "targets", summary: "Network Health targets (read-only)", sub: []*command{

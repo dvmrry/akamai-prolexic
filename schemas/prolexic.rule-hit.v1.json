@@ -1,0 +1,108 @@
+{
+  "$id": "prolexic.rule-hit.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "rule": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "firstMatch": {
+          "type": "string"
+        },
+        "lastMatch": {
+          "type": "string"
+        },
+        "lastReset": {
+          "type": "string"
+        },
+        "lastUpdated": {
+          "type": "string"
+        },
+        "matches": {
+          "type": "integer"
+        },
+        "ruleId": {
+          "description": "The rule's id (its uuid).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes",
+        "matches",
+        "ruleId"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "series": {
+      "additionalProperties": false,
+      "description": "Present only when --since or --start was given.",
+      "properties": {
+        "averageMatches": {
+          "type": "number"
+        },
+        "end": {
+          "description": "Window end as the API reports it.",
+          "type": "string"
+        },
+        "peakMatches": {
+          "type": "number"
+        },
+        "points": {
+          "description": "In time order.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "matches": {
+                "type": "integer"
+              },
+              "timestamp": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "bytes",
+              "matches",
+              "timestamp"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "resolution": {
+          "description": "Bucket size the API chose: 5m, 1h or 1d.",
+          "type": "string"
+        },
+        "start": {
+          "description": "Window start as the API reports it.",
+          "type": "string"
+        },
+        "totalMatches": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "averageMatches",
+        "end",
+        "peakMatches",
+        "points",
+        "start",
+        "totalMatches"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "rule",
+    "schema"
+  ],
+  "type": "object"
+}

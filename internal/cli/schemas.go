@@ -30,6 +30,8 @@ func documents() []output.Document {
 		&PlanDoc{},
 		&DoctorDoc{},
 		&ProtectedDoc{},
+		&RuleHitDoc{},
+		&RuleHitsDoc{},
 		&RoutedCheckDoc{},
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},

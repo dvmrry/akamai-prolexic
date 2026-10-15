@@ -1,0 +1,58 @@
+{
+  "$id": "prolexic.rule-hits.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "description": "Sorted by ruleId.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "firstMatch": {
+            "type": "string"
+          },
+          "lastMatch": {
+            "type": "string"
+          },
+          "lastReset": {
+            "type": "string"
+          },
+          "lastUpdated": {
+            "type": "string"
+          },
+          "matches": {
+            "type": "integer"
+          },
+          "ruleId": {
+            "description": "The rule's id (its uuid).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bytes",
+          "matches",
+          "ruleId"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "rulesetName": {
+      "type": "string"
+    },
+    "rulesetType": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "rules",
+    "schema"
+  ],
+  "type": "object"
+}
