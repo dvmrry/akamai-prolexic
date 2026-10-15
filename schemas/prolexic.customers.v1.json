@@ -1,0 +1,43 @@
+{
+  "$id": "prolexic.customers.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "Sorted by name, contractId.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "accountName": {
+            "type": "string"
+          },
+          "contractId": {
+            "type": "string"
+          },
+          "inUse": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountName",
+          "contractId",
+          "inUse",
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "schema"
+  ],
+  "type": "object"
+}

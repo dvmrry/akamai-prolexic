@@ -73,6 +73,7 @@ func commands() []*command {
 			{name: "list", summary: "attacks in a time window per customer name", run: runAttacksList},
 			{name: "show", summary: "one attack's detail report", run: runAttacksShow},
 		}},
+		{name: "customers", summary: "the account's customer names (read-only)", run: runCustomers},
 		{name: "doctor", summary: "show which credentials resolve (offline)", run: runDoctor},
 		{name: "events", summary: "critical events and events per customer name", run: runEvents},
 		{name: "export", summary: "write live editable aliases to the desired file (bootstrap, or adopt drift)", run: runExport},

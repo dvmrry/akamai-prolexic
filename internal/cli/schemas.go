@@ -23,6 +23,7 @@ func documents() []output.Document {
 		&AttackDoc{},
 		&AttacksDoc{},
 		&ChangeDoc{},
+		&CustomersDoc{},
 		&EventsDoc{},
 		&ExportDoc{},
 		&FmtDoc{},
