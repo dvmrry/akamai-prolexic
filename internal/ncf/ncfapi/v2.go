@@ -122,41 +122,19 @@ func (s *V2) GetAlias(ctx context.Context, id int64) (ncf.LiveAlias, error) {
 	return l, nil
 }
 
-// ListVersions pages through the full version history (metadata only).
+// ListVersions pages through the full version history (metadata only). A
+// short history makes apply misjudge an ambiguous create, so getPages never
+// stops early.
 func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, error) {
-	var out []ncf.AliasVersion
-	for page := 0; ; page++ {
-		var resp struct {
-			Content    []v2Version `json:"content"`
-			Last       *bool       `json:"last"`
-			TotalPages *int        `json:"totalPages"`
-		}
-		q := url.Values{"page": {strconv.Itoa(page)}, "size": {"100"}}
-		if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.aliasPath(id) + "/versions", Query: q}, &resp); err != nil {
-			return nil, err
-		}
-		for _, v := range resp.Content {
-			out = append(out, ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Comment: v.Comments, Source: v.SourceVersion})
-		}
-		// A short history makes apply misjudge an ambiguous create, so never
-		// stop early: trust "last", then "totalPages", and without either
-		// read until an empty page.
-		switch {
-		case resp.Last != nil:
-			if *resp.Last {
-				return out, nil
-			}
-		case resp.TotalPages != nil:
-			if page+1 >= *resp.TotalPages {
-				return out, nil
-			}
-		case len(resp.Content) == 0:
-			return out, nil
-		}
-		if page >= 1000 {
-			return nil, apperr.New(apperr.Upstream, "alias %d: version history did not end after %d pages", id, page+1)
-		}
+	rows, err := getPages[v2Version](ctx, s.c, s.aliasPath(id)+"/versions", nil)
+	if err != nil {
+		return nil, err
 	}
+	out := make([]ncf.AliasVersion, len(rows))
+	for i, v := range rows {
+		out[i] = ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Comment: v.Comments, Source: v.SourceVersion}
+	}
+	return out, nil
 }
 
 func (s *V2) GetVersion(ctx context.Context, id int64, version string) (ncf.AliasVersion, error) {
