@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -74,6 +75,37 @@ func TestAliasesShowUsage(t *testing.T) {
 	}
 	if r := runCLI(t, ncfEnv(api.env()), "aliases", "show", "--name", "nope"); r.code != int(apperr.NotFound) {
 		t.Errorf("unknown alias: exit = %d", r.code)
+	}
+}
+
+func TestAliasesVersionsPagesAndSorts(t *testing.T) {
+	api := ncfAPI(t)
+	api.routes["GET /network-cloud-firewall/v2/aliases/101/versions"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "0" {
+			w.Write([]byte(`{"content":[{"version":"V2","isActive":false,"entriesCount":3,"comments":"prolexic apply abc123","sourceVersion":"V1","updatedBy":"example-user"},
+			  {"version":"V10","isActive":true,"entriesCount":4,"comments":"","sourceVersion":"V2"}],"last":false,"totalPages":2}`))
+			return
+		}
+		w.Write([]byte(`{"content":[{"version":"V1","isActive":false,"entriesCount":2}],"last":true,"totalPages":2}`))
+	}
+	r := runCLI(t, ncfEnv(api.env()), "aliases", "versions", "--name", "block-v4")
+	if r.code != 0 {
+		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+	doc := decode[AliasVersionsDoc](t, r.stdout, "prolexic.alias-versions.v1")
+	var got []string
+	for _, v := range doc.Versions {
+		got = append(got, v.Version)
+	}
+	if strings.Join(got, ",") != "V10,V2,V1" {
+		t.Fatalf("versions = %v", got)
+	}
+	if v := doc.Versions[1]; v.Comment != "prolexic apply abc123" || v.SourceVersion != "V1" || v.EntriesCount != 3 || !doc.Versions[0].Active {
+		t.Errorf("V2 = %+v", v)
+	}
+	if r := runCLI(t, ncfEnv(api.env()), "aliases", "versions", "--id", "101", "--format", "text"); !strings.Contains(r.stdout, "prolexic apply abc123") {
+		t.Errorf("text:\n%s", r.stdout)
 	}
 }
 

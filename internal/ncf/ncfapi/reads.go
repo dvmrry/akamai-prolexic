@@ -3,8 +3,11 @@ package ncfapi
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 // Read-only calls beyond ncf.Store. The exported types carry JSON tags and
@@ -63,6 +66,79 @@ func (s *V2) ListAliasInfo(ctx context.Context) ([]AliasInfo, error) {
 			}
 		}
 		out = append(out, i)
+	}
+	return out, nil
+}
+
+// getPages reads every page of a Spring-style paged list (content, last,
+// totalPages). It trusts "last", then "totalPages", and without either reads
+// until an empty page, so a short answer is never mistaken for the whole.
+func getPages[T any](ctx context.Context, c *akamai.Client, path string, query url.Values) ([]T, error) {
+	var out []T
+	for page := 0; ; page++ {
+		var resp struct {
+			Content    []T   `json:"content"`
+			Last       *bool `json:"last"`
+			TotalPages *int  `json:"totalPages"`
+		}
+		q := url.Values{}
+		for k, v := range query {
+			q[k] = v
+		}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("size", "100")
+		if err := c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path, Query: q}, &resp); err != nil {
+			return nil, err
+		}
+		out = append(out, resp.Content...)
+		switch {
+		case resp.Last != nil:
+			if *resp.Last {
+				return out, nil
+			}
+		case resp.TotalPages != nil:
+			if page+1 >= *resp.TotalPages {
+				return out, nil
+			}
+		}
+		if len(resp.Content) == 0 {
+			return out, nil // nothing more, whatever "last" said: don't spin
+		}
+		if page >= 1000 {
+			return nil, apperr.New(apperr.Upstream, "%s: the list did not end after %d pages", path, page+1)
+		}
+	}
+}
+
+// VersionInfo is one item of an alias's version history.
+type VersionInfo struct {
+	Version       string `json:"version"`
+	Active        bool   `json:"active" doc:"The alias's active version."`
+	EntriesCount  int    `json:"entriesCount"`
+	Comment       string `json:"comment" doc:"The note the version was created with; empty when none."`
+	SourceVersion string `json:"sourceVersion" doc:"The version it was derived from; empty when none."`
+	UpdatedBy     string `json:"updatedBy,omitempty"`
+	Updated       string `json:"updated,omitempty" doc:"When the version was last updated, as the API reports it."`
+}
+
+// VersionHistory reads an alias's full version history, every page.
+func (s *V2) VersionHistory(ctx context.Context, id int64) ([]VersionInfo, error) {
+	rows, err := getPages[struct {
+		Version       string `json:"version"`
+		IsActive      bool   `json:"isActive"`
+		EntriesCount  int    `json:"entriesCount"`
+		Comments      string `json:"comments"`
+		SourceVersion string `json:"sourceVersion"`
+		UpdatedBy     string `json:"updatedBy"`
+		Updated       string `json:"updatedTimestamp"`
+	}](ctx, s.c, s.aliasPath(id)+"/versions", nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VersionInfo, len(rows))
+	for i, r := range rows {
+		out[i] = VersionInfo{Version: r.Version, Active: r.IsActive, EntriesCount: r.EntriesCount, Comment: r.Comments,
+			SourceVersion: r.SourceVersion, UpdatedBy: r.UpdatedBy, Updated: r.Updated}
 	}
 	return out, nil
 }

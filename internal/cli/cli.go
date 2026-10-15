@@ -61,6 +61,7 @@ func commands() []*command {
 		{name: "aliases", summary: "aliases and their versions (read-only)", sub: []*command{
 			{name: "list", summary: "every alias, without entries", run: runAliasesList},
 			{name: "show", summary: "one alias's entries at a version", run: runAliasesShow},
+			{name: "versions", summary: "one alias's version history", run: runAliasesVersions},
 		}},
 		{name: "apply", summary: "apply a reviewed plan (the only command that writes)", run: runApply},
 		{name: "attacks", summary: "attack reports (read-only)", sub: []*command{

@@ -15,6 +15,7 @@ func documents() []output.Document {
 		&output.ErrorDoc{},
 		&AliasesDoc{},
 		&AliasDoc{},
+		&AliasVersionsDoc{},
 		&ApplyDoc{},
 		&AttackDoc{},
 		&AttacksDoc{},

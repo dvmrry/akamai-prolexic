@@ -1,0 +1,116 @@
+{
+  "$id": "prolexic.alias-versions.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alias": {
+      "additionalProperties": false,
+      "properties": {
+        "activeVersion": {
+          "description": "Empty when none is reported.",
+          "type": "string"
+        },
+        "editable": {
+          "description": "False means Akamai-managed.",
+          "type": "boolean"
+        },
+        "entriesCount": {
+          "description": "Entries in the active version.",
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "inUse": {
+          "description": "A deployed ACL rule references the alias.",
+          "type": "boolean"
+        },
+        "ipVersion": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "prodRuleIndexes": {
+          "description": "Indexes of the deployed ACL rules that reference the alias.",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "prodVersion": {
+          "description": "The version production carries; empty when none.",
+          "type": "string"
+        },
+        "type": {
+          "description": "SOURCE, DIPA or BIG.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activeVersion",
+        "editable",
+        "entriesCount",
+        "id",
+        "inUse",
+        "ipVersion",
+        "name",
+        "prodRuleIndexes",
+        "prodVersion",
+        "type"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "versions": {
+      "description": "Newest first (by version number).",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "description": "The alias's active version.",
+            "type": "boolean"
+          },
+          "comment": {
+            "description": "The note the version was created with; empty when none.",
+            "type": "string"
+          },
+          "entriesCount": {
+            "type": "integer"
+          },
+          "sourceVersion": {
+            "description": "The version it was derived from; empty when none.",
+            "type": "string"
+          },
+          "updated": {
+            "description": "When the version was last updated, as the API reports it.",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "comment",
+          "entriesCount",
+          "sourceVersion",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "alias",
+    "schema",
+    "versions"
+  ],
+  "type": "object"
+}
