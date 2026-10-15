@@ -20,7 +20,7 @@ func TestDeploymentReportsTheNewestFailedRuleset(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := akamai.New(edgegrid.Credentials{Host: strings.TrimPrefix(srv.URL, "http://"), ClientToken: "ct", ClientSecret: "cs", AccessToken: "at"}, akamai.Options{Scheme: "http"})
-	d, err := NewV1(c).Deployment(context.Background())
+	d, err := deployment(context.Background(), c, v2Path)
 	if err != nil {
 		t.Fatal(err)
 	}
