@@ -83,17 +83,20 @@
       "type": "object"
     },
     "limits": {
-      "description": "Sorted by type.",
+      "description": "Sorted by type. Counts cover customer-editable aliases only, not account totals.",
       "items": {
         "additionalProperties": false,
         "properties": {
           "disabled": {
+            "description": "Disabled customer-editable aliases of the type (not an account total).",
             "type": "integer"
           },
           "enabled": {
+            "description": "Enabled customer-editable aliases of the type (not an account total).",
             "type": "integer"
           },
           "limit": {
+            "description": "The alias limit for the type; /stats counts customer-editable aliases only, not account totals.",
             "type": "integer"
           },
           "type": {

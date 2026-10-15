@@ -32,12 +32,13 @@ type StatusAlias struct {
 	ProdVersion   string `json:"prodVersion" doc:"The version production carries; differs from activeVersion while an activation is pending."`
 }
 
-// StatusLimit is the account's alias limit for one type.
+// StatusLimit is the alias limit for one type. The counts cover customer-editable
+// aliases only, not account totals.
 type StatusLimit struct {
 	Type     string `json:"type"`
-	Limit    int    `json:"limit"`
-	Enabled  int    `json:"enabled"`
-	Disabled int    `json:"disabled"`
+	Limit    int    `json:"limit" doc:"The alias limit for the type; /stats counts customer-editable aliases only, not account totals."`
+	Enabled  int    `json:"enabled" doc:"Enabled customer-editable aliases of the type (not an account total)."`
+	Disabled int    `json:"disabled" doc:"Disabled customer-editable aliases of the type (not an account total)."`
 }
 
 // StatusDoc is the account's firewall state: deployment, aliases, limits.
@@ -45,7 +46,7 @@ type StatusDoc struct {
 	output.Header
 	Deployment StatusDeployment `json:"deployment"`
 	Aliases    []StatusAlias    `json:"aliases" doc:"Sorted by name."`
-	Limits     []StatusLimit    `json:"limits" doc:"Sorted by type."`
+	Limits     []StatusLimit    `json:"limits" doc:"Sorted by type. Counts cover customer-editable aliases only, not account totals."`
 }
 
 func (*StatusDoc) SchemaID() string { return "prolexic.status.v1" }
@@ -67,7 +68,7 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%s\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
 			al.EntriesCount, dash(al.ActiveVersion), dash(al.ProdVersion), mark)
 	}
-	fmt.Fprintln(tw, "\nLIMIT TYPE\tLIMIT\tENABLED\tDISABLED\t\t\t\t\t")
+	fmt.Fprintln(tw, "\nLIMIT TYPE (customer-editable aliases)\tLIMIT\tENABLED\tDISABLED\t\t\t\t\t")
 	for _, l := range d.Limits {
 		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\n", l.Type, l.Limit, l.Enabled, l.Disabled)
 	}
