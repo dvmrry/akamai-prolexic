@@ -20,6 +20,7 @@ func documents() []output.Document {
 		&EventsDoc{},
 		&ExportDoc{},
 		&FmtDoc{},
+		&MetricsDoc{},
 		&PlanDoc{},
 		&DoctorDoc{},
 		&RoutedCheckDoc{},

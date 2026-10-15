@@ -1,0 +1,111 @@
+{
+  "$id": "prolexic.metrics.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "end": {
+      "description": "Window end, RFC 3339 UTC.",
+      "type": "string"
+    },
+    "failures": {
+      "description": "Customer names whose query failed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The exit code this failure alone would have.",
+            "type": "integer"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "series": {
+      "description": "Sorted by customer, service, metric, protocol, subnet, ip.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "points": {
+            "description": "[timestamp, value] pairs, as the API sends them (timestamps are not normalised).",
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "site": {
+            "description": "The response's currentContract.",
+            "type": "string"
+          },
+          "subnet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "metric",
+          "points"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "start": {
+      "description": "Window start, RFC 3339 UTC.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "end",
+    "failures",
+    "schema",
+    "series",
+    "start"
+  ],
+  "type": "object"
+}
