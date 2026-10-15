@@ -220,6 +220,10 @@ func ncfAPIState(t *testing.T) (*fakeAPI, *fakeNCF) {
 	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["192.0.2.192/26"]},"packets":{"subnets":[]}}}}}`)
 	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"example-a","status":true,
 	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["198.51.100.128/25"]},"packets":{"subnets":[]}}}}}`)
+	// Our routers announce from AS 64500 (a documentation ASN).
+	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 200, `[{"asn":64500,"dataCenter":"DC-A","routerName":"edge-1",
+	  "akamaiGreEndpointIpv4":"192.0.2.1","customerGreEndpointIpv4":"198.51.100.1","akamaiBgpPeerIpv4":"192.0.2.5",
+	  "customerBgpPeerIpv4":"192.0.2.6","healthIpv4":"UP"}]`)
 	return api, ncfState
 }
 
@@ -334,6 +338,18 @@ func TestPlanOwnSpaceIncludesCustomerNamesNotInUse(t *testing.T) {
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
 	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != int(apperr.Validation) || len(doc.Findings) != 1 || !strings.Contains(doc.Findings[0].Message, "analytics example-old/") {
+		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
+	}
+}
+
+func TestPlanRejectsOurOwnASNFromBGPSessions(t *testing.T) {
+	api := ncfAPI(t)
+	p := writeDesired(t, desiredFixture)
+	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "ASN::64500", "--ticket", "T", "--reason", "r")
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
+	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	if r.code != int(apperr.Validation) || len(doc.Findings) != 1 || doc.Findings[0].Code != "own_space" ||
+		!strings.Contains(doc.Findings[0].Message, "our own AS (analytics example-a/DC-A)") {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
 	}
 }

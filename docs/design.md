@@ -69,6 +69,7 @@ checking against a real account.
   - A customer name with none produces a warning: an empty list means unknown, not "nothing protected".
   - If the lookup fails, the plan fails.
   - `--no-analytics-own-space` skips the lookup and records a warning in the plan.
+- **Own AS numbers** come from the `asn` of every BGP session (all customer names). A deny-side `ASN::<ours>` entry is an `own_space` error, like an overlapping prefix: it would block our own network. There is no override; if ingress anti-spoofing (denying our own space as a source) is ever wanted, add a per-entry acknowledgement for prefixes and ASNs together. `GEO::` entries aren't checked: blocking a country our space sits in isn't clearly a mistake.
 
 ## Plan and apply
 

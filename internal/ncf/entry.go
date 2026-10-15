@@ -39,6 +39,9 @@ func (v Value) Kind() Kind { return v.kind }
 // Prefix is v's prefix, for KindPrefix.
 func (v Value) Prefix() netip.Prefix { return v.prefix }
 
+// ASN is v's AS number, for KindASN.
+func (v Value) ASN() uint32 { return v.asn }
+
 // Is4 reports whether v is an IPv4 prefix.
 func (v Value) Is4() bool { return v.kind == KindPrefix && v.prefix.Addr().Is4() }
 

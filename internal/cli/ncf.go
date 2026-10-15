@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -416,27 +417,41 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 	opts := ncf.PlanOptions{MaxRemovals: maxRemovals}
 	if noAnalytics {
 		*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_skipped",
-			Message: "--no-analytics-own-space: Prolexic Analytics protected prefixes were not checked"})
+			Message: "--no-analytics-own-space: Prolexic Analytics protected prefixes and own AS numbers were not checked"})
 		return opts, warnings
 	}
-	opts.OwnSpace = func(ctx context.Context) ([]ncf.OwnSpacePrefix, error) {
-		api, err := a.analytics()
-		if err != nil {
-			return nil, err
+	// Both own-space sources need the Analytics client and every customer name
+	// (in use or not: an inactive name's space is still ours); resolve them
+	// once per plan.
+	var (
+		api   *analytics.Client
+		names []string
+	)
+	resolve := func(ctx context.Context) error {
+		if api != nil {
+			return nil
 		}
-		// Every customer name, in use or not: own space is everything we
-		// protect, and an inactive name's prefixes are still ours.
-		all, err := api.CustomerNames(ctx)
+		c, err := a.analytics()
 		if err != nil {
-			return nil, apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
+			return err
 		}
-		var names []string
+		all, err := c.CustomerNames(ctx)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
+		}
 		for _, n := range all {
 			if !slices.Contains(names, n.Name) {
 				names = append(names, n.Name)
 			}
 		}
 		slices.Sort(names)
+		api = c
+		return nil
+	}
+	opts.OwnSpace = func(ctx context.Context) ([]ncf.OwnSpacePrefix, error) {
+		if err := resolve(ctx); err != nil {
+			return nil, err
+		}
 		// A failed name fails the plan: the own-space check can't be
 		// partial.
 		sets, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.MetricTypes, error) {
@@ -455,6 +470,24 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 			}
 			for _, p := range m.Prefixes {
 				out = append(out, ncf.OwnSpacePrefix{Prefix: p, Source: "analytics " + m.Customer + "/" + m.Site})
+			}
+		}
+		return out, nil
+	}
+	opts.OwnASNs = func(ctx context.Context) ([]ncf.OwnASN, error) {
+		if err := resolve(ctx); err != nil {
+			return nil, err
+		}
+		// The AS our routers announce from, per BGP session; a failed name
+		// fails the plan, as for prefixes.
+		sessions, _, err := analytics.FanOut(ctx, names, api.BGPSessions)
+		if err != nil {
+			return nil, err
+		}
+		var out []ncf.OwnASN
+		for _, s := range sessions {
+			if s.ASN > 0 && s.ASN <= math.MaxUint32 {
+				out = append(out, ncf.OwnASN{ASN: uint32(s.ASN), Source: "analytics " + s.Customer + "/" + s.DataCenter})
 			}
 		}
 		return out, nil

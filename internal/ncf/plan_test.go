@@ -309,3 +309,24 @@ func TestPlanOwnSpaceAliasEntryItCannotReadIsAnError(t *testing.T) {
 		t.Errorf("findings = %q", got)
 	}
 }
+
+func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
+	ours := ncf.PlanOptions{MaxRemovals: -1, OwnASNs: func(context.Context) ([]ncf.OwnASN, error) {
+		return []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a/DC-A"}}, nil
+	}}
+	f := desired("192.0.2.0/25", "ASN::64500", "ASN::64501")
+	got := findingCodes(plan(t, world(), f, ours).Findings)
+	if !slices.Equal(got, []string{"error own_space block-v4 ASN::64500"}) {
+		t.Errorf("findings = %q", got)
+	}
+
+	f.Aliases[0].Role = ncf.RoleAllow // a permit-side alias may name our AS
+	if got := findingCodes(plan(t, world(), f, ours).Findings); len(got) != 0 {
+		t.Errorf("allow side: findings = %q", got)
+	}
+
+	failing := ncf.PlanOptions{OwnASNs: func(context.Context) ([]ncf.OwnASN, error) { return nil, apperr.New(apperr.Upstream, "down") }}
+	if _, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, failing); apperr.CodeOf(err) != apperr.Upstream {
+		t.Errorf("err = %v; the plan must not pass without its own-ASN source", err)
+	}
+}

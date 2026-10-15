@@ -116,6 +116,15 @@ type OwnSpacePrefix struct {
 	Source string // "static", "alias <name>", "analytics <customer>/<site>"
 }
 
+// OwnASN is one of our own AS numbers and where it came from.
+type OwnASN struct {
+	ASN    uint32
+	Source string // "analytics <customer>/<data center>"
+}
+
+// OwnASNSource supplies our own AS numbers.
+type OwnASNSource func(ctx context.Context) ([]OwnASN, error)
+
 // OwnSpaceSource supplies own-space prefixes beyond the desired file's
 // static list and own-space aliases: the per-site protected prefixes from
 // Prolexic Analytics.

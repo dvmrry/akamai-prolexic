@@ -50,6 +50,9 @@ type PlanOptions struct {
 	MaxRemovals int
 	// OwnSpace adds own-space prefixes (Prolexic Analytics); nil adds none.
 	OwnSpace OwnSpaceSource
+	// OwnASNs supplies our own AS numbers (from the BGP sessions); a deny-side
+	// ASN:: entry naming one would block our own network. nil adds none.
+	OwnASNs OwnASNSource
 }
 
 // DefaultMaxRemovals is the removal threshold without --max-removals.
@@ -92,6 +95,18 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	own, err := c.ownSpace(ctx, store, f, byName, opts.OwnSpace, add)
 	if err != nil {
 		return nil, err
+	}
+	ownASNs := map[uint32]string{}
+	if opts.OwnASNs != nil {
+		asns, err := opts.OwnASNs(ctx)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.CodeOf(err), err, "own AS numbers from Prolexic Analytics")
+		}
+		for _, a := range asns {
+			if _, seen := ownASNs[a.ASN]; !seen {
+				ownASNs[a.ASN] = a.Source // first source wins: stable messages
+			}
+		}
 	}
 
 	// Deployed rules decide each alias's side; fetch them once, and only
@@ -159,7 +174,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			// said allow; the live side is deny, so check it here too.
 			checked = append(staticOwnSpace(f), own...)
 		}
-		c.liveChecks(a, full, &ap, checked, opts, add)
+		c.liveChecks(a, full, &ap, checked, ownASNs, opts, add)
 		p.Aliases = append(p.Aliases, ap)
 	}
 
@@ -215,7 +230,7 @@ func (c *Checker) diff(a Alias, l LiveAlias, add func(Severity, string, string, 
 	return ap, true
 }
 
-func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpacePrefix, opts PlanOptions, add func(Severity, string, string, string, string, ...any)) {
+func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpacePrefix, ownASNs map[uint32]string, opts PlanOptions, add func(Severity, string, string, string, string, ...any)) {
 	for _, e := range a.Entries {
 		v, _ := ParseAuthored(e.CIDR)
 		key := v.String()
@@ -234,6 +249,9 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 		case KindGeo, KindASN:
 			if !slices.Contains(geoASNTypes, l.Type) {
 				add(Error, "entry_type", a.Name, key, "%s alias %s can't hold GEO:: or ASN:: entries", l.Type, a.Name)
+			}
+			if src, ours := ownASNs[v.ASN()]; ours && v.Kind() == KindASN && a.DenySide() {
+				add(Error, "own_space", a.Name, key, "deny entry %s is our own AS (%s): it would block our own network", key, src)
 			}
 		}
 	}
