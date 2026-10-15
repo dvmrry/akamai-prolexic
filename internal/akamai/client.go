@@ -44,6 +44,7 @@ type Client struct {
 	BaseDelay   time.Duration // first backoff step
 	MaxDelay    time.Duration // cap on any single wait, Retry-After included
 	sleep       func(context.Context, time.Duration) error
+	readOnly    bool
 }
 
 // Options tune a Client. The zero value is production behaviour.
@@ -54,6 +55,10 @@ type Options struct {
 	Base http.RoundTripper
 	// Scheme overrides "https", for tests against a plain httptest server.
 	Scheme string
+	// ReadOnly makes the client refuse every request that isn't a read (a GET,
+	// or marked ReadOnly) before sending it. Read paths get a read-only client,
+	// so they can't write even by mistake.
+	ReadOnly bool
 }
 
 // New returns a client for creds.
@@ -70,6 +75,7 @@ func New(creds edgegrid.Credentials, opts Options) *Client {
 		base:        url.URL{Scheme: scheme, Host: creds.Host},
 		accountKey:  creds.AccountKey,
 		http:        &http.Client{Transport: &edgegrid.Transport{Signer: edgegrid.NewSigner(creds), Base: base}},
+		readOnly:    opts.ReadOnly,
 		userAgent:   "prolexic/" + version.Current().Version,
 		MaxAttempts: 4,
 		BaseDelay:   500 * time.Millisecond,
@@ -105,6 +111,9 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 	// endpoint is called; refuse anything that isn't already a clean path.
 	if p := path.Clean(req.Path); p != req.Path || !strings.HasPrefix(req.Path, "/") {
 		return apperr.New(apperr.Usage, "%s %q: a value can't be an empty, . or .. path segment", req.Method, req.Path)
+	}
+	if c.readOnly && !req.safe() {
+		return apperr.New(apperr.Bug, "%s %s: refused, a read-only client never writes", req.Method, req.Path)
 	}
 	body, contentType := req.Body, req.ContentType
 	if req.JSON != nil {

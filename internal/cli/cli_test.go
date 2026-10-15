@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
@@ -324,5 +325,21 @@ func TestReviewRound4Contracts(t *testing.T) {
 		if strings.Contains(c.Path, "/..") || strings.Contains(c.Path, "attack-reports") {
 			t.Errorf("request sent that should have been refused: %s %s", c.Method, c.Path)
 		}
+	}
+}
+
+// Every read command's client is read-only; only apply builds a write client.
+func TestReadClientIsReadOnly(t *testing.T) {
+	api := newFakeAPI(t)
+	env := api.env()
+	env.Home = t.TempDir()
+	a := &app{env: env, section: "default"}
+	c, err := a.readClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = c.Do(context.Background(), akamai.Request{Method: http.MethodPost, Path: "/network-cloud-firewall/v2/aliases"}, nil)
+	if apperr.KindOf(err) != apperr.Bug || len(api.calls) != 0 {
+		t.Errorf("err = %v, calls = %v", err, api.calls)
 	}
 }

@@ -63,6 +63,7 @@ A check lives at the lowest layer that has the information. Higher layers may re
 
 - **Extension:** "retry only GETs" becomes "retry only reads". The Analytics routed endpoints are POSTs that only query, marked `ReadOnly`, so they retry like GETs and are never ambiguous.
 - A write that fails with a transport error, a 5xx or a cancellation after sending is marked `ambiguous`. Callers prove the outcome by reading; they never resend.
+- **Read-only clients.** Every command except `apply` gets a client built with `ReadOnly`. It refuses any request that isn't a read (a GET, or marked `ReadOnly`) before sending, as a bug. Only `apply` builds a write client, from the write section.
 - Status → error kind: 401/403 → `credentials`; 404 → `not_found`; 409/412 → `conflict`; everything else → `upstream`. The CLI maps kinds to exit codes in one table (`internal/cli/exit.go`).
 - An expired deadline exits 5 (upstream), not 1. Responses over 16 MB fail. Error documents keep the gateway's `incidentId`.
 - The tool reports what it reads, unredacted. Keeping account data out of the repo is the maintainers' job (`internal/hygiene` and the local commit guard), not the tool's. Only credential values are never printed.

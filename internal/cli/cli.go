@@ -125,21 +125,22 @@ func (a *app) credentials(section string) (edgegrid.Credentials, edgegrid.Source
 	return c, src, nil
 }
 
-// readClient is the API client for reads.
+// readClient is the API client for reads. It is read-only: it refuses any
+// request that isn't a read, before sending it.
 func (a *app) readClient() (*akamai.Client, error) {
-	return a.client(a.section)
+	return a.client(a.section, true)
 }
 
 // writeClient is the API client for writes. Only apply may call it: CI hands
 // the write credentials to the apply job alone.
 func (a *app) writeClient() (*akamai.Client, error) {
-	return a.client(a.writeSection)
+	return a.client(a.writeSection, false)
 }
 
-func (a *app) client(section string) (*akamai.Client, error) {
+func (a *app) client(section string, readOnly bool) (*akamai.Client, error) {
 	c, _, err := a.credentials(section)
 	if err != nil {
 		return nil, err
 	}
-	return akamai.New(c, akamai.Options{Base: a.env.Transport, Scheme: a.env.Scheme}), nil
+	return akamai.New(c, akamai.Options{Base: a.env.Transport, Scheme: a.env.Scheme, ReadOnly: readOnly}), nil
 }

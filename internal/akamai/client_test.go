@@ -227,3 +227,22 @@ func TestRetryAfterIsClampedNotOverflowed(t *testing.T) {
 		t.Errorf("d = %v", d)
 	}
 }
+
+func TestReadOnlyClientRefusesWritesBeforeSending(t *testing.T) {
+	sent := 0
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) { sent++; w.Write([]byte(`{}`)) })
+	c.readOnly = true
+	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		if err := c.Do(context.Background(), Request{Method: m, Path: "/x"}, nil); apperr.KindOf(err) != apperr.Bug {
+			t.Errorf("%s: err = %v, want a refusal (bug)", m, err)
+		}
+	}
+	if sent != 0 {
+		t.Fatalf("%d writes reached the server", sent)
+	}
+	for _, req := range []Request{{Method: http.MethodGet, Path: "/x"}, {Method: http.MethodPost, Path: "/q", ReadOnly: true}} {
+		if err := c.Do(context.Background(), req, nil); err != nil {
+			t.Errorf("%s %s: a read was refused: %v", req.Method, req.Path, err)
+		}
+	}
+}
