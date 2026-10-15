@@ -8,7 +8,6 @@ import (
 	"slices"
 	"text/tabwriter"
 
-	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -23,15 +22,14 @@ type StatusDeployment struct {
 
 // StatusAlias is one live alias, from the list call only (no entries).
 type StatusAlias struct {
-	ID                int64  `json:"id"`
-	Name              string `json:"name"`
-	Type              string `json:"type"`
-	IPVersion         string `json:"ipVersion"`
-	Editable          bool   `json:"editable" doc:"False means Akamai-managed."`
-	EntriesCount      int    `json:"entriesCount"`
-	ActiveVersion     string `json:"activeVersion" doc:"Empty when the API doesn't expose versions."`
-	ProdVersion       string `json:"prodVersion" doc:"The version production carries; differs from activeVersion while an activation is pending."`
-	VersionsRemaining *int   `json:"versionsRemaining,omitempty" doc:"Versions left before the alias is full; absent when the API doesn't expose versions."`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	IPVersion     string `json:"ipVersion"`
+	Editable      bool   `json:"editable" doc:"False means Akamai-managed."`
+	EntriesCount  int    `json:"entriesCount"`
+	ActiveVersion string `json:"activeVersion" doc:"Empty when the API doesn't expose versions."`
+	ProdVersion   string `json:"prodVersion" doc:"The version production carries; differs from activeVersion while an activation is pending."`
 }
 
 // StatusLimit is the account's alias limit for one type.
@@ -52,9 +50,6 @@ type StatusDoc struct {
 
 func (*StatusDoc) SchemaID() string { return "prolexic.status.v1" }
 
-// lowVersions is the versionsRemaining below which text output warns.
-const lowVersions = 3
-
 func (d *StatusDoc) WriteText(w io.Writer) error {
 	dep := d.Deployment
 	fmt.Fprintf(w, "deployment: version %d, state %s, %d failed rules", dep.Version, dash(dep.State), dep.FailedRules)
@@ -63,22 +58,16 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 	}
 	fmt.Fprintln(w)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "\nNAME\tID\tTYPE\tIP\tEDITABLE\tENTRIES\tACTIVE\tPROD\tVERSIONS LEFT\t")
+	fmt.Fprintln(tw, "\nNAME\tID\tTYPE\tIP\tEDITABLE\tENTRIES\tACTIVE\tPROD\t")
 	for _, al := range d.Aliases {
-		left, mark := "-", ""
-		if al.VersionsRemaining != nil {
-			left = fmt.Sprint(*al.VersionsRemaining)
-			if *al.VersionsRemaining < lowVersions {
-				mark += "LOW VERSIONS "
-			}
-		}
+		mark := ""
 		if al.ActiveVersion != al.ProdVersion {
 			mark += "ACTIVATION PENDING"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%s\t%s\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
-			al.EntriesCount, dash(al.ActiveVersion), dash(al.ProdVersion), left, mark)
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%s\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
+			al.EntriesCount, dash(al.ActiveVersion), dash(al.ProdVersion), mark)
 	}
-	fmt.Fprintln(tw, "\nLIMIT TYPE\tLIMIT\tENABLED\tDISABLED\t\t\t\t\t\t")
+	fmt.Fprintln(tw, "\nLIMIT TYPE\tLIMIT\tENABLED\tDISABLED\t\t\t\t\t")
 	for _, l := range d.Limits {
 		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\n", l.Type, l.Limit, l.Enabled, l.Disabled)
 	}
@@ -117,10 +106,6 @@ func runStatus(ctx context.Context, a *app, args []string) (output.Document, err
 		al := StatusAlias{
 			ID: l.ID, Name: l.Name, Type: l.Type, IPVersion: l.IPVersion, Editable: l.Editable,
 			EntriesCount: l.EntriesCount, ActiveVersion: l.ActiveVersion, ProdVersion: l.ProdVersion,
-		}
-		if l.Versions > 0 {
-			rem := max(ncf.MaxVersions-l.Versions, 0)
-			al.VersionsRemaining = &rem
 		}
 		doc.Aliases = append(doc.Aliases, al)
 	}

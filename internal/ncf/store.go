@@ -6,10 +6,6 @@ import (
 	"net/netip"
 )
 
-// MaxVersions is how many versions an alias can ever have. Versions cannot
-// be deleted; every apply spends one.
-const MaxVersions = 10
-
 // LiveAlias is an alias as the API reports it.
 type LiveAlias struct {
 	ID        int64
@@ -21,11 +17,10 @@ type LiveAlias struct {
 
 	// ActiveVersion is the plan-time conflict token. ProdVersion is the
 	// version production carries. Version ids are opaque strings (live
-	// NCF v2 uses ids like "V1"). Versions is how many versions exist.
-	// All three are zero when the API doesn't expose versions (NCF v1).
+	// NCF v2 uses ids like "V1"); both are empty when the API doesn't
+	// expose versions. There is no per-alias version limit.
 	ActiveVersion string
 	ProdVersion   string
-	Versions      int
 
 	EntriesCount int
 	// Entries is nil unless fetched with GetAlias. Never fetch them for an

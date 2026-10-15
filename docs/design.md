@@ -64,7 +64,7 @@ checking against a real account.
 - **Bogons include the documentation ranges.** Synthetic fixtures must use them, so tests drop them from the list through `Env.Bogons`. The binary can't do that.
 - `GEO::` and `ASN::` are accepted on `SOURCE` and `BIG` aliases (techdocs); `DIPA` holds destination IPs only.
 - The removal threshold is 10 entries per alias per apply. `--max-removals N` raises it and `-1` removes it.
-- Version thresholds count the versions remaining before this apply: a warning below 3, an error at 0, and only for aliases that change.
+- There is no per-alias version limit: live NCF v2 states none, and the 10 in the alias list is only the length of its `versions` summary. So there are no version-count warnings; rotation stays an explicit, separate command if it's ever needed.
 - **Own space from Analytics** is the union of `metric-types` FBM `subnets` across all customer names, in use or not. The spec has no field called "protected prefixes", so **verify** that these are the right prefixes.
   - A customer name with none produces a warning: an empty list means unknown, not "nothing protected".
   - If the lookup fails, the plan fails.

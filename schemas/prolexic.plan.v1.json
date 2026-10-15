@@ -108,9 +108,6 @@
           },
           "unchanged": {
             "type": "integer"
-          },
-          "versionsRemaining": {
-            "type": "integer"
           }
         },
         "required": [

@@ -69,7 +69,7 @@ func TestV2ListAndGetAlias(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if all[0].ActiveVersion != "V3" || all[0].ProdVersion != "V2" || all[0].Versions != 3 || all[0].Entries != nil {
+	if all[0].ActiveVersion != "V3" || all[0].ProdVersion != "V2" || all[0].Entries != nil {
 		t.Errorf("list = %+v", all[0])
 	}
 	if all[1].Editable || all[1].ProdVersion != "" || all[1].EntriesCount != 150000 {

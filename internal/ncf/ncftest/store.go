@@ -81,11 +81,11 @@ func New() *Store { return &Store{aliases: map[int64]*alias{}} }
 func (s *Store) Add(l ncf.LiveAlias, entries ...string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	l.ActiveVersion, l.ProdVersion, l.Versions = "V1", "V1", 1
+	l.ActiveVersion, l.ProdVersion = "V1", "V1"
 	s.aliases[l.ID] = &alias{live: l, versions: [][]string{slices.Clone(entries)}}
 }
 
-// AddVersions appends n inactive versions (to use up the version cap).
+// AddVersions appends n inactive versions (a concurrent writer).
 func (s *Store) AddVersions(id int64, n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,7 +114,6 @@ func (s *Store) Live(id int64) ncf.LiveAlias {
 
 func (s *Store) snapshot(a *alias, entries bool) ncf.LiveAlias {
 	l := a.live
-	l.Versions = len(a.versions)
 	act := a.versions[versionIndex(l.ActiveVersion)]
 	l.EntriesCount = len(act)
 	l.Entries = nil
@@ -122,7 +121,7 @@ func (s *Store) snapshot(a *alias, entries bool) ncf.LiveAlias {
 		l.Entries = slices.Clone(act)
 	}
 	if s.Unversioned {
-		l.ActiveVersion, l.ProdVersion, l.Versions = "", "", 0
+		l.ActiveVersion, l.ProdVersion = "", ""
 	}
 	return l
 }
@@ -209,9 +208,6 @@ func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []stri
 	a, ok := s.aliases[l.ID]
 	if !ok {
 		return ncf.AliasVersion{}, notFound(l.ID)
-	}
-	if len(a.versions) >= ncf.MaxVersions {
-		return ncf.AliasVersion{}, apperr.New(apperr.Upstream, "version limit reached")
 	}
 	s.Comments = append(s.Comments, comment)
 	if s.CreateErr != nil && !s.CreateLands {

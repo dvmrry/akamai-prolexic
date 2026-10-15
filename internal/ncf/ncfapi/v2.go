@@ -47,13 +47,12 @@ type v2Alias struct {
 	ProdVersion *struct {
 		Version string `json:"version"`
 	} `json:"prodVersion"`
-	Versions []string `json:"versions"`
 }
 
 func (a v2Alias) live() ncf.LiveAlias {
 	l := ncf.LiveAlias{
 		ID: a.AliasID, Name: a.AliasName, Type: a.AliasType, IPVersion: a.IPVersion,
-		Editable: a.IsCustomerEditable, AccountID: a.AccountID, Versions: len(a.Versions),
+		Editable: a.IsCustomerEditable, AccountID: a.AccountID,
 	}
 	if a.ActiveVersion != nil {
 		l.ActiveVersion, l.EntriesCount = a.ActiveVersion.Version, a.ActiveVersion.EntriesCount

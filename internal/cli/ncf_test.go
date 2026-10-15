@@ -231,7 +231,7 @@ func TestPlanAgainstV2(t *testing.T) {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
 	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
-	if doc.Changes || !doc.OwnSpaceAnalytics || len(doc.Aliases) != 1 || doc.Aliases[0].Unchanged != 2 || doc.Aliases[0].VersionsRemaining == nil || *doc.Aliases[0].VersionsRemaining != 9 {
+	if doc.Changes || !doc.OwnSpaceAnalytics || len(doc.Aliases) != 1 || doc.Aliases[0].Unchanged != 2 || doc.Aliases[0].ActiveVersion != "V1" {
 		t.Errorf("doc = %+v", doc)
 	}
 	for _, c := range api.calls {

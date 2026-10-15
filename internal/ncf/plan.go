@@ -22,18 +22,16 @@ type Plan struct {
 
 // AliasPlan is one alias's diff.
 type AliasPlan struct {
-	Name          string `json:"name"`
-	ID            int64  `json:"id"`
-	Type          string `json:"type"`
-	IPVersion     string `json:"ipVersion"`
-	Role          Role   `json:"role"`
-	ActiveVersion string `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
-	ProdVersion   string `json:"prodVersion"`
-	// VersionsRemaining is absent when the API doesn't expose versions.
-	VersionsRemaining *int    `json:"versionsRemaining,omitempty"`
-	Add               []Entry `json:"add"`
-	Remove            []Entry `json:"remove"`
-	Unchanged         int     `json:"unchanged"`
+	Name          string  `json:"name"`
+	ID            int64   `json:"id"`
+	Type          string  `json:"type"`
+	IPVersion     string  `json:"ipVersion"`
+	Role          Role    `json:"role"`
+	ActiveVersion string  `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
+	ProdVersion   string  `json:"prodVersion"`
+	Add           []Entry `json:"add"`
+	Remove        []Entry `json:"remove"`
+	Unchanged     int     `json:"unchanged"`
 
 	// desired is the full canonical entry list apply writes.
 	desired []string
@@ -209,19 +207,6 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 
 	if opts.MaxRemovals >= 0 && len(ap.Remove) > opts.MaxRemovals {
 		add(Error, "removal_threshold", a.Name, "", "would remove %d entries, more than the limit of %d; pass --max-removals to allow it", len(ap.Remove), opts.MaxRemovals)
-	}
-
-	if l.Versions > 0 {
-		left := max(MaxVersions-l.Versions, 0)
-		ap.VersionsRemaining = &left
-		if ap.Changed() {
-			switch {
-			case left == 0:
-				add(Error, "versions_exhausted", a.Name, "", "the alias has used all %d versions; rotate it (new alias, repoint the rule)", MaxVersions)
-			case left < 3:
-				add(Warning, "versions_low", a.Name, "", "%d of %d versions left; this apply spends one", left, MaxVersions)
-			}
-		}
 	}
 }
 

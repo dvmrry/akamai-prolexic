@@ -28,14 +28,11 @@ func TestStatusUsesListOnly(t *testing.T) {
 		t.Errorf("deployment = %+v", doc.Deployment)
 	}
 	if len(doc.Aliases) != 2 || doc.Aliases[0].Name != "akamai-threats" || doc.Aliases[0].Editable || doc.Aliases[0].EntriesCount != 200000 ||
-		doc.Aliases[1].Name != "block-v4" || doc.Aliases[1].ID != 101 || doc.Aliases[1].ActiveVersion != "V1" || doc.Aliases[1].ProdVersion != "V1" || doc.Aliases[1].VersionsRemaining == nil || *doc.Aliases[1].VersionsRemaining != 9 {
+		doc.Aliases[1].Name != "block-v4" || doc.Aliases[1].ID != 101 || doc.Aliases[1].ActiveVersion != "V1" || doc.Aliases[1].ProdVersion != "V1" {
 		t.Errorf("aliases = %+v", doc.Aliases)
 	}
 	if len(doc.Limits) != 2 || doc.Limits[0].Type != "BIG" || doc.Limits[1].Limit != 100 || doc.Limits[1].Disabled != 1 {
 		t.Errorf("limits = %+v", doc.Limits)
-	}
-	if !strings.Contains(r.stdout, "versionsRemaining") {
-		t.Error("versionsRemaining is missing; v2 exposes versions")
 	}
 	for _, c := range api.calls {
 		if strings.Contains(c.Path, "/versions/V") || strings.HasSuffix(c.Path, "/versions/active") {
@@ -55,13 +52,11 @@ func TestStatusText(t *testing.T) {
 }
 
 func TestStatusDocText(t *testing.T) {
-	// The markers need aliases in the low and pending states, so render a
+	// The marker needs an alias with a pending activation, so render a
 	// document directly.
-	two, nine := 2, 9
 	d := &StatusDoc{Aliases: []StatusAlias{
-		{Name: "low", ActiveVersion: "V8", ProdVersion: "V8", VersionsRemaining: &two},
-		{Name: "pending", ActiveVersion: "V9", ProdVersion: "V8", VersionsRemaining: &nine},
-		{Name: "fine", ActiveVersion: "V4", ProdVersion: "V4", VersionsRemaining: &nine},
+		{Name: "pending", ActiveVersion: "V9", ProdVersion: "V8"},
+		{Name: "fine", ActiveVersion: "V4", ProdVersion: "V4"},
 	}}
 	var b strings.Builder
 	if err := d.WriteText(&b); err != nil {
@@ -69,12 +64,8 @@ func TestStatusDocText(t *testing.T) {
 	}
 	for _, line := range strings.Split(b.String(), "\n") {
 		switch {
-		case strings.HasPrefix(line, "low"):
-			if !strings.Contains(line, "LOW VERSIONS") || strings.Contains(line, "PENDING") {
-				t.Errorf("low: %q", line)
-			}
 		case strings.HasPrefix(line, "pending"):
-			if !strings.Contains(line, "ACTIVATION PENDING") || strings.Contains(line, "LOW") {
+			if !strings.Contains(line, "ACTIVATION PENDING") {
 				t.Errorf("pending: %q", line)
 			}
 		case strings.HasPrefix(line, "fine"):

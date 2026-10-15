@@ -82,7 +82,7 @@ func TestPlanDiff(t *testing.T) {
 	f.Aliases[0].Entries[1].Ticket = "SEC-2"
 	p := plan(t, world(), f, defaults)
 	a := p.Aliases[0]
-	if !p.Changes || a.ActiveVersion != "V1" || a.VersionsRemaining == nil || *a.VersionsRemaining != 9 {
+	if !p.Changes || a.ActiveVersion != "V1" {
 		t.Errorf("plan = %+v", a)
 	}
 	if got := fmt.Sprint(a.Add); got != "[{198.51.100.9/32 SEC-2   } {GEO::US    }]" {
@@ -158,15 +158,6 @@ func TestPlanLiveFindings(t *testing.T) {
 			}
 			f.Aliases[0].Entries = entries(es...)
 		}, ncf.PlanOptions{MaxRemovals: -1}, []string{"error count_limit block-v4"}},
-		{"versions low", func(f *ncf.File, s *ncftest.Store) {
-			s.AddVersions(101, 7)
-			f.Aliases[0].Entries = entries("192.0.2.0/25")
-		}, defaults, []string{"warning versions_low block-v4"}},
-		{"versions exhausted", func(f *ncf.File, s *ncftest.Store) {
-			s.AddVersions(101, 9)
-			f.Aliases[0].Entries = entries("192.0.2.0/25")
-		}, defaults, []string{"error versions_exhausted block-v4"}},
-		{"versions exhausted but no change", func(f *ncf.File, s *ncftest.Store) { s.AddVersions(101, 9) }, defaults, nil},
 		{"missing own-space alias", func(f *ncf.File, _ *ncftest.Store) { f.OwnSpace.Aliases = []string{"nope"} }, defaults,
 			[]string{"error own_space_alias nope"}},
 	}
@@ -197,7 +188,7 @@ func TestPlanUnversionedAPI(t *testing.T) {
 	s := world()
 	s.Unversioned = true
 	a := plan(t, s, desired("192.0.2.0/25"), defaults).Aliases[0]
-	if a.ActiveVersion != "" || a.VersionsRemaining != nil {
+	if a.ActiveVersion != "" {
 		t.Errorf("alias plan = %+v", a)
 	}
 }
