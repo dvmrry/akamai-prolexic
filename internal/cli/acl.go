@@ -218,7 +218,7 @@ func aclShow(ctx context.Context, a *app, version int) (output.Document, error) 
 type ACLDeploymentDoc struct {
 	output.Header
 	Production int                    `json:"production" doc:"The version in production; 0 when none is."`
-	RuleSets   []ncfapi.DeploymentSet `json:"ruleSets" doc:"As the API reports them, in its order."`
+	RuleSets   []ncfapi.DeploymentSet `json:"ruleSets" doc:"Newest version first, then by status."`
 }
 
 func (*ACLDeploymentDoc) SchemaID() string { return "prolexic.acl-deployment.v1" }
@@ -258,5 +258,9 @@ func aclDeployment(ctx context.Context, a *app) (output.Document, error) {
 		return nil, err
 	}
 	prod, _ := ncfapi.ProductionVersion(sets)
+	// Newest version first, then status: stable whatever order the API sent.
+	slices.SortStableFunc(sets, func(x, y ncfapi.DeploymentSet) int {
+		return cmp.Or(cmp.Compare(y.Version, x.Version), cmp.Compare(x.Status, y.Status))
+	})
 	return &ACLDeploymentDoc{Production: prod, RuleSets: sets}, nil
 }

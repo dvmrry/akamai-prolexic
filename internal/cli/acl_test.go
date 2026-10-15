@@ -123,8 +123,9 @@ func TestACLDeployment(t *testing.T) {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
 	doc := decode[ACLDeploymentDoc](t, r.stdout, "prolexic.acl-deployment.v1")
-	if doc.Production != 7 || len(doc.RuleSets) != 2 || doc.RuleSets[0].Stats.Failed != 1 ||
-		doc.RuleSets[0].Rules[0].InstallStatus != "FAILED" || doc.RuleSets[1].Status != "PROCESSING" || doc.RuleSets[1].Rules == nil {
+	// Newest version first: processing 8, then production 7.
+	if doc.Production != 7 || len(doc.RuleSets) != 2 || doc.RuleSets[1].Stats.Failed != 1 ||
+		doc.RuleSets[1].Rules[0].InstallStatus != "FAILED" || doc.RuleSets[0].Status != "PROCESSING" || doc.RuleSets[0].Rules == nil {
 		t.Errorf("doc = %+v", doc)
 	}
 	r = runCLI(t, ncfEnv(api.env()), "acl", "deployment", "--format", "text")

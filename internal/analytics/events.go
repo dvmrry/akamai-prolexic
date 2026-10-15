@@ -19,8 +19,8 @@ const (
 // CriticalEvent is one entry of the critical events list. Times are the
 // wire's UNIX epoch seconds (UTC).
 type CriticalEvent struct {
-	EventID          string `json:"eventId,omitempty"`
-	AttackID         string `json:"attackId,omitempty"`
+	EventID          Text   `json:"eventId,omitempty"`
+	AttackID         Text   `json:"attackId,omitempty"`
 	Summary          string `json:"summary,omitempty"`
 	Description      string `json:"description,omitempty"`
 	Notes            string `json:"notes,omitempty"`

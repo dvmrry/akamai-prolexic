@@ -80,8 +80,8 @@ func routedRoutes(ctx context.Context, a *app, customers []string, prefix string
 		return nil, err
 	}
 	rows, failures, err := analytics.FanOut(ctx, names, api.Routes)
-	if ctx.Err() != nil {
-		return nil, err
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr // err may be nil if cancellation came after FanOut returned
 	}
 	if want.IsValid() {
 		rows = slices.DeleteFunc(rows, func(r analytics.Route) bool { return !analytics.SamePrefix(r.Prefix, want) })
@@ -93,6 +93,7 @@ func routedRoutes(ctx context.Context, a *app, customers []string, prefix string
 			cmp.Compare(x.DataCenter, y.DataCenter),
 			cmp.Compare(x.RouterName, y.RouterName),
 			cmp.Compare(x.CustomerBgpPeerIp, y.CustomerBgpPeerIp),
+			cmp.Compare(rowKey(x), rowKey(y)),
 		)
 	})
 	doc := &RoutedRoutesDoc{Customers: names, Routes: nonNil(rows), Failures: nonNil(failures)}

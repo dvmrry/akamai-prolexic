@@ -146,10 +146,10 @@ func TestProblemShapes(t *testing.T) {
 
 func TestParseRetryAfter(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	if d, ok := parseRetryAfter("Thu, 01 Jan 2026 00:00:05 GMT", now); !ok || d != 5*time.Second {
+	if d, ok := parseRetryAfter("Thu, 01 Jan 2026 00:00:05 GMT", now, time.Minute); !ok || d != 5*time.Second {
 		t.Errorf("date form = %v %v", d, ok)
 	}
-	if _, ok := parseRetryAfter("soon", now); ok {
+	if _, ok := parseRetryAfter("soon", now, time.Minute); ok {
 		t.Error("garbage accepted")
 	}
 }
@@ -209,5 +209,21 @@ func TestAnalyticsErrorPathsAreSurfaced(t *testing.T) {
 	err := c.Do(context.Background(), Request{Method: "GET", Path: "/p"}, nil)
 	if !strings.Contains(err.Error(), "metrics[0].subnet: is required for fbm metrics") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestUncleanPathsAreRefused(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) { t.Errorf("sent %s", r.URL.Path) })
+	for _, p := range []string{"/a/../b", "/a/./b", "/a//b", "/a/", "a"} {
+		if err := c.Do(context.Background(), Request{Method: "GET", Path: p}, nil); apperr.CodeOf(err) != apperr.Usage {
+			t.Errorf("%q: err = %v, want a usage error", p, err)
+		}
+	}
+}
+
+func TestRetryAfterIsClampedNotOverflowed(t *testing.T) {
+	d, ok := parseRetryAfter("99999999999999", time.Now(), 30*time.Second)
+	if !ok || d != 30*time.Second {
+		t.Errorf("d = %v", d)
 	}
 }

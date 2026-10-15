@@ -3,6 +3,7 @@ package analytics
 import (
 	"bytes"
 	"context"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,8 +20,8 @@ type Number float64
 func (n *Number) UnmarshalJSON(b []byte) error {
 	*n = 0
 	s := strings.Trim(string(bytes.TrimSpace(b)), `"`)
-	if f, err := strconv.ParseFloat(s, 64); err == nil {
-		*n = Number(f)
+	if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
+		*n = Number(f) // NaN and Inf would break JSON encoding: left at 0
 	}
 	return nil
 }

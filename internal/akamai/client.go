@@ -19,6 +19,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +101,11 @@ func (r Request) safe() bool { return r.Method == http.MethodGet || r.ReadOnly }
 // Do sends req and decodes a 2xx JSON response into out (if non-nil).
 // Unknown response fields are ignored: the live APIs don't match their specs.
 func (c *Client) Do(ctx context.Context, req Request, out any) error {
+	// A value that slipped into the path as "", "." or ".." would change which
+	// endpoint is called; refuse anything that isn't already a clean path.
+	if p := path.Clean(req.Path); p != req.Path || !strings.HasPrefix(req.Path, "/") {
+		return apperr.New(apperr.Usage, "%s %q: a value can't be an empty, . or .. path segment", req.Method, req.Path)
+	}
 	body, contentType := req.Body, req.ContentType
 	if req.JSON != nil {
 		b, err := json.Marshal(req.JSON)
@@ -284,7 +290,7 @@ func retryable(status int) bool {
 // server gives one, otherwise full jitter over an exponential step; both
 // capped at MaxDelay.
 func (c *Client) backoff(attempt int, retryAfter string) time.Duration {
-	if d, ok := parseRetryAfter(retryAfter, time.Now()); ok {
+	if d, ok := parseRetryAfter(retryAfter, time.Now(), c.MaxDelay); ok {
 		return min(d, c.MaxDelay)
 	}
 	step := c.BaseDelay << (attempt - 1)
@@ -294,12 +300,15 @@ func (c *Client) backoff(attempt int, retryAfter string) time.Duration {
 	return time.Duration(rand.Int64N(int64(step) + 1))
 }
 
-func parseRetryAfter(v string, now time.Time) (time.Duration, bool) {
+func parseRetryAfter(v string, now time.Time, limit time.Duration) (time.Duration, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return 0, false
 	}
 	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if secs := int(limit / time.Second); n > secs {
+			n = secs // a huge value would overflow Duration
+		}
 		return time.Duration(n) * time.Second, true
 	}
 	if t, err := http.ParseTime(v); err == nil {

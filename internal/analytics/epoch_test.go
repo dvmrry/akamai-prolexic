@@ -69,3 +69,13 @@ func TestEpochEncodesAsSeconds(t *testing.T) {
 		t.Errorf("encoded %s", out)
 	}
 }
+
+func TestTextTakesStringsAndNumbers(t *testing.T) {
+	var v struct{ ID, Port, Missing Text }
+	if err := json.Unmarshal([]byte(`{"ID":123,"Port":"443","Missing":null}`), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.ID != "123" || v.Port != "443" || v.Missing != "" {
+		t.Errorf("v = %+v", v)
+	}
+}

@@ -3,6 +3,7 @@ package cli
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -66,8 +67,8 @@ func routedSessions(ctx context.Context, a *app, customers []string) (output.Doc
 		return nil, err
 	}
 	rows, failures, err := analytics.FanOut(ctx, names, api.BGPSessions)
-	if ctx.Err() != nil {
-		return nil, err
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr // err may be nil if cancellation came after FanOut returned
 	}
 	slices.SortStableFunc(rows, func(x, y analytics.BGPSession) int {
 		return cmp.Or(
@@ -75,6 +76,7 @@ func routedSessions(ctx context.Context, a *app, customers []string) (output.Doc
 			cmp.Compare(x.DataCenter, y.DataCenter),
 			cmp.Compare(x.RouterName, y.RouterName),
 			cmp.Compare(x.CustomerBgpPeerIpv4, y.CustomerBgpPeerIpv4),
+			cmp.Compare(rowKey(x), rowKey(y)), // full tie-break: stable output whatever the API order
 		)
 	})
 	return &RoutedSessionsDoc{Customers: names, Sessions: nonNil(rows), Failures: nonNil(failures)}, err
@@ -101,6 +103,13 @@ func writeFailures(w io.Writer, failures []analytics.Failure) error {
 		return err
 	}
 	return nil
+}
+
+// rowKey is a row's JSON encoding: the last sort key, so rows that tie on
+// every named key still come out in one order whatever order the API sent.
+func rowKey(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 // nonNil keeps empty lists as [] rather than null in JSON: the schemas

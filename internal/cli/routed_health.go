@@ -66,8 +66,8 @@ func routedHealth(ctx context.Context, a *app, customers []string) (output.Docum
 		return nil, err
 	}
 	rows, failures, err := analytics.FanOut(ctx, names, api.TunnelHealth)
-	if ctx.Err() != nil {
-		return nil, err
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr // err may be nil if cancellation came after FanOut returned
 	}
 	slices.SortStableFunc(rows, func(x, y analytics.TunnelHealth) int {
 		return cmp.Or(

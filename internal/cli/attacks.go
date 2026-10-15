@@ -91,8 +91,8 @@ func attacksList(ctx context.Context, a *app, customers []string, win windowFlag
 	rows, failures, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.Attack, error) {
 		return api.AttackReports(ctx, name, start, end)
 	})
-	if ctx.Err() != nil {
-		return nil, err
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr // err may be nil if cancellation came after FanOut returned
 	}
 	slices.SortStableFunc(rows, func(x, y analytics.Attack) int {
 		return cmp.Or(

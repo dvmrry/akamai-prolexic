@@ -38,6 +38,16 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 	f := &fakeAPI{t: t, routes: map[string]http.HandlerFunc{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
+	// Explicit --customer names are checked against the account's names; by
+	// default the account has every synthetic name the tests use. A test that
+	// registers its own route replaces this one.
+	f.json("GET /prolexic-analytics/v2/customer/names", 200, `{"customerNames":[
+	  {"name":"example-a","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},
+	  {"name":"example-b","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},
+	  {"name":"example-c","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},
+	  {"name":"example-bad","contractId":"C-EXAMPLE","accountName":"Example","inUse":true},
+	  {"name":"example-old","contractId":"C-EXAMPLE","accountName":"Example","inUse":false},
+	  {"name":"example a","contractId":"C-EXAMPLE","accountName":"Example","inUse":true}]}`)
 	return f
 }
 
@@ -274,5 +284,39 @@ func TestListFlagsTrimAndDropEmpty(t *testing.T) {
 	}
 	if strings.Join(got, "|") != "a|b|c" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestReviewRound4Contracts(t *testing.T) {
+	api := newFakeAPI(t)
+	api.json("POST /prolexic-analytics/v2/metrics", 200, `{"status":true,"data":[{"service":"routed","metric":"bandwidthIn","points":[[1767400000,"NaN"],[1767400060,"Inf"],[1767400120,"5"]]}]}`)
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode apperr.Code
+		wantErr  string
+	}{
+		{"help for an unknown topic", []string{"help", "bogus"}, apperr.Usage, "unknown help topic"},
+		{"help for an unknown subcommand", []string{"help", "acl", "bogus"}, apperr.Usage, "unknown help topic"},
+		{"empty --customer doesn't mean every name", []string{"attacks", "list", "--customer", "", "--since", "1h"}, apperr.Usage, "empty value"},
+		{"comma-only --customer", []string{"routed", "sessions", "--customer", ","}, apperr.Usage, "empty value"},
+		{"unknown customer name", []string{"attacks", "list", "--customer", "exmaple-a", "--since", "1h"}, apperr.NotFound, `unknown customer name \"exmaple-a\"`},
+		{"dot version segment", []string{"aliases", "show", "--id", "101", "--version", ".."}, apperr.Usage, "path segment"},
+		{"slash in version", []string{"aliases", "show", "--id", "101", "--version", "V1/../../x"}, apperr.Usage, "path segment"},
+		{"dot target id", []string{"targets", "show", "--id", ".."}, apperr.Usage, "path segment"},
+		{"NaN and Inf decode to 0", []string{"metrics", "--customer", "example-a", "--type", "routed:bandwidthIn", "--since", "1h"}, apperr.OK, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := runCLI(t, api.env(), tt.args...)
+			if r.code != int(tt.wantCode) || !strings.Contains(r.stderr, tt.wantErr) {
+				t.Errorf("exit = %d (want %d), stderr = %s", r.code, tt.wantCode, r.stderr)
+			}
+		})
+	}
+	for _, c := range api.calls {
+		if strings.Contains(c.Path, "/..") || strings.Contains(c.Path, "attack-reports") {
+			t.Errorf("request sent that should have been refused: %s %s", c.Method, c.Path)
+		}
 	}
 }

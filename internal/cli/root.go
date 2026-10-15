@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -55,6 +56,20 @@ func (a *app) root() *cobra.Command {
 		},
 	}
 	root.CompletionOptions.HiddenDefaultCmd = true
+	// help for an unknown topic is a usage error (exit 2), not root help with
+	// exit 0.
+	root.SetHelpCommand(&cobra.Command{
+		Use:   "help [command]",
+		Short: "help about any command",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(c *cobra.Command, args []string) error {
+			target, rest, err := c.Root().Find(args)
+			if err != nil || len(rest) > 0 || (len(args) > 0 && target == c.Root()) {
+				return apperr.New(apperr.Usage, "unknown help topic %q", strings.Join(args, " "))
+			}
+			return target.Help()
+		},
+	})
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return apperr.New(apperr.Usage, "%v\n%s", err, cmd.UsageString())
 	})

@@ -92,8 +92,8 @@ func events(ctx context.Context, a *app, customers []string, criticalOnly bool, 
 		evs, err := api.Events(ctx, name)
 		return append(crit, evs...), err
 	})
-	if ctx.Err() != nil {
-		return nil, err
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, cerr // err may be nil if cancellation came after FanOut returned
 	}
 	doc := &EventsDoc{Customers: names}
 	if windowed {
@@ -101,7 +101,7 @@ func events(ctx context.Context, a *app, customers []string, criticalOnly bool, 
 		doc.Start, doc.End = start.Format(time.RFC3339), end.Format(time.RFC3339)
 	}
 	slices.SortStableFunc(rows, func(x, y analytics.EventRow) int {
-		return cmp.Or(cmp.Compare(x.At(), y.At()), cmp.Compare(x.Customer, y.Customer), cmp.Compare(x.Kind, y.Kind))
+		return cmp.Or(cmp.Compare(x.At(), y.At()), cmp.Compare(x.Customer, y.Customer), cmp.Compare(x.Kind, y.Kind), cmp.Compare(rowKey(x), rowKey(y)))
 	})
 	doc.Events, doc.Failures = nonNil(rows), nonNil(failures)
 	return doc, err

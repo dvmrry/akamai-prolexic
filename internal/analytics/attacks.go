@@ -112,7 +112,7 @@ type AttackRow struct {
 	Location        string `json:"location" doc:"Where in the Prolexic network the attack was seen."`
 	IP              string `json:"ip" doc:"The target address."`
 	Netmask         int    `json:"netmask"`
-	DestinationPort string `json:"destinationPort,omitempty"`
+	DestinationPort Text   `json:"destinationPort,omitempty"`
 	StartTime       Epoch  `json:"startTime" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EndTime         Epoch  `json:"endTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EventStartTime  Epoch  `json:"eventStartTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`

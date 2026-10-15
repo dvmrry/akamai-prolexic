@@ -77,18 +77,29 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 // (deduplicated, in the given order), otherwise every in-use name of the
 // account, sorted.
 func ResolveCustomers(ctx context.Context, c *Client, explicit []string) ([]string, error) {
-	if len(explicit) > 0 {
-		var out []string
-		for _, n := range explicit {
-			if n != "" && !slices.Contains(out, n) {
-				out = append(out, n)
-			}
-		}
-		return out, nil
-	}
 	all, err := c.CustomerNames(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.CodeOf(err), err, "resolve customer names")
+	}
+	if len(explicit) > 0 {
+		// Check explicit names against the account: several endpoints
+		// answer an unknown name like an empty window (404), which would
+		// make a typo look like "no attacks".
+		known := map[string]bool{}
+		for _, n := range all {
+			known[n.Name] = true
+		}
+		var out []string
+		for _, n := range explicit {
+			if n == "" || slices.Contains(out, n) {
+				continue
+			}
+			if !known[n] {
+				return nil, apperr.New(apperr.NotFound, "unknown customer name %q; prolexic customers lists the account's names", n)
+			}
+			out = append(out, n)
+		}
+		return out, nil
 	}
 	var out []string
 	for _, n := range all {
