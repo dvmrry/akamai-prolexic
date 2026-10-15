@@ -253,8 +253,12 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		if !opts.Now().Before(deadline) {
 			written, outside := lagging(plan, target, prods, res)
 			switch {
-			case len(written) == 0:
+			case len(written) == 0 && len(outside) == 0:
+				return plan, res, apperr.New(apperr.Upstream, "production carries the target versions, but the ACL deployment is still processing after %s; re-run apply to keep waiting", opts.Timeout)
+			case !plan.Changes:
 				return plan, res, apperr.New(apperr.Upstream, "production still lags after %s for %s, activated outside this apply; this apply wrote nothing", opts.Timeout, strings.Join(outside, ", "))
+			case len(written) == 0:
+				return plan, res, apperr.New(apperr.Upstream, "this apply's new versions are in production, but after %s production still lags for %s, activated outside this apply", opts.Timeout, strings.Join(outside, ", "))
 			case len(outside) == 0:
 				return plan, res, apperr.New(apperr.Upstream, "not deployed after %s: %s; the new versions are active and production should follow; re-run apply to keep waiting", opts.Timeout, strings.Join(written, ", "))
 			default:

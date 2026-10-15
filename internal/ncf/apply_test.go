@@ -481,3 +481,25 @@ func TestApplyMixedTimeoutNamesBothKinds(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestApplyTimeoutWhileTheDeploymentIsProcessing(t *testing.T) {
+	s := world()
+	s.Deploy = ncf.Deployment{Version: 7, State: "PRODUCTION", Processing: true}
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if apperr.CodeOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "still processing") || strings.Contains(err.Error(), "wrote nothing") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyTimeoutWhenOnlyOutsideActivationsLag(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	s.ActivateNow(103, "192.0.2.128/25")
+	s.Lag(103, "V1")
+	f := desired("192.0.2.0/25") // block-v4's own write lands promptly
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/25")})
+	_, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "new versions are in production") || !strings.Contains(err.Error(), "block-v4-b, activated outside") || strings.Contains(err.Error(), "()") {
+		t.Errorf("err = %v", err)
+	}
+}
