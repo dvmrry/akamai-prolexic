@@ -34,7 +34,9 @@ type LiveAlias struct {
 // AliasVersion is one version of an alias.
 type AliasVersion struct {
 	Version string
-	Active  bool // the alias's active version
+	Active  bool   // the alias's active version
+	Comment string // the version's note (apply writes "prolexic apply <digest>")
+	Source  string // the version it was derived from
 	// Entries is nil unless fetched with GetVersion.
 	Entries []string
 }

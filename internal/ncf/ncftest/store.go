@@ -63,10 +63,11 @@ type Store struct {
 
 type alias struct {
 	live     ncf.LiveAlias
-	versions [][]string // versions[i] is version i+1
-	lag      int        // polls left before production catches up
-	pending  string     // version heading to production
-	unused   bool       // no deployed rule references it: no production version
+	versions [][]string         // versions[i] is version i+1
+	meta     []ncf.AliasVersion // meta[i]: version i+1's comment and source
+	lag      int                // polls left before production catches up
+	pending  string             // version heading to production
+	unused   bool               // no deployed rule references it: no production version
 }
 
 // versionID names version n (1-based) the way live NCF v2 does: "V1", "V2".
@@ -99,6 +100,16 @@ func (s *Store) Unused(id int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.aliases[id].unused = true
+}
+
+// SetLag sets how many more reads each pending activation takes to reach
+// production (production catching up after an apply gave up waiting).
+func (s *Store) SetLag(n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.aliases {
+		a.lag = n
+	}
 }
 
 // AddVersions appends n inactive versions (a concurrent writer).
@@ -202,6 +213,9 @@ func (s *Store) ListVersions(_ context.Context, id int64) ([]ncf.AliasVersion, e
 	out := make([]ncf.AliasVersion, len(a.versions))
 	for i := range a.versions {
 		out[i] = ncf.AliasVersion{Version: versionID(i + 1), Active: versionID(i+1) == a.live.ActiveVersion}
+		if i < len(a.meta) {
+			out[i].Comment, out[i].Source = a.meta[i].Comment, a.meta[i].Source
+		}
 	}
 	return out, nil
 }
@@ -247,6 +261,14 @@ func (s *Store) CreateVersion(_ context.Context, l ncf.LiveAlias, entries []stri
 		stored = s.Corrupt(stored)
 	}
 	a.versions = append(a.versions, stored)
+	for len(a.meta) < len(a.versions)-1 {
+		a.meta = append(a.meta, ncf.AliasVersion{})
+	}
+	source := l.ActiveVersion
+	if a.live.Type == "BIG" {
+		comment, source = "", "" // the multipart upload carries neither
+	}
+	a.meta = append(a.meta, ncf.AliasVersion{Comment: comment, Source: source})
 	v := versionID(len(a.versions))
 	active := s.BigActivates && a.live.Type == "BIG"
 	if active {

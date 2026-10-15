@@ -51,8 +51,9 @@ const (
 
 // ApplyResult reports what apply did, alias by alias.
 type ApplyResult struct {
-	Digest  string       `json:"digest"`
-	Aliases []AliasApply `json:"aliases"`
+	Digest         string       `json:"digest"`
+	AlreadyApplied bool         `json:"alreadyApplied" doc:"Live already matched the file, so nothing was written; apply only waited for production to catch up."`
+	Aliases        []AliasApply `json:"aliases"`
 }
 
 // AliasApply is one alias's outcome.
@@ -101,11 +102,14 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	if HasErrors(plan.Findings) {
 		return plan, nil, apperr.New(apperr.Validation, "the plan has errors; nothing applied")
 	}
-	if plan.Digest != opts.ExpectDigest {
+	// The digest guards every write. With nothing to write, live already
+	// matches the reviewed file (a re-run after success): converge on
+	// production and succeed whatever the digest.
+	if plan.Changes && plan.Digest != opts.ExpectDigest {
 		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: re-plan and review", opts.ExpectDigest, plan.Digest)
 	}
 
-	res := &ApplyResult{Digest: plan.Digest, Aliases: make([]AliasApply, len(plan.Aliases))}
+	res := &ApplyResult{Digest: plan.Digest, AlreadyApplied: !plan.Changes, Aliases: make([]AliasApply, len(plan.Aliases))}
 	var todo []int
 	for i, ap := range plan.Aliases {
 		res.Aliases[i] = AliasApply{Name: ap.Name, ID: ap.ID, Status: StatusUnchanged, FromVersion: ap.ActiveVersion, Add: ap.Add, Remove: ap.Remove}
@@ -176,19 +180,24 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		a.Status = StatusActive
 	}
 
-	// Phase 3: wait for production, for the aliases a deployed rule uses.
-	// One that no deployed rule references (no production version at plan
-	// time) has nothing to wait for: activation is its end state.
-	var deployed []int
-	for _, i := range todo {
-		if plan.Aliases[i].ProdVersion != "" {
-			deployed = append(deployed, i)
+	// Phase 3: wait until production carries each alias's target: the new
+	// version for a changed alias, and the active version for an unchanged
+	// one whose production lags, so a re-run after a timed-out apply
+	// finishes the job. An alias no deployed rule references has nothing to
+	// wait for: activation is its end state.
+	target := map[int]string{}
+	for i, ap := range plan.Aliases {
+		want := ap.ActiveVersion
+		if ap.Changed() {
+			want = res.Aliases[i].Version
+		}
+		if ap.ProdVersion != "" && ap.ProdVersion != want {
+			target[i] = want
 		}
 	}
-	if len(deployed) == 0 {
+	if len(target) == 0 {
 		return plan, res, nil
 	}
-	todo = deployed
 	deadline := opts.Now().Add(opts.Timeout)
 	for {
 		// One alias list per poll: it carries every production version and
@@ -202,18 +211,12 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 			prods[l.ID] = l.ProdVersion
 		}
 		pending := 0
-		for _, i := range todo {
-			a := &res.Aliases[i]
-			if a.Status == StatusDeployed {
-				continue
-			}
-			prod, ok := prods[a.ID]
+		for i, want := range target {
+			prod, ok := prods[res.Aliases[i].ID]
 			if !ok {
-				return fail(i, apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", a.Name))
+				return fail(i, apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", res.Aliases[i].Name))
 			}
-			if prod == a.Version {
-				a.Status = StatusDeployed // provisional: confirmed by the deployment check below
-			} else {
+			if prod != want {
 				pending++
 			}
 		}
@@ -223,20 +226,17 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 				return plan, res, apperr.Wrap(apperr.CodeOf(err), err, "read ACL deployment status")
 			}
 			if why := d.Failure(); why != "" {
-				for _, i := range todo {
-					res.Aliases[i].Status = StatusActive
-				}
-				return plan, res, apperr.New(apperr.Upstream, "production carries the new versions but the ACL deployment is unhealthy: %s", why)
+				return plan, res, apperr.New(apperr.Upstream, "production carries the target versions but the ACL deployment is unhealthy: %s", why)
 			}
 			if !d.Processing {
+				for i := range target {
+					res.Aliases[i].Status = StatusDeployed
+				}
 				return plan, res, nil
-			}
-			for _, i := range todo {
-				res.Aliases[i].Status = StatusActive
 			}
 		}
 		if !opts.Now().Before(deadline) {
-			return plan, res, apperr.New(apperr.Upstream, "not deployed after %s; the new versions are active and production should follow; check status", opts.Timeout)
+			return plan, res, apperr.New(apperr.Upstream, "not deployed after %s; the target versions are active and production should follow; re-run apply to keep waiting", opts.Timeout)
 		}
 		if err := opts.Sleep(ctx, opts.Interval); err != nil {
 			return plan, res, err
@@ -259,6 +259,18 @@ func (c *Checker) createVerified(ctx context.Context, read, write Store, ap Alia
 	before, err := read.ListVersions(ctx, ap.ID)
 	if err != nil {
 		return "", false, apperr.Wrap(apperr.CodeOf(err), err, "list versions of %s", ap.Name)
+	}
+
+	// A retry of this same reviewed apply re-uses the inactive version an
+	// earlier attempt created (same digest comment, same source version)
+	// instead of creating another. Its entries are verified like a new one.
+	for _, old := range before {
+		if old.Active || old.Comment != comment || old.Source != ap.ActiveVersion {
+			continue
+		}
+		if got, err := read.GetVersion(ctx, ap.ID, old.Version); err == nil && SameEntries(got.Entries, ap.desired) {
+			return old.Version, false, nil
+		}
 	}
 
 	created, err := write.CreateVersion(ctx, cur, ap.desired, comment)

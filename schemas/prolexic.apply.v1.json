@@ -316,12 +316,17 @@
           },
           "type": "array"
         },
+        "alreadyApplied": {
+          "description": "Live already matched the file, so nothing was written; apply only waited for production to catch up.",
+          "type": "boolean"
+        },
         "digest": {
           "type": "string"
         }
       },
       "required": [
         "aliases",
+        "alreadyApplied",
         "digest"
       ],
       "type": "object"

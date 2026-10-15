@@ -396,3 +396,61 @@ func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
 		t.Errorf("GetAlias called %d times; polling must use the alias list", n)
 	}
 }
+
+func TestApplyReRunAfterSuccessIsANoOp(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25")
+	digest := plan(t, s, f, defaults).Digest
+	run := func() (*ncf.ApplyResult, error) {
+		clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+		_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: digest, Now: clock.now, Sleep: clock.sleep})
+		return res, err
+	}
+	if _, err := run(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := run() // the same merge job, retried: digest now differs
+	if err != nil || !res.AlreadyApplied || s.Count("CreateVersion") != 1 || res.Aliases[0].Status != ncf.StatusUnchanged {
+		t.Errorf("err = %v, res = %+v, creates = %d", err, res, s.Count("CreateVersion"))
+	}
+}
+
+func TestApplyReRunFinishesAProductionWait(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	f := desired("192.0.2.0/25")
+	if _, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute }); apperr.CodeOf(err) != apperr.Upstream {
+		t.Fatalf("first run: err = %v, want a production timeout", err)
+	}
+	// Production lands a few reads in: after the re-run's plan, during its wait.
+	s.SetLag(3)
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: "sha256:stale", Now: clock.now, Sleep: clock.sleep})
+	if err != nil || !res.AlreadyApplied || res.Aliases[0].Status != ncf.StatusDeployed || s.Count("CreateVersion") != 1 {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyStillRefusesAMovedDigestWhenThereIsWorkToDo(t *testing.T) {
+	s := world()
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.ExpectDigest = "sha256:stale" })
+	if apperr.CodeOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyRetryReusesItsEarlierVersion(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25")
+	// First attempt: the version is created, then activation fails, and the
+	// version is left inactive (nothing else was activated to roll back).
+	s.ActivateFails = map[int64]error{101: apperr.New(apperr.Upstream, "HTTP 400: try later")}
+	if _, err := apply(t, s, f, nil); err == nil {
+		t.Fatal("first attempt succeeded")
+	}
+	s.ActivateFails = nil
+	res, err := apply(t, s, f, nil)
+	if err != nil || res.Aliases[0].Version != "V2" || s.Count("CreateVersion") != 1 {
+		t.Errorf("err = %v, version = %s, creates = %d; the retry must re-use V2", err, res.Aliases[0].Version, s.Count("CreateVersion"))
+	}
+}

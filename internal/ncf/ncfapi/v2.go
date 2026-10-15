@@ -73,10 +73,12 @@ func (a v2Alias) live() ncf.LiveAlias {
 
 // v2Version is the alias-version shape (get, active, create).
 type v2Version struct {
-	AliasID  int64    `json:"aliasId"`
-	Version  string   `json:"version"`
-	IsActive bool     `json:"isActive"`
-	Entries  []string `json:"entries"`
+	AliasID       int64    `json:"aliasId"`
+	Version       string   `json:"version"`
+	IsActive      bool     `json:"isActive"`
+	Entries       []string `json:"entries"`
+	Comments      string   `json:"comments"`
+	SourceVersion string   `json:"sourceVersion"`
 }
 
 func (s *V2) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
@@ -134,7 +136,7 @@ func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, er
 			return nil, err
 		}
 		for _, v := range resp.Content {
-			out = append(out, ncf.AliasVersion{Version: v.Version, Active: v.IsActive})
+			out = append(out, ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Comment: v.Comments, Source: v.SourceVersion})
 		}
 		// A short history makes apply misjudge an ambiguous create, so never
 		// stop early: trust "last", then "totalPages", and without either
