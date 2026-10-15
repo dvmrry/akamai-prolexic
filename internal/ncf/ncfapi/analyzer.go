@@ -66,11 +66,22 @@ type AnalyzerResponse struct {
 // AnalyzeACL evaluates rules against packets without changing anything: the
 // POST only queries, so it is marked ReadOnly (retried like a read). A 403 is
 // reported as a credentials error that names the likely cause.
-func (s *V2) AnalyzeACL(ctx context.Context, rules []AnalyzerRule, packets []PacketTest) (AnalyzerResponse, error) {
+func (s *V2) AnalyzeACL(ctx context.Context, rules []AnalyzerRule, packets Packets) (AnalyzerResponse, error) {
+	if len(packets.list) == 0 {
+		return AnalyzerResponse{}, apperr.New(apperr.Bug, "AnalyzeACL: packets not from ParsePackets")
+	}
+	if len(rules) == 0 || len(rules) > MaxAnalyzerRules {
+		return AnalyzerResponse{}, apperr.New(apperr.Validation, "%d rules: the analyzer takes 1 to %d", len(rules), MaxAnalyzerRules)
+	}
+	for i, r := range rules {
+		if r.Index != i+1 || r.IPVersion != packets.ipVersion {
+			return AnalyzerResponse{}, apperr.New(apperr.Bug, "AnalyzeACL: rule %d must have index %d and IP version %s", i, i+1, packets.ipVersion)
+		}
+	}
 	body := struct {
 		Rules       []AnalyzerRule `json:"rules"`
 		PacketTests []PacketTest   `json:"packetTests"`
-	}{rules, packets}
+	}{rules, packets.list}
 	var resp AnalyzerResponse
 	err := s.c.Do(ctx, akamai.Request{Method: http.MethodPost, Path: v2Path + "/acls/analyzer/test", JSON: body, ReadOnly: true}, &resp)
 	if u := apperr.UpstreamOf(err); u != nil && u.Status == http.StatusForbidden {

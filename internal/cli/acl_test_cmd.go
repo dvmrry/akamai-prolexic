@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/netip"
 	"os"
 	"slices"
 	"strconv"
@@ -20,16 +19,6 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
-)
-
-const (
-	maxAnalyzerPackets = 5
-	maxAnalyzerRules   = 500
-)
-
-var (
-	analyzerProtocols = []string{"ip", "ipv4", "ipv6", "icmp", "igmp", "ipinip", "tcp", "igrp", "udp", "gre", "esp", "ahp", "eigrp", "ospf", "nos", "pim"}
-	analyzerTCPFlags  = []string{"fin", "syn", "rst", "psh", "ack", "urg", "ece", "cwr"}
 )
 
 // ACLTestRule is the rule that decided a packet, by its index in the tested
@@ -125,10 +114,10 @@ func newACLTestCmd(a *app) *cobra.Command {
 	f.StringVar(&o.file, "packets", "", "JSON array of up to 5 packets in the analyzer's shape (instead of the packet flags)")
 	f.StringVar(&o.src, "src", "", "source IP address")
 	f.StringVar(&o.dst, "dst", "", "destination IP address")
-	f.StringVar(&o.proto, "proto", "ip", "protocol: "+strings.Join(analyzerProtocols, ", "))
+	f.StringVar(&o.proto, "proto", "ip", "protocol: "+strings.Join(ncfapi.AnalyzerProtocols, ", "))
 	f.IntVar(&o.sport, "sport", 0, "source port (tcp, udp)")
 	f.IntVar(&o.dport, "dport", 0, "destination port (tcp, udp)")
-	listVar(f, &o.flags, "flags", "TCP flags present, comma-separated: "+strings.Join(analyzerTCPFlags, ", "))
+	listVar(f, &o.flags, "flags", "TCP flags present, comma-separated: "+strings.Join(ncfapi.AnalyzerTCPFlags, ", "))
 	f.IntVar(&o.ttl, "ttl", 0, "IP time to live, 1-255")
 	f.IntVar(&o.length, "length", 0, "packet length in bytes")
 	f.BoolVar(&o.established, "established", false, "the packet belongs to an established TCP connection")
@@ -180,99 +169,11 @@ func packetsFromFile(path string) ([]ncfapi.PacketTest, error) {
 	return ps, nil
 }
 
-func inRange(v *int, lo, hi int) bool { return v == nil || (*v >= lo && *v <= hi) }
-
-// validatePacket checks one packet against the analyzer's rules and returns
-// its IP version (V4 or V6).
-func validatePacket(p ncfapi.PacketTest) (string, error) {
-	bad := func(format string, args ...any) (string, error) {
-		return "", apperr.New(apperr.Usage, "packet %s: "+format, append([]any{p.PacketID}, args...)...)
-	}
-	src, err := netip.ParseAddr(p.SrcIP)
-	if err != nil {
-		return bad("source %q is not an IP address", p.SrcIP)
-	}
-	dst, err := netip.ParseAddr(p.DstIP)
-	if err != nil {
-		return bad("destination %q is not an IP address", p.DstIP)
-	}
-	if src.Is4() != dst.Is4() {
-		return bad("source and destination are different IP versions")
-	}
-	if !slices.Contains(analyzerProtocols, p.Protocol) {
-		return bad("protocol %q is not one of %s", p.Protocol, strings.Join(analyzerProtocols, ", "))
-	}
-	for _, c := range []struct {
-		name string
-		v    *int
-		lo   int
-		hi   int
-	}{{"source port", p.SrcPort, 0, 65535}, {"destination port", p.DstPort, 0, 65535}, {"ttl", p.TTL, 1, 255},
-		{"length", p.PacketLength, 1, 1<<31 - 1}, {"ICMP type", p.ICMPType, 0, 255}, {"ICMP code", p.ICMPCode, 0, 255}} {
-		if !inRange(c.v, c.lo, c.hi) {
-			return bad("%s %d is outside %d-%d", c.name, *c.v, c.lo, c.hi)
-		}
-	}
-	if (p.SrcPort != nil || p.DstPort != nil) && p.Protocol != "tcp" && p.Protocol != "udp" {
-		return bad("ports apply to tcp and udp only")
-	}
-	if len(p.TCPFlags) > 0 && p.Protocol != "tcp" {
-		return bad("TCP flags apply to tcp only")
-	}
-	for _, fl := range p.TCPFlags {
-		if !slices.Contains(analyzerTCPFlags, fl) {
-			return bad("TCP flag %q is not one of %s", fl, strings.Join(analyzerTCPFlags, ", "))
-		}
-	}
-	if (p.ICMPType != nil || p.ICMPCode != nil) && p.Protocol != "icmp" {
-		return bad("ICMP type and code apply to icmp only")
-	}
-	if p.Established && p.Protocol != "tcp" {
-		return bad("established applies to tcp only")
-	}
-	if p.Established && p.IsFragment {
-		return bad("a packet cannot be both established and a fragment")
-	}
-	if src.Is4() {
-		return "V4", nil
-	}
-	return "V6", nil
-}
-
-// preparePackets validates the packets, names the unnamed ones p1.., and
-// returns their shared IP version.
-func preparePackets(ps []ncfapi.PacketTest) (string, error) {
-	if len(ps) == 0 {
-		return "", apperr.New(apperr.Usage, "no packets to test")
-	}
-	if len(ps) > maxAnalyzerPackets {
-		return "", apperr.New(apperr.Usage, "%d packets: the analyzer takes at most %d", len(ps), maxAnalyzerPackets)
-	}
-	seen := map[string]bool{}
-	version := ""
-	for i := range ps {
-		ps[i].PacketID = cmp.Or(ps[i].PacketID, "p"+strconv.Itoa(i+1))
-		if seen[ps[i].PacketID] {
-			return "", apperr.New(apperr.Usage, "packet id %q is used twice", ps[i].PacketID)
-		}
-		seen[ps[i].PacketID] = true
-		v, err := validatePacket(ps[i])
-		if err != nil {
-			return "", err
-		}
-		if version != "" && v != version {
-			return "", apperr.New(apperr.Usage, "packets mix IPv4 and IPv6; test them separately")
-		}
-		version = v
-	}
-	return version, nil
-}
-
 func aclTest(ctx context.Context, a *app, cmd *cobra.Command, o aclTestFlags) (output.Document, error) {
 	if o.version < 0 {
 		return nil, apperr.New(apperr.Usage, "--version must be positive")
 	}
-	var packets []ncfapi.PacketTest
+	var raw []ncfapi.PacketTest
 	var err error
 	if o.file != "" {
 		for _, n := range packetFlagNames {
@@ -280,17 +181,18 @@ func aclTest(ctx context.Context, a *app, cmd *cobra.Command, o aclTestFlags) (o
 				return nil, apperr.New(apperr.Usage, "--packets and --%s cannot be combined", n)
 			}
 		}
-		packets, err = packetsFromFile(o.file)
+		raw, err = packetsFromFile(o.file)
 	} else {
-		packets, err = packetsFromFlags(cmd, o)
+		raw, err = packetsFromFlags(cmd, o)
 	}
 	if err != nil {
 		return nil, err
 	}
-	ipVersion, err := preparePackets(packets)
+	parsed, err := ncfapi.ParsePackets(raw)
 	if err != nil {
 		return nil, err
 	}
+	packets, ipVersion := parsed.List(), parsed.IPVersion()
 
 	api, err := a.ncfV2()
 	if err != nil {
@@ -331,11 +233,11 @@ func aclTest(ctx context.Context, a *app, cmd *cobra.Command, o aclTestFlags) (o
 	if len(rules) == 0 {
 		return nil, apperr.New(apperr.NotFound, "ACL version %d has no %s rules to test", v, ipVersion)
 	}
-	if len(rules) > maxAnalyzerRules {
-		return nil, apperr.New(apperr.Validation, "ACL version %d has %d %s rules: the analyzer takes at most %d", v, len(rules), ipVersion, maxAnalyzerRules)
+	if len(rules) > ncfapi.MaxAnalyzerRules {
+		return nil, apperr.New(apperr.Validation, "ACL version %d has %d %s rules: the analyzer takes at most %d", v, len(rules), ipVersion, ncfapi.MaxAnalyzerRules)
 	}
 
-	resp, err := api.AnalyzeACL(ctx, rules, packets)
+	resp, err := api.AnalyzeACL(ctx, rules, parsed)
 	if err != nil {
 		return nil, err
 	}
