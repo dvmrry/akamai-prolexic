@@ -7,6 +7,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
@@ -49,30 +51,41 @@ func (d *RoutedCheckDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-func runRoutedCheck(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers, sites stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-	fs.Var(&sites, "site", "only sessions in this data center; repeatable or comma-separated")
-	prefixFlag := fs.String("prefix", "", "the prefix to check (required; a bare address means /32 or /128)")
-	expectFlag := fs.String("expect", "present", "present: every expected session carries the prefix; absent: none does")
-	wait := fs.Duration("wait", 0, "keep checking until satisfied or this long has passed (0: check once)")
-	interval := fs.Duration("interval", 30*time.Second, "time between checks while waiting")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newRoutedCheckCmd(a *app) *cobra.Command {
+	var customers, sites []string
+	var prefix, expect string
+	var wait, interval time.Duration
+	cmd := &cobra.Command{
+		Use:     "check",
+		Short:   "check a prefix has propagated (or gone) on every session",
+		Long:    "Checks, per BGP session, that the prefix is announced to Akamai (--expect present) or not (--expect absent). With --wait it keeps polling every --interval until satisfied or the time runs out.",
+		Example: "  prolexic routed check --prefix 198.51.100.0/24 --wait 10m",
+		Args:    cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return routedCheck(ctx, a, customers, sites, prefix, expect, wait, interval)
+		}),
 	}
-	if *prefixFlag == "" {
-		return nil, apperr.New(apperr.Usage, "--prefix is required")
-	}
-	prefix, err := analytics.ParsePrefix(*prefixFlag)
+	customerFlag(cmd, &customers)
+	f := cmd.Flags()
+	f.StringSliceVar(&sites, "site", nil, "only sessions in this data center; repeatable or comma-separated")
+	f.StringVar(&prefix, "prefix", "", "the prefix to check (required; a bare address means /32 or /128)")
+	f.StringVar(&expect, "expect", "present", "present: every expected session carries the prefix; absent: none does")
+	f.DurationVar(&wait, "wait", 0, "keep checking until satisfied or this long has passed (0: check once)")
+	f.DurationVar(&interval, "interval", 30*time.Second, "time between checks while waiting")
+	_ = cmd.MarkFlagRequired("prefix")
+	return cmd
+}
+
+func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixFlag, expectFlag string, wait, interval time.Duration) (output.Document, error) {
+	prefix, err := analytics.ParsePrefix(prefixFlag)
 	if err != nil {
 		return nil, err
 	}
-	expect, err := analytics.ParseExpect(*expectFlag)
+	expect, err := analytics.ParseExpect(expectFlag)
 	if err != nil {
 		return nil, err
 	}
-	if *wait < 0 || (*wait > 0 && *interval <= 0) {
+	if wait < 0 || (wait > 0 && interval <= 0) {
 		return nil, apperr.New(apperr.Usage, "--wait must be >= 0 and --interval > 0")
 	}
 	api, err := a.analytics()
@@ -84,8 +97,8 @@ func runRoutedCheck(ctx context.Context, a *app, args []string) (output.Document
 		return nil, err
 	}
 
-	deadline := a.env.Now().Add(*wait)
-	doc := &RoutedCheckDoc{Customers: names, Prefix: prefix.String(), Expect: string(expect), Sites: nonNil([]string(sites))}
+	deadline := a.env.Now().Add(wait)
+	doc := &RoutedCheckDoc{Customers: names, Prefix: prefix.String(), Expect: string(expect), Sites: nonNil(sites)}
 	var ferr error
 	for {
 		doc.Attempts++
@@ -118,7 +131,7 @@ func runRoutedCheck(ctx context.Context, a *app, args []string) (output.Document
 			}
 			return doc, apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", res.Off, len(res.Sessions), expect, prefix)
 		}
-		if err := a.env.Sleep(ctx, min(*interval, remaining)); err != nil {
+		if err := a.env.Sleep(ctx, min(interval, remaining)); err != nil {
 			return nil, err
 		}
 	}

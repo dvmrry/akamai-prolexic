@@ -87,9 +87,9 @@ func commands() []*command {
 		{name: "protected", summary: "prefixes and AS numbers treated as own space, per customer name (read-only)", run: runProtected},
 		{name: "remove"},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
-			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},
-			{name: "health", summary: "healthy and total tunnels per location and router", run: runRoutedHealth},
-			{name: "routes", summary: "routes announced to Akamai per customer name", run: runRoutedRoutes},
+			{name: "check"},
+			{name: "health"},
+			{name: "routes"},
 			{name: "sessions"},
 		}},
 		{name: "rule-hits", summary: "ACL rule match statistics (read-only)", sub: []*command{

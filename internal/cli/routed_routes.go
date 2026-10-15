@@ -9,6 +9,8 @@ import (
 	"slices"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -44,17 +46,26 @@ func optInt(p *int64) string {
 	return fmt.Sprint(*p)
 }
 
-func runRoutedRoutes(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-	prefix := fs.String("prefix", "", "only routes for exactly this prefix (a bare address means /32 or /128)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newRoutedRoutesCmd(a *app) *cobra.Command {
+	var customers []string
+	var prefix string
+	cmd := &cobra.Command{
+		Use:   "routes",
+		Short: "routes announced to Akamai per customer name",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return routedRoutes(ctx, a, customers, prefix)
+		}),
 	}
+	customerFlag(cmd, &customers)
+	cmd.Flags().StringVar(&prefix, "prefix", "", "only routes for exactly this prefix (a bare address means /32 or /128)")
+	return cmd
+}
+
+func routedRoutes(ctx context.Context, a *app, customers []string, prefix string) (output.Document, error) {
 	var want netip.Prefix
-	if *prefix != "" {
-		p, err := analytics.ParsePrefix(*prefix)
+	if prefix != "" {
+		p, err := analytics.ParsePrefix(prefix)
 		if err != nil {
 			return nil, err
 		}

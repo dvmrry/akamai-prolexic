@@ -8,6 +8,8 @@ import (
 	"slices"
 	"text/tabwriter"
 
+	"github.com/spf13/cobra"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -40,13 +42,21 @@ func (d *RoutedHealthDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-func runRoutedHealth(ctx context.Context, a *app, args []string) (output.Document, error) {
-	fs := a.flags()
-	var customers stringList
-	fs.Var(&customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-	if err := a.parse(fs, args, false); err != nil {
-		return nil, err
+func newRoutedHealthCmd(a *app) *cobra.Command {
+	var customers []string
+	cmd := &cobra.Command{
+		Use:   "health",
+		Short: "healthy and total tunnels per location and router",
+		Args:  cobra.NoArgs,
+		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			return routedHealth(ctx, a, customers)
+		}),
 	}
+	customerFlag(cmd, &customers)
+	return cmd
+}
+
+func routedHealth(ctx context.Context, a *app, customers []string) (output.Document, error) {
 	api, err := a.analytics()
 	if err != nil {
 		return nil, err

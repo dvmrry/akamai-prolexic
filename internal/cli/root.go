@@ -121,8 +121,8 @@ func nativeCommands() map[string]func(*app) *cobra.Command {
 		"apply": newApplyCmd, "export": newExportCmd, "fmt": newFmtCmd, "remove": newRemoveCmd, "validate": newValidateCmd,
 		"doctor":          newDoctorCmd,
 		"plan":            newPlanCmd,
-		"routed sessions": newRoutedSessionsCmd,
-		"version":         newVersionCmd,
+		"routed sessions": newRoutedSessionsCmd, "routed check": newRoutedCheckCmd, "routed health": newRoutedHealthCmd, "routed routes": newRoutedRoutesCmd,
+		"version": newVersionCmd,
 	}
 }
 
