@@ -72,9 +72,14 @@ func runExport(ctx context.Context, a *app, args []string) (output.Document, err
 		return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", *roleFlag)
 	}
 
-	f, _, err := readDesired(*file)
+	// A missing or empty (whitespace-only) file bootstraps: an empty file is a
+	// placeholder, not a damaged desired file.
 	created := false
-	if err != nil {
+	var f *ncf.File
+	var err error
+	if b, rerr := os.ReadFile(*file); rerr == nil && len(bytes.TrimSpace(b)) == 0 {
+		created = true
+	} else if f, _, err = readDesired(*file); err != nil {
 		if apperr.CodeOf(err) != apperr.NotFound {
 			return nil, err
 		}

@@ -248,3 +248,16 @@ func TestExportText(t *testing.T) {
 		t.Errorf("stdout:\n%s", r.stdout)
 	}
 }
+
+func TestExportIntoAnEmptyFileBootstraps(t *testing.T) {
+	api := exportAPI(t)
+	p := filepath.Join(t.TempDir(), "desired.json")
+	if err := os.WriteFile(p, []byte("\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
+	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	if r.code != 0 || !doc.Created || !doc.Written {
+		t.Errorf("exit = %d, doc = %+v, stderr = %s", r.code, doc, r.stderr)
+	}
+}
