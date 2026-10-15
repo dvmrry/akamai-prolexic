@@ -138,8 +138,12 @@ func (s *V2) ListVersions(ctx context.Context, id int64) ([]ncf.AliasVersion, er
 }
 
 func (s *V2) GetVersion(ctx context.Context, id int64, version string) (ncf.AliasVersion, error) {
+	path, err := s.versionPath(id, version)
+	if err != nil {
+		return ncf.AliasVersion{}, err
+	}
 	var v v2Version
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: s.versionPath(id, version)}, &v); err != nil {
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &v); err != nil {
 		return ncf.AliasVersion{}, err
 	}
 	if v.Entries == nil {
@@ -212,7 +216,11 @@ func bigUpload(alias ncf.LiveAlias, entries []string) ([]byte, string, error) {
 }
 
 func (s *V2) Activate(ctx context.Context, id int64, version string) error {
-	return s.c.Do(ctx, akamai.Request{Method: http.MethodPatch, Path: s.versionPath(id, version) + "/activate"}, nil)
+	path, err := s.versionPath(id, version)
+	if err != nil {
+		return err
+	}
+	return s.c.Do(ctx, akamai.Request{Method: http.MethodPatch, Path: path + "/activate"}, nil)
 }
 
 // Deployment and Limits have the same shapes as v1 at the v2 path.
@@ -263,9 +271,13 @@ func (s *V2) aliasPath(id int64) string {
 	return v2Path + "/aliases/" + strconv.FormatInt(id, 10)
 }
 
-func (s *V2) versionPath(id int64, version string) string {
+func (s *V2) versionPath(id int64, version string) (string, error) {
 	// The transport escapes paths itself; version ids are like "V1".
-	return s.aliasPath(id) + "/versions/" + version
+	v, err := akamai.PathSegment("alias version", version)
+	if err != nil {
+		return "", err
+	}
+	return s.aliasPath(id) + "/versions/" + v, nil
 }
 
 // truncate cuts s to at most n bytes without splitting a UTF-8 sequence.

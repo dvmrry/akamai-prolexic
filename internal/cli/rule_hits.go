@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -16,13 +15,11 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
-// pathSafe rejects a value that can't be one path segment.
-func pathSafe(flag, v string) (string, error) {
+// requireFlag is the front check for a required flag left empty; whether the
+// value is a safe path segment is the SDK's check.
+func requireFlag(flag, v string) (string, error) {
 	if v == "" {
 		return "", apperr.New(apperr.Usage, "--%s is required", flag)
-	}
-	if strings.Contains(v, "/") || v == "." || v == ".." {
-		return "", apperr.New(apperr.Usage, "--%s %q can't be a path segment", flag, v)
 	}
 	return v, nil
 }
@@ -134,7 +131,7 @@ func newRuleHitsShowCmd(a *app) *cobra.Command {
 }
 
 func ruleHitsShow(ctx context.Context, a *app, rule string, win windowFlags) (output.Document, error) {
-	id, err := pathSafe("rule", rule)
+	id, err := requireFlag("rule", rule)
 	if err != nil {
 		return nil, err
 	}

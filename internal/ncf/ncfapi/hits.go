@@ -72,8 +72,12 @@ func (s *V2) ListRuleHits(ctx context.Context) (RuleHits, error) {
 // GetRuleHit reads one rule's match statistics. The rule id is the id the
 // list reports (a uuid), taken as an opaque string.
 func (s *V2) GetRuleHit(ctx context.Context, rule string) (RuleHit, error) {
+	r, err := akamai.PathSegment("rule id", rule)
+	if err != nil {
+		return RuleHit{}, err
+	}
 	var h hitWire
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v2Path + "/rule-hits/rules/" + rule}, &h); err != nil {
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: v2Path + "/rule-hits/rules/" + r}, &h); err != nil {
 		return RuleHit{}, err
 	}
 	out := h.hit()
@@ -125,7 +129,11 @@ func windowQuery(start, end time.Time) url.Values {
 
 // RuleTimeSeries reads a rule's matches over [start, end).
 func (s *V2) RuleTimeSeries(ctx context.Context, rule string, start, end time.Time) (HitSeries, error) {
-	return s.ruleSeries(ctx, v2Path+"/rule-hits/rules/"+rule+"/time-series", start, end)
+	r, err := akamai.PathSegment("rule id", rule)
+	if err != nil {
+		return HitSeries{}, err
+	}
+	return s.ruleSeries(ctx, v2Path+"/rule-hits/rules/"+r+"/time-series", start, end)
 }
 
 // ruleSeries reads a rule's hit time series. A 404 means no hits in this

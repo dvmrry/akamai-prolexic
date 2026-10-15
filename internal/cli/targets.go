@@ -119,7 +119,7 @@ func newTargetsShowCmd(a *app) *cobra.Command {
 }
 
 func targetsShow(ctx context.Context, a *app, id string) (output.Document, error) {
-	if _, err := pathSafe("id", id); err != nil {
+	if _, err := requireFlag("id", id); err != nil {
 		return nil, err
 	}
 	api, err := a.networkHealth()

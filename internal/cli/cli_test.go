@@ -296,6 +296,7 @@ func TestListFlagsTrimAndDropEmpty(t *testing.T) {
 
 func TestReviewRound4Contracts(t *testing.T) {
 	api := newFakeAPI(t)
+	api.json("GET /network-cloud-firewall/v2/aliases", 200, `[{"aliasId":101,"aliasName":"block-v4","aliasType":"SOURCE","accountId":"A-EXAMPLE","isCustomerEditable":true}]`)
 	api.json("POST /prolexic-analytics/v2/metrics", 200, `{"status":true,"data":[{"service":"routed","metric":"bandwidthIn","points":[[1767400000,"NaN"],[1767400060,"Inf"],[1767400120,"5"]]}]}`)
 	tests := []struct {
 		name     string
@@ -308,9 +309,9 @@ func TestReviewRound4Contracts(t *testing.T) {
 		{"empty --customer doesn't mean every name", []string{"attacks", "list", "--customer", "", "--since", "1h"}, apperr.Usage, "empty value"},
 		{"comma-only --customer", []string{"routed", "sessions", "--customer", ","}, apperr.Usage, "empty value"},
 		{"unknown customer name", []string{"attacks", "list", "--customer", "exmaple-a", "--since", "1h"}, apperr.NotFound, `unknown customer name \"exmaple-a\"`},
-		{"dot version segment", []string{"aliases", "show", "--id", "101", "--version", ".."}, apperr.Usage, "path segment"},
-		{"slash in version", []string{"aliases", "show", "--id", "101", "--version", "V1/../../x"}, apperr.Usage, "path segment"},
-		{"dot target id", []string{"targets", "show", "--id", ".."}, apperr.Usage, "path segment"},
+		{"dot version segment", []string{"aliases", "show", "--id", "101", "--version", ".."}, apperr.Usage, "can't be empty"},
+		{"slash in version", []string{"aliases", "show", "--id", "101", "--version", "V1/../../x"}, apperr.Usage, "can't be empty"},
+		{"dot target id", []string{"targets", "show", "--id", ".."}, apperr.Usage, "can't be empty"},
 		{"NaN and Inf decode to 0", []string{"metrics", "--customer", "example-a", "--type", "routed:bandwidthIn", "--since", "1h"}, apperr.OK, ""},
 	}
 	for _, tt := range tests {
@@ -322,7 +323,7 @@ func TestReviewRound4Contracts(t *testing.T) {
 		})
 	}
 	for _, c := range api.calls {
-		if strings.Contains(c.Path, "/..") || strings.Contains(c.Path, "attack-reports") {
+		if strings.Contains(c.Path, "/..") || strings.Contains(c.Path, "attack-reports") || strings.Contains(c.Path, "/versions/") || strings.Contains(c.Path, "/targets/") {
 			t.Errorf("request sent that should have been refused: %s %s", c.Method, c.Path)
 		}
 	}

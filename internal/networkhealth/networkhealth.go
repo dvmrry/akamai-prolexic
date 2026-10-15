@@ -9,10 +9,8 @@ package networkhealth
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
 const basePath = "/prolexic-network-health/v1"
@@ -66,11 +64,12 @@ func (c *Client) Targets(ctx context.Context) ([]Target, error) {
 
 // Target returns one target; an unknown id is a 404 (exit 4).
 func (c *Client) Target(ctx context.Context, id string) (*Target, error) {
-	if id == "" || strings.Contains(id, "/") {
-		return nil, apperr.New(apperr.Usage, "target id %q is empty or contains a slash, which the path can't carry", id)
+	seg, err := akamai.PathSegment("target id", id)
+	if err != nil {
+		return nil, err
 	}
 	var t Target
-	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: basePath + "/targets/" + id}, &t); err != nil {
+	if err := c.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: basePath + "/targets/" + seg}, &t); err != nil {
 		return nil, err
 	}
 	t.normalise()

@@ -8,8 +8,12 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 )
 
-func managedPath(domain string) string {
-	return v2Path + "/policy-domains/" + domain + "/managed-services-acls"
+func managedPath(domain string) (string, error) {
+	d, err := akamai.PathSegment("policy domain", domain)
+	if err != nil {
+		return "", err
+	}
+	return v2Path + "/policy-domains/" + d + "/managed-services-acls", nil
 }
 
 // ManagedRule is one rule of a managed-services ACL version.
@@ -37,6 +41,10 @@ type ManagedACL struct {
 
 // GetManagedACL reads the latest managed-services ACL version.
 func (s *V2) GetManagedACL(ctx context.Context, domain string) (ManagedACL, error) {
+	base, err := managedPath(domain)
+	if err != nil {
+		return ManagedACL{}, err
+	}
 	var resp struct {
 		PolicyDomain string        `json:"policyDomain"`
 		Version      int           `json:"version"`
@@ -47,7 +55,7 @@ func (s *V2) GetManagedACL(ctx context.Context, domain string) (ManagedACL, erro
 		Updated      string        `json:"updatedTimestamp"`
 		RuleSet      []ManagedRule `json:"ruleSet"`
 	}
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: managedPath(domain) + "/version"}, &resp); err != nil {
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: base + "/version"}, &resp); err != nil {
 		return ManagedACL{}, err
 	}
 	out := ManagedACL{PolicyDomain: resp.PolicyDomain, Version: resp.Version, State: resp.State, CreatedBy: resp.CreatedBy,
@@ -71,11 +79,15 @@ type ManagedRuleHits struct {
 
 // ListManagedRuleHits reads every managed-services rule's match statistics.
 func (s *V2) ListManagedRuleHits(ctx context.Context, domain string) (ManagedRuleHits, error) {
+	base, err := managedPath(domain)
+	if err != nil {
+		return ManagedRuleHits{}, err
+	}
 	var resp struct {
 		PolicyDomain string    `json:"policyDomain"`
 		Rules        []hitWire `json:"rules"`
 	}
-	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: managedPath(domain) + "/rule-hits"}, &resp); err != nil {
+	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: base + "/rule-hits"}, &resp); err != nil {
 		return ManagedRuleHits{}, err
 	}
 	return ManagedRuleHits{PolicyDomain: resp.PolicyDomain, Rules: hits(resp.Rules)}, nil
@@ -83,5 +95,13 @@ func (s *V2) ListManagedRuleHits(ctx context.Context, domain string) (ManagedRul
 
 // ManagedRuleTimeSeries reads a managed-services rule's matches over a window.
 func (s *V2) ManagedRuleTimeSeries(ctx context.Context, domain, rule string, start, end time.Time) (HitSeries, error) {
-	return s.ruleSeries(ctx, managedPath(domain)+"/rule-hits/rules/"+rule+"/time-series", start, end)
+	base, err := managedPath(domain)
+	if err != nil {
+		return HitSeries{}, err
+	}
+	r, err := akamai.PathSegment("rule id", rule)
+	if err != nil {
+		return HitSeries{}, err
+	}
+	return s.ruleSeries(ctx, base+"/rule-hits/rules/"+r+"/time-series", start, end)
 }

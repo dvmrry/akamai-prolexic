@@ -60,7 +60,7 @@ func newManagedACLCmd(a *app) *cobra.Command {
 }
 
 func managedACL(ctx context.Context, a *app, domain string) (output.Document, error) {
-	d, err := pathSafe("policy-domain", domain)
+	d, err := requireFlag("policy-domain", domain)
 	if err != nil {
 		return nil, err
 	}
@@ -119,13 +119,13 @@ func newManagedRuleHitsCmd(a *app) *cobra.Command {
 }
 
 func managedRuleHits(ctx context.Context, a *app, domain, rule string, win windowFlags) (output.Document, error) {
-	d, err := pathSafe("policy-domain", domain)
+	d, err := requireFlag("policy-domain", domain)
 	if err != nil {
 		return nil, err
 	}
 	var id string
 	if rule != "" {
-		if id, err = pathSafe("rule", rule); err != nil {
+		if id, err = requireFlag("rule", rule); err != nil {
 			return nil, err
 		}
 	}

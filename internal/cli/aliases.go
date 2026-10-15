@@ -176,11 +176,6 @@ func aliasSelector(cmd *cobra.Command, name *string, id *int64) {
 }
 
 func aliasesShow(ctx context.Context, a *app, name string, id int64, version string) (output.Document, error) {
-	if version != "" {
-		if _, err := pathSafe("version", version); err != nil {
-			return nil, err
-		}
-	}
 	api, err := a.ncfV2()
 	if err != nil {
 		return nil, err

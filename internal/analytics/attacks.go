@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
@@ -29,12 +28,14 @@ func (e envelope) err(what string) error {
 
 // contractPath builds a path with the customer name as the {contract}
 // segment. akamai.Request.Path is an unescaped path, so the name goes in as
-// is and the transport escapes it; a name with a slash can't be expressed.
+// is and the transport escapes it; akamai.PathSegment refuses a name that
+// can't be one segment.
 func contractPath(prefix, customer, suffix string) (string, error) {
-	if strings.Contains(customer, "/") || customer == "." || customer == ".." || customer == "" {
-		return "", apperr.New(apperr.Usage, "customer name %q can't be a path segment", customer)
+	c, err := akamai.PathSegment("customer name", customer)
+	if err != nil {
+		return "", err
 	}
-	return basePath + prefix + customer + suffix, nil
+	return basePath + prefix + c + suffix, nil
 }
 
 // Destination is a targeted address or subnet of an attack.
