@@ -339,13 +339,28 @@ func aclTest(ctx context.Context, a *app, cmd *cobra.Command, o aclTestFlags) (o
 	if err != nil {
 		return nil, err
 	}
-	if len(resp.Results) != len(packets) {
-		return nil, apperr.New(apperr.Upstream, "the analyzer returned %d results for %d packets", len(resp.Results), len(packets))
+	// Join results to packets on packetId, never on position: a verdict on the
+	// wrong packet would answer "is this flow denied?" wrongly and silently.
+	byID := make(map[string]ncfapi.AnalyzerResult, len(resp.Results))
+	for _, r := range resp.Results {
+		if _, dup := byID[r.PacketID]; dup {
+			return nil, apperr.New(apperr.Upstream, "the analyzer returned two results for packet %q", r.PacketID)
+		}
+		byID[r.PacketID] = r
+	}
+	for _, p := range packets {
+		if _, ok := byID[p.PacketID]; !ok {
+			return nil, apperr.New(apperr.Upstream, "the analyzer returned no result for packet %q", p.PacketID)
+		}
+	}
+	if len(byID) != len(packets) {
+		return nil, apperr.New(apperr.Upstream, "the analyzer returned results for packets that were not sent")
 	}
 	doc := &ACLTestDoc{Version: cmp.Or(got.Version, v), Production: perr == nil && v == prod, IPVersion: ipVersion,
 		RulesTested: len(rules), Results: make([]ACLTestResult, 0, len(packets)), Summary: resp.Summary}
-	for i, r := range resp.Results {
-		res := ACLTestResult{Packet: packets[i], Decision: r.Decision, ImplicitPermit: r.ImplicitPermit}
+	for _, p := range packets {
+		r := byID[p.PacketID]
+		res := ACLTestResult{Packet: p, Decision: r.Decision, ImplicitPermit: r.ImplicitPermit}
 		if r.MatchedRule != nil {
 			orig, ok := original[r.MatchedRule.Index]
 			if !ok {

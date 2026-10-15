@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ type analyzerReq struct {
 // analyzerFixtures serves production version 7 (original indexes 0, 4, 7, 9,
 // 12: a remark, a V6 rule, two V4 rules and a V4 deny-all) and a fake analyzer
 // that matches the first rule naming the packet's protocol (or "ip") and
-// otherwise permits implicitly.
+// otherwise permits implicitly, answering in reverse order.
 func analyzerFixtures(api *fakeAPI) {
 	api.json("GET "+aclBase+"/deployment-status", 200, `{"ruleSets":[{"deploymentStatus":"PRODUCTION","version":7}]}`)
 	api.json("GET "+aclBase+"/7", 200, `{"version":7,"state":"DEPLOYED","ruleSet":[
@@ -63,6 +64,8 @@ func analyzerFixtures(api *fakeAPI) {
 			}
 			results = append(results, res)
 		}
+		// Answer in reverse order: results must be joined on packetId, not position.
+		slices.Reverse(results)
 		reply(w, 200, map[string]any{"analysisType": "PACKET_TESTING", "results": results,
 			"summary": map[string]any{"totalPackets": len(results), "allowed": allowed, "denied": denied}})
 	}
@@ -240,5 +243,23 @@ func TestACLTestNoRulesOfFamily(t *testing.T) {
 	r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--version", "8", "--src", "192.0.2.9", "--dst", "198.51.100.5")
 	if r.code != int(apperr.NotFound) {
 		t.Errorf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestACLTestResultsMustMatchPacketIDs(t *testing.T) {
+	for name, results := range map[string]string{
+		"missing":   `[]`,
+		"unknown":   `[{"packetId":"p9","decision":"DENY"}]`,
+		"duplicate": `[{"packetId":"p1","decision":"DENY"},{"packetId":"p1","decision":"ALLOW"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := newFakeAPI(t)
+			analyzerFixtures(api)
+			api.json(analyzerRoute, 200, `{"analysisType":"PACKET_TESTING","results":`+results+`}`)
+			r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--src", "192.0.2.9", "--dst", "198.51.100.5")
+			if r.code != int(apperr.Upstream) || r.stdout != "" {
+				t.Errorf("exit = %d, stdout = %q, stderr = %s", r.code, r.stdout, r.stderr)
+			}
+		})
 	}
 }
