@@ -18,7 +18,40 @@ checking against a real account.
 | `internal/ncf/ncfapi` | `Store` over HTTP (NCF v2: versioned aliases, activation, BIG multipart upload) |
 | `internal/ncf/ncftest` | an in-memory versioned `Store` with fault injection |
 | `internal/cli` | the command tree and wiring |
-| `internal/hygiene` | keeps globally routable addresses out of tracked files |
+| `internal/hygiene` | keeps globally routable addresses out of tracked files, and the layer rules below |
+
+## Layers
+
+The code is in three layers, so that other fronts (an MCP server, possibly a Terraform provider) can reuse it later without the CLI.
+
+| layer | packages | does |
+| --- | --- | --- |
+| **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
+| **operations** | the command bodies in `internal/cli` (for now) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
+| **fronts** | `internal/cli` (Cobra), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
+
+- **Dependencies point down only.** SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and only `cli` and `internal/tools` import Cobra. `internal/hygiene` tests this.
+- Everything stays under `internal/` while every consumer lives in this module. `internal/` only stops imports from other modules, so it carries no public-API promise. Move to `pkg/` only if a consumer must live elsewhere.
+- **Not yet separate:** the operations are still functions in `internal/cli` that take the CLI's `*app`. Extracting them, with a typed input per operation, waits until a second front (MCP) is scheduled.
+
+### Errors
+
+One error model, shared by every layer. Each layer has one job with it:
+
+- **The SDK classifies, at the source.** HTTP status → kind, and an ambiguous write is marked where it happens. It attaches the upstream detail: status, `incidentId`, `errorPaths`.
+- **Operations add context and decide policy.** For example, "a 404 here is an empty window" (`apperr.IsNotFound`), or "a failed name is reported, not fatal". Wrapping keeps the kind; reclassifying is rare and deliberate. Cancellation always wins.
+- **Fronts translate, at the edge.** The CLI maps kind → exit code; an MCP server would map it to a tool error. The exit-code numbers appear in one place.
+- **Outcomes are not errors.** "`routed check` not satisfied", "some names failed" and plan findings are results: they belong in the document, and the CLI turns them into exit codes. Another front returns them as data.
+
+### Input validation
+
+Types guarantee shape, not values: a `string` can be `..`, and a start time can come after the end. So input is checked in three tiers:
+
+1. **Fronts** check their own format: flag syntax and flag combinations, or an MCP server's input schema. This gives early, friendly errors, but a front is never the only check.
+2. **Operations and the SDK** parse input into types that can't hold an invalid value (`netip.Prefix`, a window, a packet list, a path segment). This is the authoritative check, and every front runs it.
+3. **The transport** backstops whatever is safety-critical, whoever the caller: clean paths only, writes never re-sent, ambiguous writes marked, and read-only clients refuse writes.
+
+A check lives at the lowest layer that has the information. Higher layers may repeat it for a better message, but never own it. The write-path invariants already work this way: they live in `ncf`, so any front that calls the core gets them.
 
 ## Credentials
 

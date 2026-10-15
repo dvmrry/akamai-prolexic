@@ -48,6 +48,8 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | `internal/ncf/ncftest` | in-memory versioned `Store` with fault injection |
 | `internal/cli` | commands and wiring; one file per command family |
 
+The packages form three layers (SDK, operations, fronts); `docs/design.md` (Layers) has the rules for errors and input validation. Dependencies point down only: SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and `internal/hygiene` tests it. Reusable logic goes in the SDK packages, not in `internal/cli`.
+
 New read commands follow `internal/cli/routed.go` and `internal/cli/status.go`: a document embeds `output.Header`, has a constant `SchemaID()` (`prolexic.<name>.v1`), is registered in `documents()`, and renders sorted, stable output.
 
 ## Write-path invariants
