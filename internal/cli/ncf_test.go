@@ -358,7 +358,9 @@ func TestPlanCustomerNameWithoutRoutedHasNoASNs(t *testing.T) {
 	api := ncfAPI(t)
 	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 404, `{"errorCode":"NOT_FOUND","message":"no routed service"}`)
 	p := writeDesired(t, desiredFixture)
-	if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p); r.code != 0 {
-		t.Errorf("exit = %d: %s", r.code, r.stderr)
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
+	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	if r.code != 0 || !slices.ContainsFunc(doc.Findings, func(f ncf.Finding) bool { return f.Code == "own_space_asn_unknown" }) {
+		t.Errorf("exit = %d, findings = %+v; a 404 must be visible", r.code, doc.Findings)
 	}
 }

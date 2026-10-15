@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -475,6 +476,7 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 		}
 		return out, nil
 	}
+	var mu sync.Mutex // FanOut runs names concurrently
 	opts.OwnASNs = func(ctx context.Context) ([]ncf.OwnASN, error) {
 		if err := resolve(ctx); err != nil {
 			return nil, err
@@ -484,7 +486,14 @@ func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *
 		sessions, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.BGPSession, error) {
 			s, err := api.BGPSessions(ctx, name)
 			if d := apperr.UpstreamOf(err); d != nil && d.Status == http.StatusNotFound {
-				return nil, nil // a customer name without Routed has no BGP sessions
+				// A customer name without Routed has no BGP sessions; say so,
+				// as for a name with no protected prefixes, so a wrong path or
+				// an outage that 404s every name doesn't pass unnoticed.
+				mu.Lock()
+				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
+					Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", name)})
+				mu.Unlock()
+				return nil, nil
 			}
 			return s, err
 		})
