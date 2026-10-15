@@ -23,6 +23,7 @@ func documents() []output.Document {
 		&MetricsDoc{},
 		&PlanDoc{},
 		&DoctorDoc{},
+		&ProtectedDoc{},
 		&RoutedCheckDoc{},
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},

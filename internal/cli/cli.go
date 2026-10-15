@@ -69,6 +69,7 @@ func commands() []*command {
 		{name: "fmt", summary: "rewrite the desired file in canonical form, or --check it (offline)", run: runFmt},
 		{name: "metrics", summary: "traffic metrics per customer name (read-only)", run: runMetrics},
 		{name: "plan", summary: "diff the desired file against live and validate it", run: runPlan},
+		{name: "protected", summary: "prefixes and AS numbers treated as own space, per customer name (read-only)", run: runProtected},
 		{name: "remove", summary: "remove entries from an alias in the desired file (offline)", run: runRemove},
 		{name: "routed", summary: "Routed BGP sessions, routes and tunnel health (read-only)", sub: []*command{
 			{name: "check", summary: "check a prefix has propagated (or gone) on every session", run: runRoutedCheck},

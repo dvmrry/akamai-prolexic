@@ -1,0 +1,98 @@
+{
+  "$id": "prolexic.protected.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried (every name of the account unless --customer is given).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failures": {
+      "description": "Customer names whose query failed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The exit code this failure alone would have.",
+            "type": "integer"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "protected": {
+      "description": "One row per customer name, sorted by customer.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "asns": {
+            "description": "Own AS numbers from the BGP sessions, sorted.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "customer": {
+            "description": "The customer name queried.",
+            "type": "string"
+          },
+          "notes": {
+            "description": "What an empty list means.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prefixes": {
+            "description": "Flow Based Monitoring subnets, masked, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "site": {
+            "description": "The metric types response's currentContract.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asns",
+          "customer",
+          "notes",
+          "prefixes"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "failures",
+    "protected",
+    "schema"
+  ],
+  "type": "object"
+}

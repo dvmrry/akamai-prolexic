@@ -107,4 +107,4 @@ checking against a real account.
 
 - Alias rotation as an explicit command.
 - Network Health targets: create, update and delete (read-only `targets list` and `targets show` exist; targets are per account, and the spec has no paging).
-- Traffic metrics (`/metrics`, `/time-series-data`, `/scrub-centers`).
+- Nothing from the Analytics spec is left unread: `metrics`, `time-series`, `scrub-centers` and `protected` exist (`protected` shows plan's own space: FBM subnets and BGP-session ASNs per customer name; **verify** the metrics point shapes and the `/time-series-data` facet keys against a live account).
