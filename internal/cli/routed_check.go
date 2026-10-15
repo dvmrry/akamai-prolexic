@@ -67,7 +67,7 @@ func newRoutedCheckCmd(a *app) *cobra.Command {
 	}
 	customerFlag(cmd, &customers)
 	f := cmd.Flags()
-	f.StringSliceVar(&sites, "site", nil, "only sessions in this data center; repeatable or comma-separated")
+	listVar(f, &sites, "site", "only sessions in this data center; repeatable or comma-separated")
 	f.StringVar(&prefix, "prefix", "", "the prefix to check (required; a bare address means /32 or /128)")
 	f.StringVar(&expect, "expect", "present", "present: every expected session carries the prefix; absent: none does")
 	f.DurationVar(&wait, "wait", 0, "keep checking until satisfied or this long has passed (0: check once)")

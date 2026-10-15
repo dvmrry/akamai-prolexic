@@ -117,8 +117,8 @@ func newMetricsCmd(a *app) *cobra.Command {
 		}),
 	}
 	f := cmd.Flags()
-	f.StringSliceVar(&customers, "customer", nil, "customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)")
-	f.StringSliceVar(&types, "type", nil, typeHelp)
+	listVar(f, &customers, "customer", "customer name (the API's contract) to query; repeatable or comma-separated (default: every in-use name)")
+	listVar(f, &types, "type", typeHelp)
 	f.StringVar(&subnet, "subnet", "", "restrict fbm types to one subnet")
 	f.StringVar(&ip, "ip", "", "restrict fbm types to one IP address")
 	f.IntVar(&samples, "samples", 100, "number of data points to return")

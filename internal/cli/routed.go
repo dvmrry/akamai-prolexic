@@ -53,7 +53,7 @@ func newRoutedSessionsCmd(a *app) *cobra.Command {
 
 // customerFlag is the --customer flag every fan-out command takes.
 func customerFlag(cmd *cobra.Command, customers *[]string) {
-	cmd.Flags().StringSliceVar(customers, "customer", nil, "customer name to query; repeatable or comma-separated (default: every in-use name)")
+	listVar(cmd.Flags(), customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
 }
 
 func routedSessions(ctx context.Context, a *app, customers []string) (output.Document, error) {

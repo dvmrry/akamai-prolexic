@@ -330,10 +330,11 @@ func (*PlanDoc) SchemaID() string { return "prolexic.plan.v1" }
 func (d *PlanDoc) WriteText(w io.Writer) error {
 	for _, al := range d.Aliases {
 		if !al.Changed() {
-			fmt.Fprintf(w, "  %s (%d): no changes\n", al.Name, al.ID)
+			fmt.Fprintf(w, "  %s (%d): no changes; role %s (from %s)\n", al.Name, al.ID, al.Role, al.RoleSource)
 			continue
 		}
 		fmt.Fprintf(w, "~ %s (%d) %s %s, activeVersion %s\n", al.Name, al.ID, al.Type, al.IPVersion, dash(al.ActiveVersion))
+		fmt.Fprintf(w, "    role %s (from %s)\n", al.Role, al.RoleSource)
 		for _, e := range al.Add {
 			meta := ""
 			if e.Ticket != "" {
@@ -348,7 +349,30 @@ func (d *PlanDoc) WriteText(w io.Writer) error {
 	if err := writeFindings(w, d.Findings); err != nil {
 		return err
 	}
+	if err := writeChecks(w, d.Checks, d.OwnSpaceAnalytics); err != nil {
+		return err
+	}
 	_, err := fmt.Fprintf(w, "\ndigest: %s\n", d.Digest)
+	return err
+}
+
+// writeChecks says what the live checks ran against, so a clean plan reads
+// as checked, not merely as free of errors.
+func writeChecks(w io.Writer, c ncf.Checks, analytics bool) error {
+	var sources []string
+	total := 0
+	for _, s := range c.OwnSpace {
+		sources = append(sources, fmt.Sprintf("%d %s", s.Prefixes, s.Source))
+		total += s.Prefixes
+	}
+	ownSpace := "none"
+	if total > 0 {
+		ownSpace = fmt.Sprintf("%d prefixes (%s)", total, strings.Join(sources, ", "))
+	}
+	if !analytics {
+		ownSpace += "; Prolexic Analytics skipped"
+	}
+	_, err := fmt.Fprintf(w, "\nchecked against: own space %s; %d own AS numbers; %d deployed ACL rules\n", ownSpace, c.OwnASNs, c.DeployedRules)
 	return err
 }
 

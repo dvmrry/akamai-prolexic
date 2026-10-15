@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/spf13/pflag"
+
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
 
@@ -260,5 +262,17 @@ func TestRoutedSessionsText(t *testing.T) {
 	r := runCLI(t, api.env(), "routed", "sessions", "--customer", "example-a", "--format", "text")
 	if r.code != 0 || !strings.Contains(r.stdout, "DC-A") || !strings.Contains(r.stdout, "2001:db8::2") {
 		t.Errorf("exit %d, stdout:\n%s", r.code, r.stdout)
+	}
+}
+
+func TestListFlagsTrimAndDropEmpty(t *testing.T) {
+	var got []string
+	f := pflag.NewFlagSet("t", pflag.ContinueOnError)
+	listVar(f, &got, "customer", "")
+	if err := f.Parse([]string{"--customer", "a, b,", "--customer", " c "}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, "|") != "a|b|c" {
+		t.Errorf("got %q", got)
 	}
 }

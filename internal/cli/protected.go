@@ -56,7 +56,7 @@ func newProtectedCmd(a *app) *cobra.Command {
 			return protected(ctx, a, customers)
 		}),
 	}
-	cmd.Flags().StringSliceVar(&customers, "customer", nil, "customer name to query; repeatable or comma-separated (default: every name, in use or not)")
+	listVar(cmd.Flags(), &customers, "customer", "customer name to query; repeatable or comma-separated (default: every name, in use or not)")
 	return cmd
 }
 

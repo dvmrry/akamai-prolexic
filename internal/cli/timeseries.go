@@ -60,8 +60,8 @@ func newTimeSeriesCmd(a *app) *cobra.Command {
 		}),
 	}
 	f := cmd.Flags()
-	f.StringSliceVar(&dests, "destination", nil, "address or CIDR block (required); repeatable or comma-separated")
-	f.StringSliceVar(&locs, "location", nil, "data center such as mia4, or agr for all aggregated; repeatable or comma-separated (default: agr)")
+	listVar(f, &dests, "destination", "address or CIDR block (required); repeatable or comma-separated")
+	listVar(f, &locs, "location", "data center such as mia4, or agr for all aggregated; repeatable or comma-separated (default: agr)")
 	f.StringVar(&source, "source", "both", "router type: both, access_flow (Akamai router) or border_flow (customer router)")
 	f.BoolVar(&sum, "sum", false, "also return the aggregatedData facet")
 	f.IntVar(&samples, "samples", 0, "number of timestamps to return (default: all in the window)")
