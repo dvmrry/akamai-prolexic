@@ -153,7 +153,9 @@ A check lives at the lowest layer that has the information. Higher layers may re
 - **Read-only towards the API.** `mcpfront.New` refuses a runtime with a write client, and there is no apply tool: production changes go through version control (a pull request, the reviewed plan, CI's apply). The tools that write, write local files only: the desired file, and a saved plan.
 - **One contract.** A tool returns the document the CLI prints as JSON (`TestMCPReturnsTheCLIDocument` compares them byte for byte), through `internal/output`, which escapes invisible characters. An outcome (a check not satisfied, failed names) is a note beside the document, not a tool error; an error is a tool error carrying the error document (its `code` is 0: `kind` is the contract).
 - **Arguments** are types of their own with JSON Schemas from `internal/jsonschema`. Unknown arguments are refused. A value with a default is a pointer, so a value left out (the default, from the same ops constant the CLI uses) differs from one given explicitly.
-- **Paths** are resolved against a root and confined to it, through symbolic links; a path that is itself a symbolic link is refused.
+- **Paths** are resolved against a root and confined to it, through symbolic links; a path that is itself a symbolic link is refused. Operations get them relative (`ops.Runtime.Dir` is the root), so documents and saved plans name no local directory. A plan's output path must be new or an existing saved plan (for every front).
+- **An agent's plan can only tighten checks.** CI's apply runs with the reviewed plan's settings, so the `plan` tool offers no way to skip the live own-space check and takes a removal limit only from 0 to the default. A person loosens them deliberately, with the CLI; the plan's text shows the removal limit to the reviewer.
+- **One call can't take the session down:** tool calls run concurrently (the CLI's client wiring is safe for that), a waiting `routed_check` polls no faster than every 5s for at most an hour, and a handler panic becomes that call's `bug` error.
 
 ## Not built yet
 

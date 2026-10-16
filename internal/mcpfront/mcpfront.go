@@ -40,7 +40,7 @@ Every tool returns a JSON document with a "schema" field (prolexic.<name>.v1). A
 
 There is no apply. Changes to the firewall go through version control: edit the desired file with add or remove, plan it, and open a pull request. A person reviews the plan, and CI applies the reviewed plan with write credentials. Don't look for another way to write.
 
-File paths are relative to the working directory the server was started in, and must stay inside it.`
+File paths are relative to the root directory the server was started with (its --root, or its working directory), and must stay inside it.`
 
 // Options configure the front.
 type Options struct {
@@ -81,7 +81,9 @@ func New(o Options) (*mcp.Server, error) {
 	if root, err = filepath.Abs(root); err != nil {
 		return nil, apperr.Wrap(apperr.Usage, err, "root %s", o.Root)
 	}
-	f := &front{rt: o.Runtime, root: root}
+	rt := *o.Runtime // a copy: relative paths resolve in the root, whatever the caller's runtime says
+	rt.Dir = root
+	f := &front{rt: &rt, root: root}
 	s := mcp.NewServer(&mcp.Implementation{Name: "prolexic", Version: version.Current().Version}, &mcp.ServerOptions{Instructions: Instructions})
 	for _, t := range tools() {
 		t.register(s, f)
@@ -125,12 +127,22 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 		schema["properties"] = map[string]any{}
 	}
 	no, yes := false, true
-	ann := &mcp.ToolAnnotations{Title: t.title, ReadOnlyHint: !t.writes, DestructiveHint: &no, IdempotentHint: true, OpenWorldHint: &yes}
+	// A tool that writes overwrites a local file: destructive, though git
+	// has the old one.
+	destructive := t.writes
+	ann := &mcp.ToolAnnotations{Title: t.title, ReadOnlyHint: !t.writes, DestructiveHint: &destructive, IdempotentHint: true, OpenWorldHint: &yes}
 	if t.local {
 		ann.OpenWorldHint = &no
 	}
 	s.AddTool(&mcp.Tool{Name: t.name, Title: t.title, Description: t.description, InputSchema: schema, Annotations: ann},
-		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		func(ctx context.Context, req *mcp.CallToolRequest) (res *mcp.CallToolResult, _ error) {
+			// The SDK doesn't recover a handler's panic: one would end the
+			// session for every call. It becomes this call's error instead.
+			defer func() {
+				if p := recover(); p != nil {
+					res = f.result(nil, apperr.New(apperr.Bug, "%s failed unexpectedly: %v", t.name, p))
+				}
+			}()
 			var args A
 			if err := decodeArgs(req.Params.Arguments, &args); err != nil {
 				return f.result(nil, err), nil
@@ -216,7 +228,7 @@ func (f *front) path(p string) (string, error) {
 	}
 	rel, err := filepath.Rel(f.root, real)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", apperr.New(apperr.Usage, "%s is outside the working directory %s", p, f.root)
+		return "", apperr.New(apperr.Usage, "%s is outside the root %s", p, f.root)
 	}
-	return real, nil
+	return rel, nil // the operation opens it under the runtime's Dir (the root); documents show it as given
 }

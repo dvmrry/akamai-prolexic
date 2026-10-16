@@ -58,10 +58,16 @@ func (r *Runtime) Aliases(ctx context.Context, in AliasesInput) (*AliasesDoc, er
 }
 
 // resolveAlias finds the one alias named by name or id.
-func resolveAlias(ctx context.Context, api *ncfapi.V2, name string, id int64) (ncfapi.AliasInfo, error) {
+// oneAlias refuses a selector that names no alias or two ways at once.
+// Operations check it first, before building a client.
+func oneAlias(name string, id int64) error {
 	if (name == "") == (id == 0) {
-		return ncfapi.AliasInfo{}, apperr.New(apperr.Usage, "give exactly one of the alias name and the alias id")
+		return apperr.New(apperr.Usage, "give exactly one of the alias name and the alias id")
 	}
+	return nil
+}
+
+func resolveAlias(ctx context.Context, api *ncfapi.V2, name string, id int64) (ncfapi.AliasInfo, error) {
 	all, err := api.ListAliasInfo(ctx)
 	if err != nil {
 		return ncfapi.AliasInfo{}, err
@@ -142,6 +148,9 @@ type AliasInput struct {
 
 // Alias is one alias's entries at a version.
 func (r *Runtime) Alias(ctx context.Context, in AliasInput) (*AliasDoc, error) {
+	if err := oneAlias(in.Name, in.ID); err != nil {
+		return nil, err
+	}
 	api, err := r.ncfV2()
 	if err != nil {
 		return nil, err

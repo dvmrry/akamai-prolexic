@@ -118,6 +118,8 @@ func TestRoutedCheckUsageErrors(t *testing.T) {
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "1m", "--interval", "0s"},
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--expect", ""}, // an empty value is not "present"
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "-1m"},
+		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "1m", "--interval", "1s"}, // below the polling floor
+		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "2h"},                     // beyond the longest wait
 	} {
 		if r := runCLI(t, api.env(), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)

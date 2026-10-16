@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
@@ -105,7 +106,7 @@ var attacksTool = tool[attacksArgs]{
 }
 
 type fileArg struct {
-	File string `json:"file" doc:"The desired file, relative to the working directory."`
+	File string `json:"file" doc:"The desired file, relative to the root."`
 }
 
 var validateTool = tool[fileArg]{
@@ -145,9 +146,8 @@ var addTool = tool[addArgs]{
 
 type planArgs struct {
 	fileArg
-	MaxRemovals      *int   `json:"maxRemovals,omitempty" default:"10" doc:"Most entries one alias may lose; -1 for no limit."`
-	SkipLiveOwnSpace bool   `json:"skipLiveOwnSpace,omitempty" doc:"Leave Prolexic Analytics' protected prefixes and own AS numbers out of the own-space checks; the plan records it."`
-	Out              string `json:"out,omitempty" doc:"Also save the plan's JSON to this file, relative to the working directory, for review and CI."`
+	MaxRemovals *int   `json:"maxRemovals,omitempty" default:"10" doc:"Most entries one alias may lose, from 0 up to the default: a plan made here can tighten the removal limit, never loosen it."`
+	Out         string `json:"out,omitempty" doc:"Also save the plan's JSON to this file, relative to the root: a new file, or a saved plan to replace."`
 }
 
 var planTool = tool[planArgs]{
@@ -163,7 +163,15 @@ var planTool = tool[planArgs]{
 		if err != nil {
 			return nil, err
 		}
-		return output.Doc(f.rt.Plan(ctx, ops.PlanInput{File: p, MaxRemovals: orDefault(a.MaxRemovals, ncf.DefaultMaxRemovals), SkipLiveOwnSpace: a.SkipLiveOwnSpace, Out: out}))
+		// CI's apply runs with the reviewed plan's settings, so an agent's plan
+		// may only tighten them: the live own-space check always runs, and
+		// the removal limit can't be raised or lifted. A person loosens them
+		// deliberately, with the CLI.
+		limit := orDefault(a.MaxRemovals, ncf.DefaultMaxRemovals)
+		if limit < 0 || limit > ncf.DefaultMaxRemovals {
+			return nil, apperr.New(apperr.Usage, "maxRemovals must be between 0 and %d here: a plan made by an agent can tighten the removal limit, not loosen it", ncf.DefaultMaxRemovals)
+		}
+		return output.Doc(f.rt.Plan(ctx, ops.PlanInput{File: p, MaxRemovals: limit, Out: out}))
 	},
 }
 
@@ -506,7 +514,7 @@ var exportTool = tool[exportArgs]{
 }
 
 type verifyArgs struct {
-	Plan string `json:"plan" doc:"A saved plan's file, relative to the working directory."`
+	Plan string `json:"plan" doc:"A saved plan's file, relative to the root."`
 }
 
 var verifyTool = tool[verifyArgs]{

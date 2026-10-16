@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
@@ -61,10 +62,10 @@ type app struct {
 	accountKey   string
 	caBundle     string // --ca-bundle: extra root CAs (a TLS-inspecting proxy's)
 
+	caOnce     sync.Once      // the MCP front builds clients from concurrent tool calls
 	rootCAs    *x509.CertPool // loaded from caBundle on first use
 	rootCAsErr error
 	rootCAsN   int
-	loadedCAs  bool
 
 	formatFlag   string          // --format as given; parsed into format before a command runs
 	formatChosen bool            // --format or PROLEXIC_FORMAT was given, not the default
@@ -177,14 +178,11 @@ func (a *app) client(section string, readOnly bool) (*akamai.Client, error) {
 // how many it added; nil when no bundle is declared. A bundle that can't be
 // read or holds no certificate is an error, never silently ignored.
 func (a *app) loadRootCAs() (*x509.CertPool, int, error) {
-	if a.loadedCAs {
-		return a.rootCAs, a.rootCAsN, a.rootCAsErr
-	}
-	a.loadedCAs = true
-	if a.caBundle == "" {
-		return nil, 0, nil
-	}
-	a.rootCAs, a.rootCAsN, a.rootCAsErr = loadCABundle(a.caBundle)
+	a.caOnce.Do(func() {
+		if a.caBundle != "" {
+			a.rootCAs, a.rootCAsN, a.rootCAsErr = loadCABundle(a.caBundle)
+		}
+	})
 	return a.rootCAs, a.rootCAsN, a.rootCAsErr
 }
 

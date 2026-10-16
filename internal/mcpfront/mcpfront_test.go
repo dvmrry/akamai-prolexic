@@ -342,3 +342,41 @@ func TestFmtAndRemove(t *testing.T) {
 		t.Errorf("fmt: %v %q", isErr, texts)
 	}
 }
+
+// An argument the operation refuses is refused before any client is built:
+// without credentials the agent still learns what's wrong with its call.
+func TestArgumentChecksComeFirst(t *testing.T) {
+	root := t.TempDir()
+	writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+	cs := connect(t, Options{Runtime: offline(), Root: root})
+	for key, args := range map[string]map[string]any{
+		"alias_show":     {},
+		"alias_versions": {"name": "block-v4", "id": 101},
+		"export":         {"file": "desired.json", "role": ""},
+		"plan":           {"file": "desired.json", "maxRemovals": -5},
+		"plan, loosened": {"file": "desired.json", "maxRemovals": -1},
+		"plan, raised":   {"file": "desired.json", "maxRemovals": 11},
+	} {
+		name, _, _ := strings.Cut(key, ",")
+		texts, isErr := call(t, cs, name, args)
+		if !isErr || !strings.Contains(texts[len(texts)-1], `"kind": "usage"`) {
+			t.Errorf("%s %v: %v %q", key, args, isErr, texts)
+		}
+	}
+}
+
+// Documents show file paths as the agent gave them, relative to the root:
+// no local directory reaches the model, or a saved plan.
+func TestDocumentsShowRelativePaths(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeDesired(t, filepath.Join(root, "sub"), desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+	cs := connect(t, Options{Runtime: offline(), Root: root})
+	texts, isErr := call(t, cs, "validate", map[string]any{"file": "sub/desired.json"})
+	real, _ := filepath.EvalSymlinks(root)
+	if isErr || !strings.Contains(texts[0], `"file": "sub/desired.json"`) || strings.Contains(texts[0], root) || strings.Contains(texts[0], real) {
+		t.Errorf("%v %q", isErr, texts)
+	}
+}

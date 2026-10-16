@@ -68,11 +68,14 @@ type ExportInput struct {
 // live entries of the aliases it names, keeping their metadata. The file is
 // written only when its bytes change.
 func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error) {
+	if in.Role != ncf.RoleDeny && in.Role != ncf.RoleAllow { // ncf.Export checks too; this is before any read
+		return nil, apperr.New(apperr.Usage, "the role for aliases no deployed rule references must be deny or allow, not %q", in.Role)
+	}
 	// A missing or empty (whitespace-only) file bootstraps: an empty file is a
 	// placeholder, not a damaged desired file.
 	var existing *ncf.File
-	if b, rerr := os.ReadFile(in.File); rerr != nil || len(bytes.TrimSpace(b)) > 0 {
-		f, _, err := readDesired(in.File)
+	if b, rerr := os.ReadFile(r.abs(in.File)); rerr != nil || len(bytes.TrimSpace(b)) > 0 {
+		f, _, err := readDesired(r.abs(in.File))
 		if err != nil && apperr.KindOf(err) != apperr.NotFound {
 			return nil, err
 		}
@@ -93,10 +96,10 @@ func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error
 	}
 	// Skip the write when the file already holds exactly these bytes: no
 	// mtime churn, and written=false says nothing was touched.
-	if old, err := readIfExists(in.File); err != nil {
+	if old, err := readIfExists(r.abs(in.File)); err != nil {
 		return nil, err
 	} else if !bytes.Equal(old, canon) {
-		if err := writeFileAtomic(in.File, canon); err != nil {
+		if err := writeFileAtomic(r.abs(in.File), canon); err != nil {
 			return nil, err
 		}
 		doc.Written = true

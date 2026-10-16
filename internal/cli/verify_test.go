@@ -195,7 +195,11 @@ func TestPlanOutRefusesDangerousPaths(t *testing.T) {
 	if err := os.Symlink(desired, link); err != nil {
 		t.Fatal(err)
 	}
-	for name, out := range map[string]string{"the desired file": desired, "a symlink": link, "a directory": dir} {
+	other := filepath.Join(dir, "ci.yml") // any file that isn't a saved plan
+	if err := os.WriteFile(other, []byte("on: push\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, out := range map[string]string{"the desired file": desired, "a symlink": link, "a directory": dir, "another file": other} {
 		r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", out)
 		if r.code != exitCode(apperr.Usage) {
 			t.Errorf("%s: exit %d: %s", name, r.code, r.stderr)
@@ -203,6 +207,17 @@ func TestPlanOutRefusesDangerousPaths(t *testing.T) {
 	}
 	if readFile(t, desired) != desiredFixture {
 		t.Error("the desired file was changed")
+	}
+	if readFile(t, other) != "on: push\n" {
+		t.Error("another file was overwritten")
+	}
+
+	// A saved plan may be replaced by a fresh one: re-planning to the same path.
+	saved := filepath.Join(dir, "plan.json")
+	for i := range 2 {
+		if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved); r.code != 0 {
+			t.Errorf("plan %d to a saved plan's path: exit %d: %s", i+1, r.code, r.stderr)
+		}
 	}
 }
 

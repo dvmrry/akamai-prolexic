@@ -2,6 +2,7 @@ package ops
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -120,6 +121,19 @@ func checkOutPath(out, desired string) error {
 	}
 	if ds, err := os.Stat(desired); err == nil && os.SameFile(st, ds) {
 		return apperr.New(apperr.Usage, "the plan's output path %s is the desired file; save the plan elsewhere", out)
+	}
+	// An existing file may only be a saved plan, replaced by a fresh one:
+	// anything else (a CI config, a reviewed file) is not this tool's to
+	// overwrite.
+	b, err := os.ReadFile(out)
+	if err != nil {
+		return apperr.New(apperr.Usage, "the plan's output path %s: %v", out, fsErr(err))
+	}
+	var doc struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(b, &doc) != nil || doc.Schema != (&PlanDoc{}).SchemaID() {
+		return apperr.New(apperr.Usage, "the plan's output path %s exists and isn't a saved plan; give a new path", out)
 	}
 	return nil
 }

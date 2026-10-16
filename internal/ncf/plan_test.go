@@ -460,3 +460,17 @@ func TestCleanPlanFindingsAreAnEmptyList(t *testing.T) {
 		t.Errorf("plan JSON: %s", b)
 	}
 }
+
+// The removal limit is -1 (no limit) or at least 0. Any other negative once
+// read as "no limit": a plan made with -5 would reach apply, which takes the
+// reviewed plan's settings, with no removal threshold at all.
+func TestMakePlanRefusesABadRemovalLimit(t *testing.T) {
+	s := world()
+	for _, n := range []int{-2, -5} {
+		opts := defaults
+		opts.MaxRemovals = n
+		if _, err := checker().MakePlan(context.Background(), s, desired("192.0.2.0/25"), nil, opts); apperr.KindOf(err) != apperr.Usage {
+			t.Errorf("MaxRemovals %d: err = %v", n, err)
+		}
+	}
+}

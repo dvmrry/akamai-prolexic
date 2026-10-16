@@ -64,6 +64,15 @@ func (d *PlanDoc) WriteText(w io.Writer) error {
 	if err := writeChecks(w, d.Checks, d.OwnSpaceAnalytics); err != nil {
 		return err
 	}
+	// The reviewer sees the removal limit apply will run with: it comes
+	// from this plan.
+	limit := fmt.Sprintf("%d entries per alias", d.Settings.MaxRemovals)
+	if d.Settings.MaxRemovals < 0 {
+		limit = "none"
+	}
+	if _, err := fmt.Fprintf(w, "removal limit: %s\n", limit); err != nil {
+		return err
+	}
 	// A plan with errors can't be applied: printing its digest would only
 	// invite copying it.
 	if ncf.HasErrors(d.Findings) {
@@ -117,12 +126,15 @@ type PlanInput struct {
 // Plan reads live state (read credentials only), diffs it against the
 // desired file and runs every offline and live check.
 func (r *Runtime) Plan(ctx context.Context, in PlanInput) (*PlanDoc, error) {
+	if in.MaxRemovals < -1 { // ncf.MakePlan checks too; this is before any read
+		return nil, apperr.New(apperr.Usage, "the removal limit must be -1 (no limit) or at least 0, not %d", in.MaxRemovals)
+	}
 	if in.Out != "" {
-		if err := checkOutPath(in.Out, in.File); err != nil {
+		if err := checkOutPath(r.abs(in.Out), r.abs(in.File)); err != nil {
 			return nil, err
 		}
 	}
-	f, raw, err := readDesired(in.File)
+	f, raw, err := readDesired(r.abs(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +148,7 @@ func (r *Runtime) Plan(ctx context.Context, in PlanInput) (*PlanDoc, error) {
 	}
 	doc := &PlanDoc{File: in.File, Plan: *p, OwnSpaceAnalytics: !in.SkipLiveOwnSpace, changesAreDrift: in.ChangesAreDrift}
 	if in.Out != "" {
-		if err := r.saveDocument(in.Out, doc); err != nil {
+		if err := r.saveDocument(r.abs(in.Out), doc); err != nil {
 			return doc, err
 		}
 	}
@@ -192,11 +204,11 @@ type ApplyInput struct {
 // step is reported as progress. Its refusals and failures are errors,
 // returned with the document saying what happened.
 func (r *Runtime) Apply(ctx context.Context, in ApplyInput) (*ApplyDoc, error) {
-	reviewed, err := ReadPlan(in.Plan)
+	reviewed, err := ReadPlan(r.abs(in.Plan))
 	if err != nil {
 		return nil, err
 	}
-	f, raw, err := readDesired(in.File)
+	f, raw, err := readDesired(r.abs(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +273,7 @@ type VerifyInput struct {
 // Verify reads every alias in a saved plan fresh and checks the plan's end
 // state (ncf.Verify). Read-only.
 func (r *Runtime) Verify(ctx context.Context, in VerifyInput) (*VerifyDoc, error) {
-	p, err := ReadPlan(in.Plan)
+	p, err := ReadPlan(r.abs(in.Plan))
 	if err != nil {
 		return nil, err
 	}

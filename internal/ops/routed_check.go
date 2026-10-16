@@ -16,6 +16,13 @@ import (
 // waits: fronts offer it as the default; RoutedCheck never assumes it.
 const DefaultCheckInterval = 30 * time.Second
 
+// The limits on a waiting RoutedCheck: one call polls the API at most every
+// MinCheckInterval, for at most MaxCheckWait.
+const (
+	MinCheckInterval = 5 * time.Second
+	MaxCheckWait     = time.Hour
+)
+
 // RoutedCheckInput asks whether a prefix has propagated to, or gone from,
 // every BGP session.
 type RoutedCheckInput struct {
@@ -79,8 +86,13 @@ func (r *Runtime) RoutedCheck(ctx context.Context, in RoutedCheckInput) (*Routed
 	if err != nil {
 		return nil, err
 	}
-	if in.Wait < 0 || (in.Wait > 0 && in.Interval <= 0) {
-		return nil, apperr.New(apperr.Usage, "the wait must not be negative, and the interval must be positive when waiting")
+	switch {
+	case in.Wait < 0 || in.Wait > MaxCheckWait:
+		return nil, apperr.New(apperr.Usage, "the wait must be between 0 and %s", MaxCheckWait)
+	case in.Wait > 0 && in.Interval < MinCheckInterval:
+		// Each attempt queries every customer name twice: a tight interval
+		// would hammer the API for the whole wait.
+		return nil, apperr.New(apperr.Usage, "the interval must be at least %s when waiting", MinCheckInterval)
 	}
 	interval := in.Interval
 	api, err := r.analytics()

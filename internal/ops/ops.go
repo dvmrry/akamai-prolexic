@@ -11,6 +11,7 @@ package ops
 import (
 	"context"
 	"net/netip"
+	"path/filepath"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
@@ -38,6 +39,20 @@ type Runtime struct {
 	// Bogons overrides ncf.Bogons; nil means the default. Tests drop the
 	// documentation ranges their fixtures use.
 	Bogons []netip.Prefix
+	// Dir is where relative file paths in inputs resolve; empty means the
+	// process's working directory. Documents show paths as given, so a
+	// front can keep them relative (a saved plan then names no local
+	// directory).
+	Dir string
+}
+
+// abs is path as the operation opens it: relative to Dir when set. ""
+// stays "", for the operation to report as missing.
+func (r *Runtime) abs(path string) string {
+	if path == "" || r.Dir == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(r.Dir, path)
 }
 
 func (r *Runtime) now() time.Time {

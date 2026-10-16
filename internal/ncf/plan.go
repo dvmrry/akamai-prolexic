@@ -101,6 +101,11 @@ var countLimits = map[string][2]int{
 // plan couldn't be computed (credentials, upstream); findings are in the
 // Plan.
 func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte, opts PlanOptions) (*Plan, error) {
+	if opts.MaxRemovals < -1 {
+		// Only -1 means no limit: any other negative is a mistake, and the
+		// plan's settings are what apply later runs with.
+		return nil, apperr.New(apperr.Usage, "the removal limit must be -1 (no limit) or at least 0, not %d", opts.MaxRemovals)
+	}
 	p := &Plan{AccountID: f.AccountID, Aliases: []AliasPlan{}, Findings: c.Validate(f, raw), Checks: Checks{OwnSpace: []CheckSource{}}}
 	if HasErrors(p.Findings) {
 		return p, nil

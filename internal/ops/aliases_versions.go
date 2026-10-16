@@ -54,6 +54,9 @@ type AliasVersionsInput struct {
 
 // AliasVersions is one alias's version history.
 func (r *Runtime) AliasVersions(ctx context.Context, in AliasVersionsInput) (*AliasVersionsDoc, error) {
+	if err := oneAlias(in.Name, in.ID); err != nil {
+		return nil, err
+	}
 	api, err := r.ncfV2()
 	if err != nil {
 		return nil, err
