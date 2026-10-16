@@ -88,7 +88,7 @@
       "type": "string"
     },
     "version": {
-      "description": "The version shown: the alias's active version unless --version named another.",
+      "description": "The version shown: the alias's active version unless another was named.",
       "type": "string"
     }
   },

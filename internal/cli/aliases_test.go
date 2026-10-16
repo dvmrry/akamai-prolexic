@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 func TestAliasesList(t *testing.T) {
@@ -14,7 +15,7 @@ func TestAliasesList(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[AliasesDoc](t, r.stdout, "prolexic.aliases.v1")
+	doc := decode[ops.AliasesDoc](t, r.stdout, "prolexic.aliases.v1")
 	if len(doc.Aliases) != 2 {
 		t.Fatalf("aliases = %+v", doc.Aliases)
 	}
@@ -41,12 +42,12 @@ func TestAliasesShow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[AliasDoc](t, r.stdout, "prolexic.alias.v1")
+	doc := decode[ops.AliasDoc](t, r.stdout, "prolexic.alias.v1")
 	if doc.Version != "V1" || !doc.Active || doc.Managed || len(doc.Entries) != 2 || doc.Entries[0] != "192.0.2.0/25" || doc.Entries[1] != "198.51.100.7/32" {
 		t.Errorf("default = %+v", doc)
 	}
 	r = runCLI(t, ncfEnv(api.env()), "aliases", "show", "--id", "101", "--version", "V2")
-	doc = decode[AliasDoc](t, r.stdout, "prolexic.alias.v1")
+	doc = decode[ops.AliasDoc](t, r.stdout, "prolexic.alias.v1")
 	want := []string{"192.0.2.128/25", "198.51.100.7/32", "2001:db8::/32", "GEO::US", "ASN::64501", "not an entry"}
 	if doc.Version != "V2" || doc.Active || strings.Join(doc.Entries, ",") != strings.Join(want, ",") {
 		t.Errorf("V2 = %+v", doc)
@@ -60,7 +61,7 @@ func TestAliasesShowManagedOnlyWhenNamed(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.stdout, "Akamai-managed") || !strings.Contains(r.stdout, "203.0.113.0/24") {
 		t.Errorf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[AliasDoc](t, runCLI(t, ncfEnv(api.env()), "aliases", "show", "--id", "900").stdout, "prolexic.alias.v1")
+	doc := decode[ops.AliasDoc](t, runCLI(t, ncfEnv(api.env()), "aliases", "show", "--id", "900").stdout, "prolexic.alias.v1")
 	if !doc.Managed || len(doc.Entries) != 1 {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -93,7 +94,7 @@ func TestAliasesVersionsPagesAndSorts(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[AliasVersionsDoc](t, r.stdout, "prolexic.alias-versions.v1")
+	doc := decode[ops.AliasVersionsDoc](t, r.stdout, "prolexic.alias-versions.v1")
 	var got []string
 	for _, v := range doc.Versions {
 		got = append(got, v.Version)
@@ -115,7 +116,7 @@ func TestAliasesListEditable(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[AliasesDoc](t, r.stdout, "prolexic.aliases.v1")
+	doc := decode[ops.AliasesDoc](t, r.stdout, "prolexic.aliases.v1")
 	if len(doc.Aliases) != 1 || doc.Aliases[0].Name != "block-v4" {
 		t.Errorf("aliases = %+v", doc.Aliases)
 	}

@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 func TestCustomers(t *testing.T) {
@@ -14,7 +16,7 @@ func TestCustomers(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[CustomersDoc](t, r.stdout, "prolexic.customers.v1")
+	doc := decode[ops.CustomersDoc](t, r.stdout, "prolexic.customers.v1")
 	if len(doc.Customers) != 2 || doc.Customers[0].Name != "example-a" || !doc.Customers[0].InUse ||
 		doc.Customers[1].ContractID != "C-EXAMPLE-2" || doc.Customers[1].InUse || doc.Customers[1].AccountName != "Example" {
 		t.Errorf("customers = %+v", doc.Customers)
