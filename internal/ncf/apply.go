@@ -16,15 +16,13 @@ import (
 // ApplyOptions tune apply.
 type ApplyOptions struct {
 	PlanOptions
-	// Reviewed is the plan a person reviewed. Apply takes its digest, and
-	// first refuses unless it was made from this desired file (FileDigest),
-	// for this account, with these settings: another file could match live,
-	// and the apply would succeed with the reviewed change never applied.
-	// Give Reviewed or ExpectDigest, not both.
+	// Reviewed is the plan a person reviewed; required. Apply first refuses
+	// it unless it was made from this desired file (FileDigest), for this
+	// account, with these settings, and then refuses a fresh plan with
+	// changes whose digest differs. A digest alone can't bind the file:
+	// another file can match live, and with nothing to write the apply
+	// would succeed with the reviewed change never applied.
 	Reviewed *Plan
-	// ExpectDigest is the digest of the reviewed plan, when only the digest
-	// was kept. Apply refuses if a fresh plan's digest differs.
-	ExpectDigest string
 	// Timeout bounds the wait for production to carry the new versions.
 	Timeout time.Duration
 	// Interval is the polling period while waiting.
@@ -117,11 +115,8 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	if opts.Reviewed != nil {
-		if err := checkReviewed(opts.Reviewed, f, opts); err != nil {
-			return nil, nil, err
-		}
-		opts.ExpectDigest = opts.Reviewed.Digest
+	if err := checkReviewed(opts.Reviewed, f, opts); err != nil {
+		return nil, nil, err
 	}
 
 	plan, err := c.MakePlan(ctx, read, f, raw, opts.PlanOptions)
@@ -132,10 +127,11 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		return plan, nil, apperr.New(apperr.Validation, "the plan has errors; nothing applied")
 	}
 	// The digest guards every write (invariant 1). With nothing to write,
-	// live already matches the reviewed file (a re-run after success):
-	// converge on production and succeed whatever the digest.
-	if plan.Changes && plan.Digest != opts.ExpectDigest {
-		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: live changed, or this apply runs different checks from the reviewed plan; re-plan and review", opts.ExpectDigest, plan.Digest)
+	// live already matches the reviewed file (checkReviewed bound it: a
+	// re-run after success): converge on production and succeed whatever
+	// the digest.
+	if plan.Changes && plan.Digest != opts.Reviewed.Digest {
+		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: live changed, or this apply runs different checks from the reviewed plan; re-plan and review", opts.Reviewed.Digest, plan.Digest)
 	}
 
 	r := newApplyRun(c, read, write, plan, opts)
@@ -153,8 +149,8 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 // before any request.
 func checkReviewed(p *Plan, f *File, opts ApplyOptions) error {
 	switch {
-	case opts.ExpectDigest != "":
-		return apperr.New(apperr.Usage, "give the reviewed plan or its digest, not both")
+	case p == nil:
+		return apperr.New(apperr.Usage, "apply needs the reviewed plan")
 	case p.Digest == "" || p.FileDigest == "":
 		return apperr.New(apperr.Validation, "the reviewed plan has no digests: it was saved by an older prolexic; re-plan and review")
 	case p.AccountID != f.AccountID:

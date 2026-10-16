@@ -100,11 +100,12 @@ func TestPlanApplyVerifyWithOneArtifact(t *testing.T) {
 	}
 }
 
-func TestApplyTakesExactlyOneReviewedDigest(t *testing.T) {
+// Apply needs the saved plan: a digest alone can't bind the desired file.
+func TestApplyNeedsTheSavedPlan(t *testing.T) {
 	desired := writeDesired(t, desiredFixture)
 	for _, args := range [][]string{
 		{"apply", "--file", desired},
-		{"apply", "--file", desired, "--plan", "p.json", "--expect-digest", "sha256:x"},
+		{"apply", "--file", desired, "--expect-digest", "sha256:x"},
 	} {
 		if r := runCLI(t, Env{}, args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit %d: %s", args[3:], r.code, r.stderr)

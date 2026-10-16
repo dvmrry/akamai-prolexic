@@ -296,7 +296,8 @@ func TestApplyThroughTheCLI(t *testing.T) {
 	api, ncfState := ncfAPIState(t)
 	p := writeDesired(t, desiredFixture)
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
-	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
+	saved := filepath.Join(t.TempDir(), "plan.json")
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--out", saved)
 	plan := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if plan.Aliases[0].ActiveVersion != "V1" {
 		t.Fatalf("planned active version = %q", plan.Aliases[0].ActiveVersion)
@@ -307,7 +308,7 @@ func TestApplyThroughTheCLI(t *testing.T) {
 	env.Getenv = func(k string) string { // the write section resolves to the same fake
 		return read(strings.Replace(k, "AKAMAI_WRITE_", "AKAMAI_", 1))
 	}
-	r = runCLI(t, env, "apply", "--file", p, "--expect-digest", plan.Digest, "--interval", "1ms", "--timeout", "5s")
+	r = runCLI(t, env, "apply", "--file", p, "--plan", saved, "--interval", "1ms", "--timeout", "5s")
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
@@ -354,7 +355,11 @@ func TestApplyThroughTheCLI(t *testing.T) {
 func TestApplyNeedsWriteCredentials(t *testing.T) {
 	api := ncfAPI(t)
 	p := writeDesired(t, desiredFixture)
-	r := runCLI(t, ncfEnv(api.env()), "apply", "--file", p, "--expect-digest", "sha256:x")
+	saved := filepath.Join(t.TempDir(), "plan.json")
+	if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--out", saved); r.code != 0 {
+		t.Fatalf("plan: %s", r.stderr)
+	}
+	r := runCLI(t, ncfEnv(api.env()), "apply", "--file", p, "--plan", saved)
 	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d: %s", r.code, r.stderr)
 	}

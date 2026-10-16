@@ -13,8 +13,8 @@ prolexic verify [flags]
 ### Examples
 
 ```
-  prolexic plan --file desired.json > plan.json
-  prolexic apply --file desired.json --expect-digest <digest>
+  prolexic plan --file desired.json --out plan.json
+  prolexic apply --file desired.json --plan plan.json
   prolexic verify --plan plan.json
 ```
 

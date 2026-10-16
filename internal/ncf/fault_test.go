@@ -102,7 +102,7 @@ func TestApplyFaultAtEveryWrite(t *testing.T) {
 					}
 					fs := &faultStore{Store: s, failAt: at, mode: mode}
 					p := plan(t, s, f, defaults)
-					opts := ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest}
+					opts := ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p}
 					_, _, err := checker().Apply(context.Background(), s, fs, f, nil, opts)
 
 					// An alias may gain one new version. A retried BIG upload is the
@@ -138,7 +138,7 @@ func TestApplyFaultAtEveryWrite(t *testing.T) {
 
 					// A clean re-run of a fresh plan converges.
 					p = plan(t, s, f, defaults)
-					opts.ExpectDigest = p.Digest
+					opts.Reviewed = p
 					if _, _, err := checker().Apply(context.Background(), s, s, f, nil, opts); err != nil {
 						t.Fatalf("re-run after %v: %v", err, err)
 					}

@@ -57,7 +57,7 @@ func newVerifyCmd(a *app) *cobra.Command {
 			"each added entry is live, each removed entry is gone, the entry count is the plan's unchanged plus added (nothing extra), " +
 			"and production carries the active version. Run it after apply, against the plan that was reviewed. " +
 			"Exits 7 when anything doesn't match.",
-		Example: "  prolexic plan --file desired.json > plan.json\n  prolexic apply --file desired.json --expect-digest <digest>\n  prolexic verify --plan plan.json",
+		Example: "  prolexic plan --file desired.json --out plan.json\n  prolexic apply --file desired.json --plan plan.json\n  prolexic verify --plan plan.json",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			return verify(ctx, a, planFile)

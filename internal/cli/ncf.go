@@ -448,45 +448,39 @@ func (d *ApplyDoc) WriteText(w io.Writer) error {
 
 func newApplyCmd(a *app) *cobra.Command {
 	var p planArgs
-	var expect string
 	var planFile string
 	var timeout, interval time.Duration
 	var cmd *cobra.Command
 	cmd = &cobra.Command{
 		Use:   "apply",
 		Short: "apply a reviewed plan (the only command that writes)",
-		Long: "Recomputes the plan, refuses unless its digest equals the reviewed one (--plan, the saved plan, or --expect-digest), " +
-			"then writes with the write credentials and waits for production to carry the new versions.",
+		Long: "Recomputes the plan and refuses unless the reviewed plan (--plan, saved by plan --out) was made from this desired file, " +
+			"for this account, with these settings, and its digest still matches; then writes with the write credentials and waits for production to carry the new versions.",
 		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			var reviewed *ncf.Plan
-			if planFile != "" {
-				var err error
-				if reviewed, err = readPlan(planFile); err != nil {
-					return nil, err
-				}
-				// ncf.Apply takes the digest and checks the file, account
-				// and settings; taking the settings here makes flags that
-				// weren't given match the reviewed ones.
-				if err := takeReviewedSettings(cmd, &p, reviewed.Settings); err != nil {
-					return nil, err
-				}
+			reviewed, err := readPlan(planFile)
+			if err != nil {
+				return nil, err
 			}
-			return apply(ctx, a, p, expect, reviewed, timeout, interval)
+			// ncf.Apply checks the file, account, settings and digest;
+			// taking the settings here makes flags that weren't given match
+			// the reviewed ones.
+			if err := takeReviewedSettings(cmd, &p, reviewed.Settings); err != nil {
+				return nil, err
+			}
+			return apply(ctx, a, p, reviewed, timeout, interval)
 		}),
 	}
 	p.register(cmd)
 	f := cmd.Flags()
-	f.StringVar(&planFile, "plan", "", "the reviewed plan, saved by plan --out: apply takes its digest")
-	f.StringVar(&expect, "expect-digest", "", "the digest of the reviewed plan (instead of --plan)")
+	f.StringVar(&planFile, "plan", "", "the reviewed plan, saved by plan --out (required)")
 	f.DurationVar(&timeout, "timeout", ncf.DefaultApplyTimeout, "how long to wait for production to carry the new versions")
 	f.DurationVar(&interval, "interval", ncf.DefaultApplyInterval, "polling period while waiting")
-	cmd.MarkFlagsOneRequired("plan", "expect-digest")
-	cmd.MarkFlagsMutuallyExclusive("plan", "expect-digest")
+	_ = cmd.MarkFlagRequired("plan")
 	return cmd
 }
 
-func apply(ctx context.Context, a *app, args planArgs, expect string, reviewed *ncf.Plan, timeout, interval time.Duration) (output.Document, error) {
+func apply(ctx context.Context, a *app, args planArgs, reviewed *ncf.Plan, timeout, interval time.Duration) (output.Document, error) {
 	f, raw, err := readDesired(args.file)
 	if err != nil {
 		return nil, err
@@ -500,7 +494,7 @@ func apply(ctx context.Context, a *app, args planArgs, expect string, reviewed *
 		return nil, err
 	}
 	p, res, err := a.checker().Apply(ctx, read, a.ncfStore(wc), f, raw, ncf.ApplyOptions{
-		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), Reviewed: reviewed, ExpectDigest: expect, Timeout: timeout, Interval: interval,
+		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), Reviewed: reviewed, Timeout: timeout, Interval: interval,
 		Sleep: a.env.Sleep, Now: a.env.Now, Progress: func(p ncf.Progress) { a.progress(p.Message) },
 	})
 	if p == nil && res == nil {

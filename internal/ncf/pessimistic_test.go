@@ -37,7 +37,7 @@ func applyThrough(t *testing.T, s *ncftest.Store, write ncf.Store, f *ncf.File) 
 	t.Helper()
 	p := plan(t, s, f, defaults)
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
-	_, res, err := checker().Apply(context.Background(), s, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest, Now: clock.now, Sleep: clock.sleep})
+	_, res, err := checker().Apply(context.Background(), s, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep})
 	return res, err
 }
 
@@ -175,8 +175,8 @@ func TestApplyRefusesWeakerChecksThanReviewed(t *testing.T) {
 	if skipped := plan(t, s, f, weaker); skipped.Digest == reviewed.Digest {
 		t.Fatal("skipping live own space left the digest unchanged")
 	}
-	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: weaker, ExpectDigest: reviewed.Digest})
-	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: weaker, Reviewed: reviewed})
+	if apperr.KindOf(err) != apperr.Validation || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v, creates = %d", err, s.Count("CreateVersion"))
 	}
 }

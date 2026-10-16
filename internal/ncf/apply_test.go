@@ -26,7 +26,7 @@ func apply(t *testing.T, s *ncftest.Store, f *ncf.File, mutate func(*ncf.ApplyOp
 	t.Helper()
 	p := plan(t, s, f, defaults)
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
-	opts := ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest, Now: clock.now, Sleep: clock.sleep}
+	opts := ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep}
 	if mutate != nil {
 		mutate(&opts)
 	}
@@ -66,7 +66,7 @@ func TestApplyNothingToDo(t *testing.T) {
 
 func TestApplyRefusesAMovedDigest(t *testing.T) {
 	s := world()
-	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.ExpectDigest = "sha256:reviewed-something-else" })
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Reviewed.Digest = "sha256:reviewed-something-else" })
 	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v, calls %v", err, s.Calls)
 	}
@@ -75,7 +75,7 @@ func TestApplyRefusesAMovedDigest(t *testing.T) {
 func TestApplyRefusesPlanErrors(t *testing.T) {
 	s := world()
 	f := desired("192.0.2.0/25", "203.0.113.0/24") // own space via protected-dst
-	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults})
+	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: plan(t, s, f, defaults)})
 	if apperr.KindOf(err) != apperr.Validation || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v", err)
 	}
@@ -94,7 +94,7 @@ func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
 			fired = true
 		}
 	}}
-	_, res, err := checker().Apply(context.Background(), read, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest})
+	_, res, err := checker().Apply(context.Background(), read, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p})
 	if !fired {
 		t.Fatal("the token never moved: the pre-write re-read isn't the second alias list any more; fix the hook")
 	}
@@ -403,10 +403,10 @@ func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
 func TestApplyReRunAfterSuccessIsANoOp(t *testing.T) {
 	s := world()
 	f := desired("192.0.2.0/25")
-	digest := plan(t, s, f, defaults).Digest
+	reviewed := plan(t, s, f, defaults)
 	run := func() (*ncf.ApplyResult, error) {
 		clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
-		_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: digest, Now: clock.now, Sleep: clock.sleep})
+		_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: reviewed, Now: clock.now, Sleep: clock.sleep})
 		return res, err
 	}
 	if _, err := run(); err != nil {
@@ -427,8 +427,10 @@ func TestApplyReRunFinishesAProductionWait(t *testing.T) {
 	}
 	// Production lands a few reads in: after the re-run's plan, during its wait.
 	s.SetLag(3)
+	stale := plan(t, s, f, defaults) // a plan of the same file, its digest from before the first run
+	stale.Digest = "sha256:stale"
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC)}
-	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: "sha256:stale", Now: clock.now, Sleep: clock.sleep})
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: stale, Now: clock.now, Sleep: clock.sleep})
 	if err != nil || !res.AlreadyApplied || res.Aliases[0].Status != ncf.StatusUnchanged || !res.Aliases[0].WaitedForProduction || s.Count("CreateVersion") != 1 {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
@@ -436,7 +438,7 @@ func TestApplyReRunFinishesAProductionWait(t *testing.T) {
 
 func TestApplyStillRefusesAMovedDigestWhenThereIsWorkToDo(t *testing.T) {
 	s := world()
-	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.ExpectDigest = "sha256:stale" })
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Reviewed.Digest = "sha256:stale" })
 	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
 		t.Errorf("err = %v", err)
 	}
@@ -462,9 +464,10 @@ func TestApplyNoOpTimeoutSaysItWroteNothing(t *testing.T) {
 	s := world()
 	s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
 	s.Lag(101, "V1") // someone else activated V2; production still carries V1
+	f := desired("192.0.2.0/25", "198.51.100.7")
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
-	_, res, err := checker().Apply(context.Background(), s, s, desired("192.0.2.0/25", "198.51.100.7"), nil, ncf.ApplyOptions{
-		PlanOptions: defaults, Timeout: time.Minute, Now: clock.now, Sleep: clock.sleep,
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{
+		PlanOptions: defaults, Reviewed: plan(t, s, f, defaults), Timeout: time.Minute, Now: clock.now, Sleep: clock.sleep,
 	})
 	if err == nil || !strings.Contains(err.Error(), "this apply wrote nothing") || res.Aliases[0].Status != ncf.StatusUnchanged {
 		t.Errorf("err = %v, res = %+v", err, res)
@@ -525,7 +528,7 @@ func applyWith(t *testing.T, read, write ncf.Store, f *ncf.File) (*ncf.ApplyResu
 		t.Fatal(err)
 	}
 	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
-	_, res, err := checker().Apply(context.Background(), read, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest, Now: clock.now, Sleep: clock.sleep})
+	_, res, err := checker().Apply(context.Background(), read, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep})
 	return res, err
 }
 
@@ -776,7 +779,7 @@ func TestApplyBindsTheReviewedPlan(t *testing.T) {
 		"another account":             {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.AccountID = "B-OTHER" }, apperr.Validation, "B-OTHER"},
 		"other settings":              {reviewedFile, func(o *ncf.ApplyOptions, _ *ncf.Plan) { o.MaxRemovals = -1 }, apperr.Validation, "maxRemovals"},
 		"no digests":                  {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.FileDigest = "" }, apperr.Validation, "older prolexic"},
-		"and a separate digest":       {reviewedFile, func(o *ncf.ApplyOptions, p *ncf.Plan) { o.ExpectDigest = p.Digest }, apperr.Usage, "not both"},
+		"no reviewed plan":            {reviewedFile, func(o *ncf.ApplyOptions, _ *ncf.Plan) { o.Reviewed = nil }, apperr.Usage, "needs the reviewed plan"},
 	} {
 		s := world()
 		p := plan(t, s, reviewedFile, defaults)
