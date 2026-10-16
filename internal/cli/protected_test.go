@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const protectedNames = `{"customerNames":[
@@ -40,7 +41,7 @@ func protectedAPI(t *testing.T) *fakeAPI {
 func TestProtectedAllNamesNoRoutedIsNotAFailure(t *testing.T) {
 	api := protectedAPI(t)
 	r := runCLI(t, api.env(), "protected")
-	doc := decode[ProtectedDoc](t, r.stdout, "prolexic.protected.v1")
+	doc := decode[ops.ProtectedDoc](t, r.stdout, "prolexic.protected.v1")
 	// example-bad's metric types fail: reported, exit 3, the others still shown.
 	if r.code != exitCode(apperr.Credentials) || len(doc.Failures) != 1 || doc.Failures[0].Customer != "example-bad" {
 		t.Fatalf("exit %d, failures %+v", r.code, doc.Failures)
@@ -70,7 +71,7 @@ func TestProtectedBGPErrorOtherThan404Fails(t *testing.T) {
 	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"site-a","status":true,"data":{}}`)
 	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	r := runCLI(t, api.env(), "protected", "--customer", "example-a")
-	doc := decode[ProtectedDoc](t, r.stdout, "prolexic.protected.v1")
+	doc := decode[ops.ProtectedDoc](t, r.stdout, "prolexic.protected.v1")
 	if r.code != exitCode(apperr.Credentials) || len(doc.Failures) != 1 || len(doc.Protected) != 0 {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}

@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const healthFixture = `[
@@ -18,7 +20,7 @@ func TestRoutedHealth(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedHealthDoc](t, r.stdout, "prolexic.routed-health.v1")
+	doc := decode[ops.RoutedHealthDoc](t, r.stdout, "prolexic.routed-health.v1")
 	if len(doc.Health) != 2 || doc.Health[0].AkamaiLocation != "LOC-A" || doc.Health[0].Customer != "example-a" ||
 		doc.Health[0].HealthyFunnels != 1 || doc.Health[0].TotalFunnels != 2 {
 		t.Errorf("health = %+v", doc.Health)

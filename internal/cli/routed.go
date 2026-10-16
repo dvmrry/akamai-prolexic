@@ -2,9 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -39,27 +36,6 @@ func (a *app) analytics() (*analytics.Client, error) {
 		return nil, err
 	}
 	return analytics.New(c), nil
-}
-
-// writeFailures appends a fan-out's failures to a text rendering.
-func writeFailures(w io.Writer, failures []analytics.Failure) error {
-	for _, f := range failures {
-		if _, err := fmt.Fprintf(w, "\nfailed: %s: %s", f.Customer, f.Message); err != nil {
-			return err
-		}
-	}
-	if len(failures) > 0 {
-		_, err := fmt.Fprintln(w)
-		return err
-	}
-	return nil
-}
-
-// rowKey is a row's JSON encoding: the last sort key, so rows that tie on
-// every named key still come out in one order whatever order the API sent.
-func rowKey(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
 }
 
 // nonNil keeps empty lists as [] rather than null in JSON: the schemas

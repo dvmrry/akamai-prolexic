@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const routesFixture = `[
@@ -22,7 +23,7 @@ func TestRoutedRoutesSortsAndFilters(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedRoutesDoc](t, r.stdout, "prolexic.routed-routes.v1")
+	doc := decode[ops.RoutedRoutesDoc](t, r.stdout, "prolexic.routed-routes.v1")
 	if len(doc.Routes) != 4 {
 		t.Fatalf("routes = %+v", doc.Routes)
 	}
@@ -48,7 +49,7 @@ func TestRoutedRoutesSortsAndFilters(t *testing.T) {
 		{"2001:db8::1", 1},
 	} {
 		r := runCLI(t, api.env(), "routed", "routes", "--customer", "example-a", "--prefix", tt.prefix)
-		doc := decode[RoutedRoutesDoc](t, r.stdout, "prolexic.routed-routes.v1")
+		doc := decode[ops.RoutedRoutesDoc](t, r.stdout, "prolexic.routed-routes.v1")
 		if len(doc.Routes) != tt.want {
 			t.Errorf("--prefix %s: %d routes, want %d", tt.prefix, len(doc.Routes), tt.want)
 		}

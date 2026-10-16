@@ -50,7 +50,7 @@
       "type": "string"
     },
     "prefix": {
-      "description": "The normalised --prefix filter, when given.",
+      "description": "The normalised prefix filter, when given.",
       "type": "string"
     },
     "prolexic": {

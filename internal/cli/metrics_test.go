@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const metricsFixture = `{"currentContract":"site-a","status":true,"statusMsg":"ok","data":[
@@ -25,7 +26,7 @@ func TestMetricsQueryAndDecode(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[MetricsDoc](t, r.stdout, "prolexic.metrics.v1")
+	doc := decode[ops.MetricsDoc](t, r.stdout, "prolexic.metrics.v1")
 	if len(doc.Series) != 2 || doc.Series[0].Service != "fbm" || doc.Series[0].Customer != "example-a" || doc.Series[0].Site != "site-a" {
 		t.Fatalf("series = %+v", doc.Series)
 	}
@@ -76,7 +77,7 @@ func TestMetricsEmptyWindowIs404AndFailuresReported(t *testing.T) {
 	env := api.env()
 	env.Now = func() time.Time { return fixedNow }
 	r := runCLI(t, env, "metrics", "--customer", "example-a,example-b", "--type", "routed:bandwidthIn")
-	doc := decode[MetricsDoc](t, r.stdout, "prolexic.metrics.v1")
+	doc := decode[ops.MetricsDoc](t, r.stdout, "prolexic.metrics.v1")
 	if r.code != 0 || len(doc.Series) != 2 {
 		t.Errorf("exit %d, series %d", r.code, len(doc.Series))
 	}

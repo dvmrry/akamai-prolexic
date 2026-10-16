@@ -4,7 +4,7 @@
   "additionalProperties": false,
   "properties": {
     "customers": {
-      "description": "The customer names queried (every name of the account unless --customer is given).",
+      "description": "The customer names queried (every name of the account unless customers are given).",
       "items": {
         "type": "string"
       },

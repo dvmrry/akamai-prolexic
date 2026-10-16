@@ -7,6 +7,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const criticalFixture = `{"currentContract":"example-a","status":true,"statusMsg":"ok","data":[
@@ -32,7 +33,7 @@ func TestEventsMergesAndSorts(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc := decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	var got []string
 	for _, e := range doc.Events {
 		got = append(got, e.Kind)
@@ -53,7 +54,7 @@ func TestEventsCriticalOnlyAndWindow(t *testing.T) {
 	env.Now = func() time.Time { return time.Unix(1767320000, 0) }
 
 	r := runCLI(t, env, "events", "--customer", "example-a", "--critical-only")
-	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc := decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	if len(doc.Events) != 1 || doc.Events[0].Kind != "critical" || doc.Events[0].Critical.Summary != "Tunnel down" {
 		t.Errorf("events = %+v", doc.Events)
 	}
@@ -66,7 +67,7 @@ func TestEventsCriticalOnlyAndWindow(t *testing.T) {
 	// A 3h window ending at 1767320000 drops the old alert but keeps the
 	// ongoing attack (its span is open-ended) and the critical event.
 	r = runCLI(t, env, "events", "--customer", "example-a", "--since", "3h")
-	doc = decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc = decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	if len(doc.Events) != 2 || doc.Start == "" {
 		t.Errorf("windowed events = %+v", doc.Events)
 	}
@@ -77,7 +78,7 @@ func TestEventsOneListFailingFailsTheName(t *testing.T) {
 	api.json("GET /prolexic-analytics/v2/critical-events/contract/example-a", 200, criticalFixture)
 	api.json("GET /prolexic-analytics/v2/events/contract/example-a", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	r := runCLI(t, api.env(), "events", "--customer", "example-a")
-	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc := decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	if r.code != exitCode(apperr.Credentials) || len(doc.Failures) != 1 || len(doc.Events) != 0 {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
@@ -104,7 +105,7 @@ func TestEventsLenientEpochs(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc := decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	if len(doc.Events) != 2 {
 		t.Fatalf("events = %+v", doc.Events)
 	}
@@ -129,7 +130,7 @@ func TestEventsTextAndUnreadableEpochs(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[EventsDoc](t, r.stdout, "prolexic.events.v1")
+	doc := decode[ops.EventsDoc](t, r.stdout, "prolexic.events.v1")
 	if len(doc.Failures) != 0 || len(doc.Events) != 2 {
 		t.Fatalf("failures = %+v, events = %+v", doc.Failures, doc.Events)
 	}

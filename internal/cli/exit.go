@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -38,11 +37,6 @@ func exitCode(k apperr.Kind) int {
 // stderr) only when the command itself returned no error.
 type outcomer interface {
 	Outcome() error
-}
-
-// failuresOutcome is the outcome of a document listing failed customer names.
-func failuresOutcome(failures []analytics.Failure, customers []string) error {
-	return analytics.FailuresError(failures, len(customers))
 }
 
 // progress tells whoever watches stderr what a long-running command is doing,

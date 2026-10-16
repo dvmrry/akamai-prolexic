@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const timeSeriesFixture = `{
@@ -41,7 +42,7 @@ func TestTimeSeriesQueryAndFlatten(t *testing.T) {
 			t.Errorf("query %s = %q, want %q", k, q.Get(k), v)
 		}
 	}
-	doc := decode[TimeSeriesDoc](t, r.stdout, "prolexic.time-series.v1")
+	doc := decode[ops.TimeSeriesDoc](t, r.stdout, "prolexic.time-series.v1")
 	if len(doc.Points) != 5 {
 		t.Fatalf("points = %+v", doc.Points)
 	}
@@ -59,7 +60,7 @@ func TestTimeSeriesNoDataIs404(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("GET /prolexic-analytics/v2/time-series-data", 404, `{"errorCode":"NOT_FOUND","message":"none"}`)
 	r := runCLI(t, api.env(), "time-series", "--destination", "203.0.113.1")
-	doc := decode[TimeSeriesDoc](t, r.stdout, "prolexic.time-series.v1")
+	doc := decode[ops.TimeSeriesDoc](t, r.stdout, "prolexic.time-series.v1")
 	if r.code != 0 || len(doc.Points) != 0 || doc.Locations[0] != "agr" || doc.Source != "both" {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
