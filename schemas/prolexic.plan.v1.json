@@ -194,7 +194,7 @@
       "type": "object"
     },
     "digest": {
-      "description": "sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
+      "description": "sha256 over the settings and each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
       "type": "string"
     },
     "file": {
@@ -252,6 +252,24 @@
     },
     "schema": {
       "type": "string"
+    },
+    "settings": {
+      "additionalProperties": false,
+      "properties": {
+        "maxRemovals": {
+          "description": "Most entries one alias may lose; -1 for no limit.",
+          "type": "integer"
+        },
+        "skipLiveOwnSpace": {
+          "description": "Live own space (Prolexic Analytics) was skipped.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maxRemovals",
+        "skipLiveOwnSpace"
+      ],
+      "type": "object"
     }
   },
   "required": [
@@ -264,7 +282,8 @@
     "fileDigest",
     "findings",
     "ownSpaceAnalytics",
-    "schema"
+    "schema",
+    "settings"
   ],
   "type": "object"
 }

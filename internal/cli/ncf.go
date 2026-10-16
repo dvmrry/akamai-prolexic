@@ -382,6 +382,12 @@ func (d *PlanDoc) WriteText(w io.Writer) error {
 	if err := writeChecks(w, d.Checks, d.OwnSpaceAnalytics); err != nil {
 		return err
 	}
+	// A plan with errors can't be applied: printing its digest would only
+	// invite copying it.
+	if ncf.HasErrors(d.Findings) {
+		_, err := fmt.Fprintln(w, "\ndigest: none (the plan has errors; fix them and plan again)")
+		return err
+	}
 	_, err := fmt.Fprintf(w, "\ndigest: %s\n", d.Digest)
 	return err
 }
@@ -500,7 +506,8 @@ func newApplyCmd(a *app) *cobra.Command {
 	var expect string
 	var planFile string
 	var timeout, interval time.Duration
-	cmd := &cobra.Command{
+	var cmd *cobra.Command
+	cmd = &cobra.Command{
 		Use:   "apply",
 		Short: "apply a reviewed plan (the only command that writes)",
 		Long: "Recomputes the plan, refuses unless its digest equals the reviewed one (--plan, the saved plan, or --expect-digest), " +
@@ -514,6 +521,9 @@ func newApplyCmd(a *app) *cobra.Command {
 					return nil, err
 				}
 				expect = reviewed.Digest
+				if err := takeReviewedSettings(cmd, &p, reviewed.Settings); err != nil {
+					return nil, err
+				}
 			}
 			return apply(ctx, a, p, expect, reviewed, timeout, interval)
 		}),
@@ -726,4 +736,20 @@ func fsErr(err error) error {
 		return le.Err
 	}
 	return err
+}
+
+// takeReviewedSettings has apply run the checks the reviewed plan ran: the
+// plan's own settings unless a flag says otherwise, and a flag that differs
+// is refused, since it would apply a reviewed change with weaker (or other)
+// checks than the reviewer saw.
+func takeReviewedSettings(cmd *cobra.Command, p *planArgs, s ncf.PlanSettings) error {
+	f := cmd.Flags()
+	if f.Changed("max-removals") && p.maxRemovals != s.MaxRemovals {
+		return apperr.New(apperr.Usage, "--max-removals %d differs from the reviewed plan's %d; re-plan with it, or drop the flag", p.maxRemovals, s.MaxRemovals)
+	}
+	if f.Changed("no-analytics-own-space") && p.noAnalytics != s.SkipLiveOwnSpace {
+		return apperr.New(apperr.Usage, "--no-analytics-own-space=%t differs from the reviewed plan's %t; re-plan with it, or drop the flag", p.noAnalytics, s.SkipLiveOwnSpace)
+	}
+	p.maxRemovals, p.noAnalytics = s.MaxRemovals, s.SkipLiveOwnSpace
+	return nil
 }

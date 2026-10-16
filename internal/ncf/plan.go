@@ -14,12 +14,15 @@ import (
 
 // Plan is the diff of a desired file against live, with every finding.
 type Plan struct {
-	AccountID  string      `json:"accountId"`
-	Digest     string      `json:"digest" doc:"sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
-	FileDigest string      `json:"fileDigest" doc:"sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file."`
-	Changes    bool        `json:"changes"`
-	Aliases    []AliasPlan `json:"aliases"`
-	Findings   []Finding   `json:"findings"`
+	AccountID  string `json:"accountId"`
+	Digest     string `json:"digest" doc:"sha256 over the settings and each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
+	FileDigest string `json:"fileDigest" doc:"sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file."`
+	// Settings are the checks the plan ran with. The digest covers them, so
+	// a reviewed plan can't be applied with weaker ones.
+	Settings PlanSettings `json:"settings"`
+	Changes  bool         `json:"changes"`
+	Aliases  []AliasPlan  `json:"aliases"`
+	Findings []Finding    `json:"findings"`
 	// Checks says what the live checks ran against, so a clean plan reads as
 	// "checked against these sources" and not only as "no errors".
 	Checks Checks `json:"checks"`
@@ -226,7 +229,8 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	for _, a := range p.Aliases {
 		p.Changes = p.Changes || a.Changed()
 	}
-	p.Digest = digest(p.Aliases)
+	p.Settings = PlanSettings{MaxRemovals: opts.MaxRemovals, SkipLiveOwnSpace: opts.SkipLiveOwnSpace}
+	p.Digest = digest(p.Aliases, p.Settings)
 	p.FileDigest = FileDigest(f)
 	return p, nil
 }
@@ -404,7 +408,7 @@ func staticOwnSpace(f *File) []OwnSpacePrefix {
 
 // digest pins what apply will do: per alias, its identity, conflict token
 // and changes. Metadata isn't included; it never reaches the API.
-func digest(aliases []AliasPlan) string {
+func digest(aliases []AliasPlan, settings PlanSettings) string {
 	type pin struct {
 		ID            int64    `json:"id"`
 		Name          string   `json:"name"`
@@ -417,7 +421,10 @@ func digest(aliases []AliasPlan) string {
 	for i, a := range aliases {
 		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove), a.DesiredHash}
 	}
-	b, _ := json.Marshal(pins) // slices of plain structs always marshal
+	b, _ := json.Marshal(struct {
+		Settings PlanSettings `json:"settings"`
+		Aliases  []pin        `json:"aliases"`
+	}{settings, pins}) // plain structs always marshal
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
@@ -562,4 +569,10 @@ func undeclaredOwnSpace(all []LiveAlias, rules map[int]ACLRule, declared []strin
 			add(Warning, "own_space_undeclared", l.Name, "", "a deployed rule uses %s as its destination, so its entries are addresses you protect, but ownSpace.aliases doesn't list it; add it so deny entries are checked against them", l.Name)
 		}
 	}
+}
+
+// PlanSettings are the checks a plan ran with: part of what was reviewed.
+type PlanSettings struct {
+	MaxRemovals      int  `json:"maxRemovals" doc:"Most entries one alias may lose; -1 for no limit."`
+	SkipLiveOwnSpace bool `json:"skipLiveOwnSpace" doc:"Live own space (Prolexic Analytics) was skipped."`
 }

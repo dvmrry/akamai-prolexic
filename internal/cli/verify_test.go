@@ -194,3 +194,31 @@ func TestPlanOutRefusesDangerousPaths(t *testing.T) {
 		t.Error("the desired file was changed")
 	}
 }
+
+// apply --plan runs the reviewed plan's checks; a flag that would change
+// them is refused, not silently honoured.
+func TestApplyPlanRefusesDifferentChecks(t *testing.T) {
+	api, _ := ncfAPIState(t)
+	desired := writeDesired(t, desiredFixture)
+	runCLI(t, ncfEnv(Env{}), "add", "--file", desired, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
+	saved := filepath.Join(t.TempDir(), "plan.json")
+	if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved); r.code != 0 {
+		t.Fatalf("plan: %s", r.stderr)
+	}
+	for _, flag := range []string{"--no-analytics-own-space", "--max-removals=50"} {
+		r := runCLI(t, ncfEnv(api.env()), "apply", "--file", desired, "--plan", saved, flag)
+		if r.code != exitCode(apperr.Usage) || !strings.Contains(r.stderr, "differs from the reviewed plan") {
+			t.Errorf("%s: exit %d: %s", flag, r.code, r.stderr)
+		}
+	}
+}
+
+// A plan with errors can't be applied, so its text shows no digest to copy.
+func TestPlanWithErrorsShowsNoDigest(t *testing.T) {
+	api := ncfAPI(t)
+	bad := strings.Replace(desiredFixture, `"role": "deny"`, `"role": "allow"`, 1) // the rules say deny: role_mismatch
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", writeDesired(t, bad), "--format", "text")
+	if !strings.Contains(r.stdout, "digest: none") || strings.Contains(r.stdout, "digest: sha256:") {
+		t.Errorf("exit %d:\n%s", r.code, r.stdout)
+	}
+}

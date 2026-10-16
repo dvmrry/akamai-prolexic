@@ -80,6 +80,9 @@ type AliasApply struct {
 	// the version, and the first poll that saw production carry it.
 	ActivatedAt  string `json:"activatedAt,omitempty" doc:"When this apply activated the version (RFC 3339; a BIG upload activates on arrival)."`
 	ProductionAt string `json:"productionAt,omitempty" doc:"The first poll that saw production carry the version (RFC 3339): accurate to the poll interval."`
+	// Unconfirmed: an activation was accepted but never seen to take effect, so
+	// it may still land; rollback supersedes it.
+	Unconfirmed bool `json:"unconfirmed,omitempty" doc:"An activation was accepted but never seen to take effect; it may still land. Run verify."`
 }
 
 // Apply re-plans f, refuses if the digest moved, then writes each changed
@@ -120,7 +123,7 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	// live already matches the reviewed file (a re-run after success):
 	// converge on production and succeed whatever the digest.
 	if plan.Changes && plan.Digest != opts.ExpectDigest {
-		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: re-plan and review", opts.ExpectDigest, plan.Digest)
+		return plan, nil, apperr.New(apperr.Drift, "the plan digest moved (reviewed %s, now %s); nothing applied: live changed, or this apply runs different checks from the reviewed plan; re-plan and review", opts.ExpectDigest, plan.Digest)
 	}
 
 	r := newApplyRun(c, read, write, plan, opts)
@@ -235,6 +238,7 @@ func (r *applyRun) activate(ctx context.Context) error {
 				// It may have landed: count it as live so the rollback covers
 				// it (re-activating the replaced version is harmless if not).
 				a.Status = StatusActive
+				a.Unconfirmed = true
 				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect", a.Name, a.Version))
 			}
 		}
@@ -243,6 +247,7 @@ func (r *applyRun) activate(ctx context.Context) error {
 		// counts it as live and the rollback covers it.
 		if err := r.confirmActive(ctx, i, planned); err != nil {
 			a.Status = StatusActive
+			a.Unconfirmed = apperr.KindOf(err) != apperr.Conflict // someone else's version is no uncertainty
 			return r.failAndRollBack(ctx, i, err)
 		}
 		a.Status = StatusActive
@@ -508,8 +513,19 @@ func rollBack(ctx context.Context, read, write Store, plan *Plan, res *ApplyResu
 		// Put back only what this apply replaced: if someone else has
 		// activated another version since, leave theirs alone.
 		cur, err := activeVersion(context.WithoutCancel(ctx), read, a.ID)
-		if err == nil && cur == prev {
+		if err == nil && cur == prev && !a.Unconfirmed {
 			a.Status = StatusRolledBack // already back (or never left)
+			continue
+		}
+		// An accepted activation that was never confirmed may still land after
+		// this: activate the replaced version again to supersede it.
+		if err == nil && cur == prev && a.Unconfirmed {
+			if err := write.Activate(context.WithoutCancel(ctx), a.ID, prev); err != nil {
+				a.Error = fmt.Sprintf("the accepted activation of %s may still land, and re-activating %s to supersede it failed: %v; run verify", a.Version, prev, err)
+				failed = append(failed, a.Name)
+				continue
+			}
+			a.Status = StatusRolledBack
 			continue
 		}
 		if err == nil && cur != a.Version {

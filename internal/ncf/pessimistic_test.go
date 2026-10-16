@@ -2,6 +2,7 @@ package ncf_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -133,5 +134,49 @@ func TestVerifySaysAPlanLooksUnapplied(t *testing.T) {
 	probs := strings.Join(v.Aliases[0].Problems, "; ")
 	if !strings.Contains(probs, "looks unapplied") || !strings.Contains(probs, "1 added entry isn't live") {
 		t.Errorf("problems = %s", probs)
+	}
+}
+
+// recordingSilent accepts every activation, does nothing, and records them.
+type recordingSilent struct {
+	*ncftest.Store
+	activations *[]string
+}
+
+func (r recordingSilent) Activate(_ context.Context, id int64, v string) error {
+	*r.activations = append(*r.activations, fmt.Sprintf("%d/%s", id, v))
+	return nil
+}
+
+// An activation accepted but never confirmed may land later: rollback
+// re-activates the replaced version to supersede it, and the result marks it.
+func TestRollbackSupersedesAnUnconfirmedActivation(t *testing.T) {
+	s := world()
+	var got []string
+	res, err := applyThrough(t, s, recordingSilent{s, &got}, desired("192.0.2.0/25", "198.51.100.9"))
+	if err == nil {
+		t.Fatal("an activation that didn't take effect succeeded")
+	}
+	if !slices.Equal(got, []string{"101/V2", "101/V1"}) {
+		t.Errorf("activations = %v, want ours then the replaced version again", got)
+	}
+	if a := res.Aliases[0]; !a.Unconfirmed || a.Status != ncf.StatusFailed { // the failing alias is reported failed, and marked unconfirmed
+		t.Errorf("result = %+v", a)
+	}
+}
+
+// The digest covers the checks a plan ran with: a reviewed plan can't be
+// applied with weaker ones.
+func TestApplyRefusesWeakerChecksThanReviewed(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25", "198.51.100.9")
+	reviewed := plan(t, s, f, defaults) // with live own space
+	weaker := ncf.PlanOptions{MaxRemovals: defaults.MaxRemovals, SkipLiveOwnSpace: true}
+	if skipped := plan(t, s, f, weaker); skipped.Digest == reviewed.Digest {
+		t.Fatal("skipping live own space left the digest unchanged")
+	}
+	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: weaker, ExpectDigest: reviewed.Digest})
+	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v, creates = %d", err, s.Count("CreateVersion"))
 	}
 }

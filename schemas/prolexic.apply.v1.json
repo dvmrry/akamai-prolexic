@@ -205,7 +205,7 @@
           "type": "object"
         },
         "digest": {
-          "description": "sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
+          "description": "sha256 over the settings and each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
           "type": "string"
         },
         "fileDigest": {
@@ -245,6 +245,24 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "settings": {
+          "additionalProperties": false,
+          "properties": {
+            "maxRemovals": {
+              "description": "Most entries one alias may lose; -1 for no limit.",
+              "type": "integer"
+            },
+            "skipLiveOwnSpace": {
+              "description": "Live own space (Prolexic Analytics) was skipped.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "maxRemovals",
+            "skipLiveOwnSpace"
+          ],
+          "type": "object"
         }
       },
       "required": [
@@ -254,7 +272,8 @@
         "checks",
         "digest",
         "fileDigest",
-        "findings"
+        "findings",
+        "settings"
       ],
       "type": "object"
     },
@@ -378,6 +397,10 @@
                   "rolled_back"
                 ],
                 "type": "string"
+              },
+              "unconfirmed": {
+                "description": "An activation was accepted but never seen to take effect; it may still land. Run verify.",
+                "type": "boolean"
               },
               "version": {
                 "description": "The version this apply created.",

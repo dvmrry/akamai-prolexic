@@ -110,7 +110,7 @@ A check lives at the lowest layer that has the information. Higher layers may re
 
 ## Plan and apply
 
-- The digest is sha256 over each alias's id, name, `activeVersion`, add/remove sets and `desiredHash` (sha256 over the alias's expected entries after apply, canonical and sorted). Metadata isn't included because it never reaches the API.
+- The digest is sha256 over the plan's settings (the removal limit, and whether live own space was skipped) and each alias's id, name, `activeVersion`, add/remove sets and `desiredHash` (sha256 over the alias's expected entries after apply, canonical and sorted). Metadata isn't included because it never reaches the API.
 - Apply runs in three phases, so no alias is activated unless every alias's new version verified:
   1. For each alias: check the conflict token, create a version, re-read it and compare it to desired.
   2. Activate all of them.

@@ -44,7 +44,7 @@ func Verify(ctx context.Context, store Store, p *Plan) (*VerifyResult, error) {
 	if HasErrors(p.Findings) {
 		return nil, apperr.New(apperr.Validation, "the plan has errors, so it was never applied; nothing to verify")
 	}
-	if got := digest(p.Aliases); got != p.Digest {
+	if got := digest(p.Aliases, p.Settings); got != p.Digest {
 		return nil, apperr.New(apperr.Validation, "the plan's digest %s doesn't match its aliases (%s): the file was edited or truncated", p.Digest, got)
 	}
 	res := &VerifyResult{AccountID: p.AccountID, Digest: p.Digest, Verified: true, Aliases: []AliasVerify{}, Deployment: []string{}}
