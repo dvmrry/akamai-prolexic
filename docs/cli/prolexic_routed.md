@@ -1,6 +1,6 @@
 ## prolexic routed
 
-Routed BGP sessions, routes and tunnel health (read-only)
+Routed BGP sessions, routes and tunnel health
 
 ```
 prolexic routed [flags]

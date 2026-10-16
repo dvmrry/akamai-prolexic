@@ -1,6 +1,6 @@
 ## prolexic managed
 
-managed-services ACLs and rule hits (read-only)
+managed-services ACLs and rule hits
 
 ```
 prolexic managed [flags]

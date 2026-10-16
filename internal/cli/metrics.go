@@ -55,7 +55,7 @@ func newMetricsCmd(a *app) *cobra.Command {
 	var win windowFlags
 	cmd := &cobra.Command{
 		Use:     "metrics",
-		Short:   "traffic metrics per customer name (read-only)",
+		Short:   "traffic metrics per customer name",
 		Example: "  prolexic metrics --type routed:bandwidthIn --since 6h",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {

@@ -24,5 +24,5 @@ prolexic rule-hits list [flags]
 
 ### SEE ALSO
 
-* [prolexic rule-hits](prolexic_rule-hits.md)	 - ACL rule match statistics (read-only)
+* [prolexic rule-hits](prolexic_rule-hits.md)	 - ACL rule match statistics
 

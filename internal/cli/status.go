@@ -80,7 +80,7 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 func newStatusCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "deployment state, aliases and limits (read-only)",
+		Short: "deployment state, aliases and limits",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			return status(ctx, a)

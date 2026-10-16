@@ -29,5 +29,5 @@ prolexic managed rule-hits [flags]
 
 ### SEE ALSO
 
-* [prolexic managed](prolexic_managed.md)	 - managed-services ACLs and rule hits (read-only)
+* [prolexic managed](prolexic_managed.md)	 - managed-services ACLs and rule hits
 

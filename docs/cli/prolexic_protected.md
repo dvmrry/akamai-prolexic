@@ -1,6 +1,6 @@
 ## prolexic protected
 
-prefixes and AS numbers treated as own space, per customer name (read-only)
+prefixes and AS numbers treated as own space, per customer name
 
 ```
 prolexic protected [flags]

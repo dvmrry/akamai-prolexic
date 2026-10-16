@@ -1,6 +1,6 @@
 ## prolexic metrics
 
-traffic metrics per customer name (read-only)
+traffic metrics per customer name
 
 ```
 prolexic metrics [flags]

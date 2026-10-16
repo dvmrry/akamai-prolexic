@@ -1,6 +1,6 @@
 ## prolexic acl
 
-ACL versions, rules and deployment (read-only)
+ACL versions, rules and deployment
 
 ```
 prolexic acl [flags]

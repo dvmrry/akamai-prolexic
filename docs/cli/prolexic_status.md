@@ -1,6 +1,6 @@
 ## prolexic status
 
-deployment state, aliases and limits (read-only)
+deployment state, aliases and limits
 
 ```
 prolexic status [flags]

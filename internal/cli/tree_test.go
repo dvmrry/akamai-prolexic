@@ -52,3 +52,13 @@ func TestCommandTree(t *testing.T) {
 		t.Errorf("only %d leaves: the tree is not what it should be", leaves)
 	}
 }
+
+// Every visible top-level command is listed under a help section.
+func TestEveryCommandHasASection(t *testing.T) {
+	root := (&app{env: Env{Getenv: func(string) string { return "" }}}).root()
+	for _, c := range root.Commands() {
+		if !c.Hidden && c.GroupID == "" && c.Name() != "completion" {
+			t.Errorf("%s has no help section: add it to sections in root.go", c.Name())
+		}
+	}
+}

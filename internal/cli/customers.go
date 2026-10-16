@@ -34,7 +34,7 @@ func (d *CustomersDoc) WriteText(w io.Writer) error {
 func newCustomersCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "customers",
-		Short: "the account's customer names (read-only)",
+		Short: "the account's customer names",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			return customers(ctx, a)

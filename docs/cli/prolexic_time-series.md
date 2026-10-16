@@ -1,6 +1,6 @@
 ## prolexic time-series
 
-flow usage and attack traffic per destination (read-only)
+flow usage and attack traffic per destination
 
 ```
 prolexic time-series [flags]

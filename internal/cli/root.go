@@ -42,8 +42,14 @@ func CommandTree() *cobra.Command {
 // root builds the command tree.
 func (a *app) root() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "prolexic",
-		Short:         "A CLI for Akamai Prolexic",
+		Use:   "prolexic",
+		Short: "A CLI for Akamai Prolexic",
+		Long: "A CLI for Akamai Prolexic: Network Cloud Firewall aliases as a reviewed desired file, and read-only views across the Prolexic APIs.\n\n" +
+			"A change: edit the desired file (add, remove), then\n" +
+			"  prolexic plan --file desired.json --out plan.json     (review the plan)\n" +
+			"  prolexic apply --file desired.json --plan plan.json   (writes; waits for production)\n" +
+			"  prolexic verify --plan plan.json                      (reads it back)\n\n" +
+			"First time: prolexic doctor --live shows which APIs your credentials can use.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.ArbitraryArgs,
@@ -85,39 +91,63 @@ func (a *app) root() *cobra.Command {
 	pf.StringVar(&a.writeSection, "write-section", envOr(a.env.Getenv, "PROLEXIC_WRITE_SECTION", "write"), "credentials section for writes; only apply uses it ($PROLEXIC_WRITE_SECTION)")
 	pf.StringVar(&a.accountKey, "account-key", a.env.Getenv("PROLEXIC_ACCOUNT_KEY"), "accountSwitchKey, overriding the credentials' account_key ($PROLEXIC_ACCOUNT_KEY)")
 	root.AddCommand(a.tree()...)
+	for _, g := range sections {
+		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
+		for _, name := range g.commands {
+			if c, _, err := root.Find([]string{name}); err == nil && c != root {
+				c.GroupID = g.id
+			}
+		}
+	}
+	root.SetHelpCommandGroupID("setup")
 	return root
+}
+
+// sections are the headings help lists the top-level commands under, by what
+// they're for. Every visible top-level command belongs to one
+// (TestCommandTree).
+var sections = []struct {
+	id, title string
+	commands  []string
+}{
+	{"file", "Desired file:", []string{"validate", "fmt", "add", "remove", "export"}},
+	{"change", "Plan, apply and verify:", []string{"plan", "apply", "verify"}},
+	{"firewall", "Firewall, read-only:", []string{"status", "aliases", "acl", "rule-hits", "managed"}},
+	{"analytics", "Prolexic Analytics, read-only:", []string{"routed", "attacks", "events", "metrics", "time-series", "scrub-centers", "protected", "customers"}},
+	{"health", "Network Health, read-only:", []string{"targets"}},
+	{"setup", "Setup:", []string{"doctor", "version"}},
 }
 
 // tree is every command of the CLI, sorted by name within each level. A new
 // command is added here: its constructor, or a group of them.
 func (a *app) tree() []*cobra.Command {
 	return []*cobra.Command{
-		group("acl", "ACL versions, rules and deployment (read-only)",
+		group("acl", "ACL versions, rules and deployment",
 			newACLDeploymentCmd(a), newACLShowCmd(a), newACLTestCmd(a), newACLVersionsCmd(a)),
 		newAddCmd(a),
-		group("aliases", "aliases and their versions (read-only)",
+		group("aliases", "aliases and their versions",
 			newAliasesListCmd(a), newAliasesShowCmd(a), newAliasesVersionsCmd(a)),
 		newApplyCmd(a),
-		group("attacks", "attack reports (read-only)",
+		group("attacks", "attack reports",
 			newAttacksListCmd(a), newAttacksShowCmd(a)),
 		newCustomersCmd(a),
 		newDoctorCmd(a),
 		newEventsCmd(a),
 		newExportCmd(a),
 		newFmtCmd(a),
-		group("managed", "managed-services ACLs and rule hits (read-only)",
+		group("managed", "managed-services ACLs and rule hits",
 			newManagedACLCmd(a), newManagedRuleHitsCmd(a)),
 		newMetricsCmd(a),
 		newPlanCmd(a),
 		newProtectedCmd(a),
 		newRemoveCmd(a),
-		group("routed", "Routed BGP sessions, routes and tunnel health (read-only)",
+		group("routed", "Routed BGP sessions, routes and tunnel health",
 			newRoutedCheckCmd(a), newRoutedHealthCmd(a), newRoutedRoutesCmd(a), newRoutedSessionsCmd(a)),
-		group("rule-hits", "ACL rule match statistics (read-only)",
+		group("rule-hits", "ACL rule match statistics",
 			newRuleHitsListCmd(a), newRuleHitsShowCmd(a)),
 		newScrubCentersCmd(a),
 		newStatusCmd(a),
-		group("targets", "Network Health targets (read-only)",
+		group("targets", "Network Health targets",
 			newTargetsListCmd(a), newTargetsShowCmd(a)),
 		newTimeSeriesCmd(a),
 		newValidateCmd(a),

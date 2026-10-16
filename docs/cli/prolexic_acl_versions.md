@@ -24,5 +24,5 @@ prolexic acl versions [flags]
 
 ### SEE ALSO
 
-* [prolexic acl](prolexic_acl.md)	 - ACL versions, rules and deployment (read-only)
+* [prolexic acl](prolexic_acl.md)	 - ACL versions, rules and deployment
 

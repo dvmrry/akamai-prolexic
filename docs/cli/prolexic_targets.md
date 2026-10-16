@@ -1,6 +1,6 @@
 ## prolexic targets
 
-Network Health targets (read-only)
+Network Health targets
 
 ```
 prolexic targets [flags]

@@ -1,6 +1,6 @@
 ## prolexic rule-hits
 
-ACL rule match statistics (read-only)
+ACL rule match statistics
 
 ```
 prolexic rule-hits [flags]

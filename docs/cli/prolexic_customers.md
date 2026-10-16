@@ -1,6 +1,6 @@
 ## prolexic customers
 
-the account's customer names (read-only)
+the account's customer names
 
 ```
 prolexic customers [flags]

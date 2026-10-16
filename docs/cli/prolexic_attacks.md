@@ -1,6 +1,6 @@
 ## prolexic attacks
 
-attack reports (read-only)
+attack reports
 
 ```
 prolexic attacks [flags]

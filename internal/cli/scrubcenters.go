@@ -30,7 +30,7 @@ func (d *ScrubCentersDoc) WriteText(w io.Writer) error {
 func newScrubCentersCmd(a *app) *cobra.Command {
 	return &cobra.Command{
 		Use:   "scrub-centers",
-		Short: "active scrub centers (read-only)",
+		Short: "active scrub centers",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			return scrubCenters(ctx, a)

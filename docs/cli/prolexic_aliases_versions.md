@@ -26,5 +26,5 @@ prolexic aliases versions [flags]
 
 ### SEE ALSO
 
-* [prolexic aliases](prolexic_aliases.md)	 - aliases and their versions (read-only)
+* [prolexic aliases](prolexic_aliases.md)	 - aliases and their versions
 

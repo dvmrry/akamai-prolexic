@@ -28,5 +28,5 @@ prolexic attacks list [flags]
 
 ### SEE ALSO
 
-* [prolexic attacks](prolexic_attacks.md)	 - attack reports (read-only)
+* [prolexic attacks](prolexic_attacks.md)	 - attack reports
 

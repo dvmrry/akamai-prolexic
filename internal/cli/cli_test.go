@@ -141,7 +141,7 @@ func TestDispatch(t *testing.T) {
 		wantStderr string
 	}{
 		{"no args", nil, apperr.Usage, "", "missing command"},
-		{"help", []string{"--help"}, apperr.OK, "Available Commands:", ""},
+		{"help", []string{"--help"}, apperr.OK, "Plan, apply and verify:", ""},
 		{"help command", []string{"help", "plan"}, apperr.OK, "--out saves the plan", ""},
 		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for "prolexic routed"; run 'prolexic routed --help'`},
 		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command "bogus" for "prolexic routed"`},

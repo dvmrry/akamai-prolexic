@@ -40,5 +40,5 @@ prolexic routed check [flags]
 
 ### SEE ALSO
 
-* [prolexic routed](prolexic_routed.md)	 - Routed BGP sessions, routes and tunnel health (read-only)
+* [prolexic routed](prolexic_routed.md)	 - Routed BGP sessions, routes and tunnel health
 

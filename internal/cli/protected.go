@@ -52,7 +52,7 @@ func newProtectedCmd(a *app) *cobra.Command {
 	var customers []string
 	cmd := &cobra.Command{
 		Use:   "protected",
-		Short: "prefixes and AS numbers treated as own space, per customer name (read-only)",
+		Short: "prefixes and AS numbers treated as own space, per customer name",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			return protected(ctx, a, customers)

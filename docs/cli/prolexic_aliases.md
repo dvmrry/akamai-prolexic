@@ -1,6 +1,6 @@
 ## prolexic aliases
 
-aliases and their versions (read-only)
+aliases and their versions
 
 ```
 prolexic aliases [flags]

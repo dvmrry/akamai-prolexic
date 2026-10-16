@@ -1,6 +1,6 @@
 ## prolexic scrub-centers
 
-active scrub centers (read-only)
+active scrub centers
 
 ```
 prolexic scrub-centers [flags]

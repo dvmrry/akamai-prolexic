@@ -47,7 +47,7 @@ func newTimeSeriesCmd(a *app) *cobra.Command {
 	var win windowFlags
 	cmd := &cobra.Command{
 		Use:     "time-series",
-		Short:   "flow usage and attack traffic per destination (read-only)",
+		Short:   "flow usage and attack traffic per destination",
 		Example: "  prolexic time-series --destination 198.51.100.0/24 --location agr --since 2h",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {

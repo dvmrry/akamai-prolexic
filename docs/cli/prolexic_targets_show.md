@@ -25,5 +25,5 @@ prolexic targets show [flags]
 
 ### SEE ALSO
 
-* [prolexic targets](prolexic_targets.md)	 - Network Health targets (read-only)
+* [prolexic targets](prolexic_targets.md)	 - Network Health targets
 
