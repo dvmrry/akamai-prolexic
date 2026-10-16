@@ -119,10 +119,10 @@ func verifyAlias(ap AliasPlan, live LiveAlias) AliasVerify {
 		v.Problems = append(v.Problems, fmt.Sprintf("alias %d is now named %s", ap.ID, live.Name))
 	}
 	if len(v.Missing) > 0 {
-		v.Problems = append(v.Problems, fmt.Sprintf("%d added entries aren't live", len(v.Missing)))
+		v.Problems = append(v.Problems, count(len(v.Missing), "added entry isn't live", "added entries aren't live"))
 	}
 	if len(v.StillLive) > 0 {
-		v.Problems = append(v.Problems, fmt.Sprintf("%d removed entries are still live", len(v.StillLive)))
+		v.Problems = append(v.Problems, count(len(v.StillLive), "removed entry is still live", "removed entries are still live"))
 	}
 	if v.Live != v.Want {
 		v.Problems = append(v.Problems, fmt.Sprintf("%d entries live, want %d", v.Live, v.Want))
@@ -138,8 +138,21 @@ func verifyAlias(ap AliasPlan, live LiveAlias) AliasVerify {
 		v.ProductionLag = true
 		v.Problems = append(v.Problems, fmt.Sprintf("production carries %s, not the active %s", live.ProdVersion, live.ActiveVersion))
 	}
+	// Live still at the version the plan started from, with changes planned:
+	// most likely apply hasn't run yet. Say so, for whoever reads this cold.
+	if len(v.Problems) > 0 && live.ActiveVersion == ap.ActiveVersion && len(ap.Add)+len(ap.Remove) > 0 {
+		v.Problems = append(v.Problems, fmt.Sprintf("still at %s, the version the plan started from: the plan looks unapplied", ap.ActiveVersion))
+	}
 	slices.Sort(v.Missing)
 	slices.Sort(v.StillLive)
 	v.Verified = len(v.Problems) == 0
 	return v
+}
+
+// count is "n one" or "n many", for n.
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }

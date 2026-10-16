@@ -113,6 +113,9 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	}
 	byID, byName := map[int64]LiveAlias{}, map[string]LiveAlias{}
 	for _, l := range all {
+		if prev, dup := byID[l.ID]; dup {
+			return nil, apperr.New(apperr.Upstream, "the alias list has alias %d twice (%+q and %+q): refusing to plan on an inconsistent answer", l.ID, prev.Name, l.Name)
+		}
 		byID[l.ID], byName[l.Name] = l, l
 	}
 
@@ -167,7 +170,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			add(Error, "alias_missing", a.Name, "", "no alias with id %d", a.ID)
 			continue
 		case l.Name != a.Name:
-			add(Error, "alias_mismatch", a.Name, "", "alias %d is named %q live, not %q", a.ID, l.Name, a.Name)
+			add(Error, "alias_mismatch", a.Name, "", "alias %d is named %+q live, not %+q", a.ID, l.Name, a.Name)
 			continue
 		case l.Type != a.Type:
 			add(Error, "alias_mismatch", a.Name, "", "alias %d is type %s live, not %s; a type change means recreating the alias", a.ID, l.Type, a.Type)

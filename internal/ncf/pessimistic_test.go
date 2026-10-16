@@ -104,3 +104,34 @@ func TestApplyConfirmsActivationWithoutProduction(t *testing.T) {
 		t.Errorf("err = %v; an activation that didn't happen must not exit 0", err)
 	}
 }
+
+// dupList answers the alias list with one alias listed twice.
+type dupList struct{ *ncftest.Store }
+
+func (d dupList) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	all, err := d.Store.ListAliases(ctx)
+	if err != nil || len(all) == 0 {
+		return all, err
+	}
+	other := all[0]
+	other.Name = "other-v4"
+	return append(all, other), nil
+}
+
+func TestPlanRefusesAnAliasListedTwice(t *testing.T) {
+	s := world()
+	_, err := checker().MakePlan(context.Background(), dupList{s}, desired("192.0.2.0/25"), nil, defaults)
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "twice") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestVerifySaysAPlanLooksUnapplied(t *testing.T) {
+	s := world()
+	p := roundTrip(t, plan(t, s, desired("192.0.2.0/25", "198.51.100.9"), defaults))
+	v, _ := ncf.Verify(context.Background(), s, p)
+	probs := strings.Join(v.Aliases[0].Problems, "; ")
+	if !strings.Contains(probs, "looks unapplied") || !strings.Contains(probs, "1 added entry isn't live") {
+		t.Errorf("problems = %s", probs)
+	}
+}
