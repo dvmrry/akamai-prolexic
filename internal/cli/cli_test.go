@@ -143,13 +143,13 @@ func TestDispatch(t *testing.T) {
 		{"no args", nil, apperr.Usage, "", "missing command"},
 		{"help", []string{"--help"}, apperr.OK, "Available Commands:", ""},
 		{"help command", []string{"help", "plan"}, apperr.OK, "apply --expect-digest takes that digest", ""},
-		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for \"prolexic routed\"`},
-		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command \"bogus\" for \"prolexic routed\"`},
-		{"unknown", []string{"bogus"}, apperr.Usage, "", `unknown command \"bogus\"`},
+		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for "prolexic routed"; run 'prolexic routed --help'`},
+		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command "bogus" for "prolexic routed"`},
+		{"unknown", []string{"bogus"}, apperr.Usage, "", `unknown command "bogus"; run 'prolexic --help'`},
 		{"version", []string{"version"}, apperr.OK, `"schema": "prolexic.version.v1"`, ""},
 		{"--version", []string{"--version", "--format", "text"}, apperr.OK, "prolexic ", ""},
 		{"bad flag", []string{"version", "--nope"}, apperr.Usage, "", "unknown flag: --nope"},
-		{"missing required flag", []string{"plan"}, apperr.Usage, "", `required flag(s) \"file\" not set`},
+		{"missing required flag", []string{"plan"}, apperr.Usage, "", `required flag(s) "file" not set; run 'prolexic plan --help'`},
 		{"too few arguments", []string{"add", "--file", "f", "--ticket", "T", "--reason", "r", "block-v4"}, apperr.Usage, "", "requires at least 2 arg(s)"},
 		{"bad format", []string{"version", "--format", "yaml"}, apperr.Usage, "", "--format must be"},
 		{"flag help", []string{"routed", "sessions", "-h"}, apperr.OK, "-customer", ""},
@@ -170,8 +170,12 @@ func TestDispatch(t *testing.T) {
 	}
 }
 
+// stderr is text for people unless --format json asks for the error document.
 func TestErrorDocumentOnStderr(t *testing.T) {
-	r := runCLI(t, Env{}, "bogus")
+	if r := runCLI(t, Env{}, "bogus"); !strings.HasPrefix(r.stderr, "prolexic: unknown command") || strings.Contains(r.stderr, "Usage:") {
+		t.Errorf("default stderr = %q, want one line of text", r.stderr)
+	}
+	r := runCLI(t, Env{}, "bogus", "--format", "json")
 	doc := decode[struct {
 		Code int
 		Kind string
@@ -308,7 +312,7 @@ func TestReviewRound4Contracts(t *testing.T) {
 		{"help for an unknown subcommand", []string{"help", "acl", "bogus"}, apperr.Usage, "unknown help topic"},
 		{"empty --customer doesn't mean every name", []string{"attacks", "list", "--customer", "", "--since", "1h"}, apperr.Usage, "empty value"},
 		{"comma-only --customer", []string{"routed", "sessions", "--customer", ","}, apperr.Usage, "empty value"},
-		{"unknown customer name", []string{"attacks", "list", "--customer", "exmaple-a", "--since", "1h"}, apperr.NotFound, `unknown customer name \"exmaple-a\"`},
+		{"unknown customer name", []string{"attacks", "list", "--customer", "exmaple-a", "--since", "1h"}, apperr.NotFound, `unknown customer name "exmaple-a"`},
 		{"dot version segment", []string{"aliases", "show", "--id", "101", "--version", ".."}, apperr.Usage, "can't be empty"},
 		{"slash in version", []string{"aliases", "show", "--id", "101", "--version", "V1/../../x"}, apperr.Usage, "can't be empty"},
 		{"dot target id", []string{"targets", "show", "--id", ".."}, apperr.Usage, "can't be empty"},

@@ -100,7 +100,28 @@ type ErrorDoc struct {
 func (*ErrorDoc) SchemaID() string { return ErrorSchemaID }
 
 func (d *ErrorDoc) WriteText(w io.Writer) error {
-	_, err := fmt.Fprintf(w, "prolexic: %s\n", d.Message)
+	if _, err := fmt.Fprintf(w, "prolexic: %s\n", d.Message); err != nil {
+		return err
+	}
+	u := d.Upstream
+	if u == nil {
+		return nil
+	}
+	// What support and a retry decision need, without the JSON form.
+	line := fmt.Sprintf("  upstream: %s %s", u.Method, u.Path)
+	if u.Status != 0 {
+		line += fmt.Sprintf(" -> %d", u.Status)
+	}
+	if u.ErrorCode != "" {
+		line += " " + u.ErrorCode
+	}
+	if u.IncidentID != "" {
+		line += ", incident " + u.IncidentID
+	}
+	if u.Ambiguous {
+		line += " (the write may or may not have taken effect)"
+	}
+	_, err := fmt.Fprintln(w, line)
 	return err
 }
 

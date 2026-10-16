@@ -39,3 +39,17 @@ func TestParseFormat(t *testing.T) {
 		t.Errorf("ParseFormat(yaml) err = %v, want usage", err)
 	}
 }
+
+// The text error keeps what support and a retry decision need.
+func TestErrorTextCarriesUpstreamDetail(t *testing.T) {
+	err := &apperr.Error{Kind: apperr.Upstream, Message: "activate block-v4 V3",
+		Upstream: &apperr.UpstreamDetail{Method: "PATCH", Path: "/x/activate", Status: 503, ErrorCode: "UNAVAILABLE", IncidentID: "inc-1", Ambiguous: true}}
+	var buf bytes.Buffer
+	if werr := Write(&buf, Text, NewErrorDoc(err, 5)); werr != nil {
+		t.Fatal(werr)
+	}
+	want := "prolexic: activate block-v4 V3\n  upstream: PATCH /x/activate -> 503 UNAVAILABLE, incident inc-1 (the write may or may not have taken effect)\n"
+	if buf.String() != want {
+		t.Errorf("text = %q\nwant   %q", buf.String(), want)
+	}
+}

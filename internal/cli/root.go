@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -48,9 +49,9 @@ func (a *app) root() *cobra.Command {
 		Args:          cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return apperr.New(apperr.Usage, "unknown command %q\n%s", args[0], cmd.UsageString())
+				return apperr.New(apperr.Usage, "unknown command %q; %s", args[0], helpHint(cmd))
 			}
-			return apperr.New(apperr.Usage, "missing command\n%s", cmd.UsageString())
+			return apperr.New(apperr.Usage, "missing command; %s", helpHint(cmd))
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			f, err := output.ParseFormat(a.formatFlag)
@@ -74,7 +75,7 @@ func (a *app) root() *cobra.Command {
 		},
 	})
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		return apperr.New(apperr.Usage, "%v\n%s", err, cmd.UsageString())
+		return apperr.New(apperr.Usage, "%v; %s", err, helpHint(cmd))
 	})
 
 	pf := root.PersistentFlags()
@@ -141,9 +142,9 @@ func newGroup(name, short string) *cobra.Command {
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return apperr.New(apperr.Usage, "unknown command %q for %q\n%s", args[0], cmd.CommandPath(), cmd.UsageString())
+				return apperr.New(apperr.Usage, "unknown command %q for %q; %s", args[0], cmd.CommandPath(), helpHint(cmd))
 			}
-			return apperr.New(apperr.Usage, "missing subcommand for %q\n%s", cmd.CommandPath(), cmd.UsageString())
+			return apperr.New(apperr.Usage, "missing subcommand for %q; %s", cmd.CommandPath(), helpHint(cmd))
 		},
 	}
 }
@@ -160,17 +161,23 @@ func (a *app) execute(ctx context.Context, args []string) error {
 	if err != nil && !a.ran {
 		var ae *apperr.Error
 		if !errors.As(err, &ae) {
-			err = apperr.New(apperr.Usage, "%v\n%s", err, usageFor(root, args))
+			err = apperr.New(apperr.Usage, "%v; %s", err, helpHint(deepest(root, args)))
 		}
 	}
 	return err
 }
 
-// usageFor is the usage of the deepest command args name.
-func usageFor(root *cobra.Command, args []string) string {
+// deepest is the deepest command args name, or root.
+func deepest(root *cobra.Command, args []string) *cobra.Command {
 	cmd, _, err := root.Find(args)
 	if err != nil || cmd == nil {
-		cmd = root
+		return root
 	}
-	return cmd.UsageString()
+	return cmd
+}
+
+// helpHint points a usage error at the help to read, instead of printing
+// the whole usage inside the error.
+func helpHint(cmd *cobra.Command) string {
+	return fmt.Sprintf("run '%s --help' for usage", cmd.CommandPath())
 }

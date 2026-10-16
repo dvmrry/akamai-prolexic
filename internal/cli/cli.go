@@ -87,9 +87,16 @@ func Run(ctx context.Context, args []string, env Env) int {
 	return exitCode(apperr.OK)
 }
 
+// fail reports err on stderr and returns its exit code. stderr is for people
+// (a CI log, a terminal), so the error is text unless --format json was asked
+// for explicitly; the stdout document and the exit code are the contract.
 func (a *app) fail(err error) int {
 	code := exitCode(apperr.KindOf(err))
-	if werr := output.Write(a.env.Stderr, a.format, output.NewErrorDoc(err, code)); werr != nil {
+	format := a.format
+	if format == output.Auto {
+		format = output.Text
+	}
+	if werr := output.Write(a.env.Stderr, format, output.NewErrorDoc(err, code)); werr != nil {
 		fmt.Fprintf(a.env.Stderr, "prolexic: %v\n", err)
 	}
 	return code

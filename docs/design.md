@@ -66,6 +66,7 @@ A check lives at the lowest layer that has the information. Higher layers may re
 - A write that fails with a transport error, a 5xx or a cancellation after sending is marked `ambiguous`. Callers prove the outcome by reading; they never resend.
 - **Read-only clients.** Every command except `apply` gets a client built with `ReadOnly`. It refuses any request that isn't a read (a GET, or marked `ReadOnly`) before sending, as a bug. Only `apply` builds a write client, from the write section.
 - Status → error kind: 401/403 → `credentials`; 404 → `not_found`; 409/412 → `conflict`; everything else → `upstream`. The CLI maps kinds to exit codes in one table (`internal/cli/exit.go`).
+- **Errors on stderr are text** (`prolexic: <message>`, plus an `upstream:` line with the method, path, status, error code and incident id when an API call failed). They are JSON (`prolexic.error.v1`) only with an explicit `--format json`: stderr is read by people, in a CI log or a terminal, and the stdout document plus the exit code are the contract. A usage error is one line that names the `--help` to run, not the whole usage.
 - An expired deadline exits 5 (upstream), not 1. Responses over 16 MB fail. Error documents keep the gateway's `incidentId`.
 - The tool reports what it reads, unredacted. Keeping account data out of the repo is the maintainers' job (`internal/hygiene` and the local commit guard), not the tool's. Only credential values are never printed.
 
