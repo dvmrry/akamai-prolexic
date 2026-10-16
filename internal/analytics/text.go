@@ -3,6 +3,9 @@ package analytics
 import (
 	"bytes"
 	"encoding/json"
+	"math"
+	"strconv"
+	"strings"
 )
 
 // Text is a string field the live API may also send as a number (ids,
@@ -29,3 +32,22 @@ func (t *Text) UnmarshalJSON(b []byte) error {
 
 // JSONSchema describes the encoded form: a string.
 func (Text) JSONSchema() map[string]any { return map[string]any{"type": "string"} }
+
+// Int is an integer field the live API may send as a number or as a numeric
+// string. Anything else (an empty string, null, garbage) decodes as 0 rather
+// than failing a whole customer name; it encodes as a number.
+type Int int64
+
+func (n *Int) UnmarshalJSON(b []byte) error {
+	*n = 0
+	s := strings.Trim(string(bytes.TrimSpace(b)), `"`)
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		*n = Int(v)
+	} else if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) && math.Abs(f) < math.MaxInt64 {
+		*n = Int(f)
+	}
+	return nil
+}
+
+// JSONSchema describes the encoded form: an integer.
+func (Int) JSONSchema() map[string]any { return map[string]any{"type": "integer"} }

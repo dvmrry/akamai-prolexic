@@ -33,10 +33,10 @@ type CriticalEvent struct {
 	SiteName         string `json:"siteName,omitempty"`
 	SiteType         string `json:"siteType,omitempty"`
 	SiteCustomerName string `json:"siteCustomerName,omitempty"`
-	Count            int64  `json:"count,omitempty"`
-	Importance       int64  `json:"importance,omitempty"`
-	State            int64  `json:"state,omitempty"`
-	Acknowledged     int64  `json:"acknowledged,omitempty"`
+	Count            Int    `json:"count,omitempty"`
+	Importance       Int    `json:"importance,omitempty"`
+	State            Int    `json:"state,omitempty"`
+	Acknowledged     Int    `json:"acknowledged,omitempty"`
 	FirstOccur       Epoch  `json:"firstOccur,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	RecentOccur      Epoch  `json:"recentOccur,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	Expires          Epoch  `json:"expires,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
@@ -65,7 +65,7 @@ type Event struct {
 	EventTitle     string     `json:"eventTitle,omitempty"`
 	EventType      string     `json:"eventType" doc:"alert or attack."`
 	Service        string     `json:"service,omitempty" doc:"Mitigation for attacks; for alerts abm, abr, arb, bgp, fbm, int or man."`
-	Severity       int64      `json:"severity,omitempty"`
+	Severity       Int        `json:"severity,omitempty"`
 	IsOngoing      bool       `json:"isOngoing"`
 	EventStartTime Epoch      `json:"eventStartTime" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EventEndTime   Epoch      `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`

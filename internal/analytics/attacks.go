@@ -41,25 +41,25 @@ func contractPath(prefix, customer, suffix string) (string, error) {
 // Destination is a targeted address or subnet of an attack.
 type Destination struct {
 	IP      string `json:"ip"`
-	Netmask int    `json:"netmask"`
+	Netmask Int    `json:"netmask"`
 }
 
 // Peak is one location's peak statistics of an attack.
 type Peak struct {
 	Location    string `json:"location"`
-	PeakID      int64  `json:"peakId"`
-	Bandwidth   int64  `json:"bandwidth"`
-	PPS         int64  `json:"pps"`
-	Connections int64  `json:"connections,omitempty"`
+	PeakID      Int    `json:"peakId"`
+	Bandwidth   Int    `json:"bandwidth"`
+	PPS         Int    `json:"pps"`
+	Connections Int    `json:"connections,omitempty"`
 }
 
 // Attack is one attack report. Times are the wire's UNIX epoch seconds (UTC).
 type Attack struct {
 	Customer               string        `json:"customer" doc:"The customer name queried; added by prolexic."`
-	AttackID               int64         `json:"attackId"`
+	AttackID               Int           `json:"attackId"`
 	CustomerShortName      string        `json:"customerShortName,omitempty"`
-	TicketID               int64         `json:"ticketId,omitempty"`
-	EventID                int64         `json:"eventId"`
+	TicketID               Text          `json:"ticketId,omitempty"`
+	EventID                Int           `json:"eventId"`
 	EventType              string        `json:"eventType,omitempty" doc:"alert or attack."`
 	EventTypes             []string      `json:"eventTypes" doc:"The attack types."`
 	StartTime              Epoch         `json:"startTime" doc:"Attack start, epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
@@ -106,22 +106,22 @@ func (c *Client) AttackReports(ctx context.Context, customer string, start, end 
 // AttackRow is one location's row of a single attack's detail report.
 type AttackRow struct {
 	Customer        string `json:"customer" doc:"The customer name queried; added by prolexic."`
-	AttackID        int64  `json:"attackId"`
+	AttackID        Int    `json:"attackId"`
 	AttackTypeName  string `json:"attackTypeName,omitempty"`
-	EventID         int64  `json:"eventId"`
-	TicketID        int64  `json:"ticketId,omitempty"`
+	EventID         Int    `json:"eventId"`
+	TicketID        Text   `json:"ticketId,omitempty"`
 	Location        string `json:"location" doc:"Where in the Prolexic network the attack was seen."`
 	IP              string `json:"ip" doc:"The target address."`
-	Netmask         int    `json:"netmask"`
+	Netmask         Int    `json:"netmask"`
 	DestinationPort Text   `json:"destinationPort,omitempty"`
 	StartTime       Epoch  `json:"startTime" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EndTime         Epoch  `json:"endTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EventStartTime  Epoch  `json:"eventStartTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
 	EventEndTime    Epoch  `json:"eventEndTime,omitempty" doc:"Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read)."`
-	EventPeakID     int64  `json:"eventPeakId,omitempty"`
-	EventBw         int64  `json:"eventBw" doc:"Peak bandwidth of the event."`
-	EventPps        int64  `json:"eventPps" doc:"Peak packets per second of the event."`
-	EventCON        int64  `json:"eventCON,omitempty" doc:"Peak connections of the event."`
+	EventPeakID     Int    `json:"eventPeakId,omitempty"`
+	EventBw         Int    `json:"eventBw" doc:"Peak bandwidth of the event."`
+	EventPps        Int    `json:"eventPps" doc:"Peak packets per second of the event."`
+	EventCON        Int    `json:"eventCON,omitempty" doc:"Peak connections of the event."`
 }
 
 // Attack returns the detail rows of one attack of one customer name.

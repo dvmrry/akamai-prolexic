@@ -82,7 +82,7 @@
             "type": "integer"
           },
           "ticketId": {
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [

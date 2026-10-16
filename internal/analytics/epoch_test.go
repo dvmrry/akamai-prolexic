@@ -79,3 +79,22 @@ func TestTextTakesStringsAndNumbers(t *testing.T) {
 		t.Errorf("v = %+v", v)
 	}
 }
+
+// Seen live: attack reports send ticketId as a string, which failed every
+// customer name that had an attack. Ids and measurements take a number or a
+// numeric string; ticket ids are text.
+func TestAttackFieldsAcceptStringsOrNumbers(t *testing.T) {
+	var a Attack
+	body := `{"attackId":"123","ticketId":"F-EXAMPLE-1","eventId":45,"destinations":[{"ip":"192.0.2.1","netmask":"32"}]}`
+	if err := json.Unmarshal([]byte(body), &a); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if a.AttackID != 123 || a.TicketID != "F-EXAMPLE-1" || a.EventID != 45 {
+		t.Errorf("attack = %+v", a)
+	}
+	var n struct{ A, B, C, D Int }
+	json.Unmarshal([]byte(`{"A":"406042308","B":7055033,"C":"n/a","D":null}`), &n)
+	if n.A != 406042308 || n.B != 7055033 || n.C != 0 || n.D != 0 {
+		t.Errorf("ints = %+v", n)
+	}
+}
