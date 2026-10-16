@@ -329,6 +329,12 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindOf(err), err, "get own-space alias %s", name)
 		}
+		if len(full.Entries) == 0 {
+			// An own-space alias names what we protect; empty, it protects
+			// nothing, and the deny-side checks would pass anything.
+			add(Error, "own_space_alias", name, "", "own-space alias %q has no entries: own space can't be checked against it", name)
+			continue
+		}
 		for _, s := range full.Entries {
 			v, err := ParseLive(s)
 			if err != nil || v.Kind() != KindPrefix {

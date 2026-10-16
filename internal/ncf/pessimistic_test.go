@@ -2,6 +2,7 @@ package ncf_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -60,5 +61,34 @@ func TestApplySomeoneElseActivatingIsAConflict(t *testing.T) {
 	_, err := applyThrough(t, s, raceActivate{s}, desired("192.0.2.0/25", "198.51.100.9"))
 	if apperr.KindOf(err) != apperr.Conflict || !strings.Contains(err.Error(), "someone else activated it") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// An own-space alias that reads back empty (or a blanked read) protects
+// nothing: the plan must say so, not pass every deny entry.
+func TestPlanRefusesAnEmptyOwnSpaceAlias(t *testing.T) {
+	s := world()
+	s.ActivateNow(102) // protected-dst, now empty
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	if got := findingCodes(plan(t, s, f, defaults).Findings); !slices.Contains(got, "error own_space_alias protected-dst") {
+		t.Errorf("findings = %q", got)
+	}
+}
+
+// A deployment status with no production ACL version, while aliases are in
+// production, is no evidence of a healthy deployment.
+func TestAnEmptyDeploymentStatusIsNotHealthy(t *testing.T) {
+	s := world()
+	s.UseInRule(101, 1)
+	s.Deploy = ncf.Deployment{} // what an empty answer decodes to
+	f := desired("192.0.2.0/25", "198.51.100.9")
+	p := roundTrip(t, plan(t, s, f, defaults))
+	_, err := applyThrough(t, s, s, f)
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "no production ACL version") {
+		t.Errorf("apply: err = %v", err)
+	}
+	v, _ := ncf.Verify(context.Background(), s, p)
+	if v.Verified || len(v.Deployment) == 0 {
+		t.Errorf("verify: %+v", v)
 	}
 }

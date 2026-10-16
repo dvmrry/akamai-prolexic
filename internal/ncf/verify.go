@@ -84,6 +84,9 @@ func Verify(ctx context.Context, store Store, p *Plan) (*VerifyResult, error) {
 	if d.Processing {
 		res.Deployment = append(res.Deployment, "the ACL deployment is still processing")
 	}
+	if d.Version == 0 && slices.ContainsFunc(res.Aliases, func(a AliasVerify) bool { return a.ProdVersion != "" }) {
+		res.Deployment = append(res.Deployment, "the ACL deployment status shows no production ACL version, though an alias is in production")
+	}
 	res.Verified = res.Verified && len(res.Deployment) == 0
 	return res, nil
 }

@@ -142,14 +142,20 @@ func (s *V2) GetVersion(ctx context.Context, id int64, version string) (ncf.Alia
 	if err != nil {
 		return ncf.AliasVersion{}, err
 	}
-	var v v2Version
+	var v struct {
+		Version  string    `json:"version"`
+		IsActive bool      `json:"isActive"`
+		Entries  *[]string `json:"entries"`
+	}
 	if err := s.c.Do(ctx, akamai.Request{Method: http.MethodGet, Path: path}, &v); err != nil {
 		return ncf.AliasVersion{}, err
 	}
+	// No entries key is not an empty alias: read as one, it would hide every
+	// live entry (and let a plan drop them past the removal limit).
 	if v.Entries == nil {
-		v.Entries = []string{}
+		return ncf.AliasVersion{}, apperr.New(apperr.Upstream, "GET %s: the answer has no entries list; refusing to read it as an empty alias", path)
 	}
-	return ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Entries: v.Entries}, nil
+	return ncf.AliasVersion{Version: v.Version, Active: v.IsActive, Entries: *v.Entries}, nil
 }
 
 // CreateVersion creates an inactive version for SOURCE and DIPA aliases

@@ -85,7 +85,11 @@ func versionIndex(id string) int {
 }
 
 // New returns an empty store.
-func New() *Store { return &Store{aliases: map[int64]*alias{}} }
+// New returns an empty store whose ACL deployment is healthy, with version 1
+// in production, as a live account's is.
+func New() *Store {
+	return &Store{aliases: map[int64]*alias{}, Deploy: ncf.Deployment{Version: 1, State: "PRODUCTION"}}
+}
 
 // Add creates an alias whose version 1 holds entries, active and in
 // production.

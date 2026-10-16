@@ -328,6 +328,11 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 			if why := d.Failure(); why != "" {
 				return apperr.New(apperr.Upstream, "production carries the target versions but the ACL deployment is unhealthy: %s", why)
 			}
+			// Aliases in production mean an ACL version is in production: a status
+			// showing none (an empty answer) is no evidence of a healthy deployment.
+			if d.Version == 0 {
+				return apperr.New(apperr.Upstream, "production carries the target versions, but the ACL deployment status shows no production ACL version; re-run apply to check again")
+			}
 			if !d.Processing {
 				for i := range target {
 					if r.plan.Aliases[i].Changed() {
