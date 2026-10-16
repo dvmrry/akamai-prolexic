@@ -4,11 +4,11 @@ SHELL := bash
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSION) \
+LDFLAGS = -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSION) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.commit=$(COMMIT) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.date=$(DATE)
 
-.PHONY: build install fmt-check vet test race cross vuln actionlint lint fuzz schemas docs secret-scan check
+.PHONY: build install fmt-check vet tidy-check test race cross dist version-check vuln actionlint lint fuzz schemas docs secret-scan secret-scan-commits check
 
 build:
 	go build -ldflags '$(LDFLAGS)' -o bin/prolexic ./cmd/prolexic
@@ -23,6 +23,11 @@ fmt-check:
 vet:
 	go vet ./...
 
+# go.mod and go.sum match the code (a hand edit or an update can leave them
+# out of step).
+tidy-check:
+	go mod tidy -diff
+
 test:
 	go test ./...
 
@@ -36,6 +41,26 @@ cross:
 	@for p in $(PLATFORMS); do \
 		echo "== $$p"; CGO_ENABLED=0 GOOS=$${p%/*} GOARCH=$${p#*/} go build -o /dev/null ./cmd/prolexic; \
 	done
+
+# The release binaries of VERSION into dist/, with SHA256SUMS. The release
+# workflow runs it on main; -trimpath and the commit date as the build date
+# make a rebuild from the same commit identical.
+dist: VERSION = v$(shell cat VERSION)
+dist: DATE = $(shell TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+dist:
+	rm -rf dist && mkdir dist
+	@for p in $(PLATFORMS); do \
+		os=$${p%/*}; arch=$${p#*/}; ext=; if [ "$$os" = windows ]; then ext=.exe; fi; \
+		echo "== $$p"; CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' \
+			-o "dist/prolexic_$$(cat VERSION)_$${os}_$${arch}$$ext" ./cmd/prolexic; \
+	done
+	cd dist && shasum -a 256 prolexic_* > SHA256SUMS
+
+# Every pull request to main raises VERSION, and merging it releases
+# v<VERSION> (.github/workflows/release.yml). This fails when VERSION is
+# already tagged or below the newest tag; CI runs it on each pull request.
+version-check:
+	go run ./internal/tools/releasever check
 
 # Known vulnerabilities in code we reach, standard library included. It
 # needs the network and its answer changes over time, so check leaves it out;
@@ -74,4 +99,10 @@ docs:
 secret-scan:
 	gitleaks dir --no-banner --config .gitleaks.toml .
 
-check: fmt-check vet test secret-scan
+# The commits of RANGE (base..head): a secret added and removed again within
+# a pull request is gone from the tree but still in its commits. CI scans
+# each pull request's.
+secret-scan-commits:
+	gitleaks git --no-banner --config .gitleaks.toml --log-opts='$(RANGE)' .
+
+check: fmt-check vet tidy-check test secret-scan

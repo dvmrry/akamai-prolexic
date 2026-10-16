@@ -11,15 +11,15 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 
 ## Commands
 
-- `make check`: gofmt, `go vet`, `go test`, gitleaks. Run it before every commit.
+- `make check`: gofmt, `go vet`, `go mod tidy -diff`, `go test`, gitleaks. Run it before every commit.
 - `make fuzz`: fuzzes the entry parser, the desired file, the entry-set hash and the plan diff for `FUZZTIME` each (default 30s). `make check` replays only their seeds; run this after touching parsing or the diff.
-- `make race`, `make cross` (every release platform, without cgo), `make vuln` (govulncheck; needs the network), `make lint` (golangci-lint, settings in `.golangci.yml`) and `make actionlint`: CI runs these after `make check` (`.github/workflows/check.yml`), on every pull request, on pushes to main and weekly.
+- `make race`, `make cross` (every release platform, without cgo), `make vuln` (govulncheck; needs the network), `make lint` (golangci-lint, settings in `.golangci.yml`) and `make actionlint`: CI runs these after `make check` (`.github/workflows/check.yml`), on every pull request, on pushes to main and weekly. CI also audits the workflows with zizmor, scans each pull request's commits for secrets (`make secret-scan-commits`), and fuzzes weekly.
 - `make schemas`: regenerates `schemas/` after a document type changes. `TestSchemas` fails if a type and its schema drift.
 - `make docs`: regenerates `docs/cli/` (the Markdown CLI reference) from the Cobra tree after a command or flag changes. `TestDocsCurrent` fails when it is stale.
 - `make build`: builds `bin/prolexic`, with the version injected through ldflags.
 - `make install`: the same, into `~/go/bin`. Dave's shell abbreviates it as `plx` (dotfiles).
 - Hooks: run `prek install --hook-type pre-commit --hook-type pre-push` once per clone. That gives gitleaks, gofmt and vet on commit, and tests on push. A local guard may also chain onto these hooks. Never bypass hooks (`--no-verify`, `commit -n`, `core.hooksPath`).
-- Toolchain: `direnv allow` loads the flake's devShell (go, gopls, gofumpt, golangci-lint, gitleaks, prek).
+- Toolchain: `direnv allow` loads the flake's devShell (go, gopls, gofumpt, golangci-lint, gitleaks, prek, zizmor).
 
 ## Rules
 
@@ -34,6 +34,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 - **Languages:** Go only. Tooling and scripts are in Go or bash, never Python.
 - **Commits:** short conventional messages (`feat:`, `fix:`, `docs:`). No attribution of any kind: no `Co-Authored-By`, no other trailer, no agent as committer.
 - **No compatibility shims.** Nothing consumes the file formats or output yet, so change them and their tests directly. That changes at the first tag (`v0.1.0`).
+- **Releases:** every pull request to main raises `VERSION` (`0.1.1`, or `0.2.0-rc.1` for a prerelease; `make version-check` checks it, and CI blocks the pull request otherwise). Merging it tags `v<VERSION>` and publishes the binaries (`.github/workflows/release.yml`); nothing else tags. Dependabot pull requests are exempt and ride along to the next release. Stay on 0.x: 1.0 is Dave's call.
 
 ## Layout
 

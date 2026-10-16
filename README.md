@@ -13,6 +13,17 @@ The read side stands on its own. With read credentials only, `plan --exit-code` 
 
 See [docs/design.md](docs/design.md) for the model and the decisions behind it, [docs/runbook.md](docs/runbook.md) for what to do when something fails, and [docs/cli/](docs/cli/prolexic.md) for every command and flag (`prolexic <command> --help` shows the same).
 
+## Install
+
+Each release on the [releases page](https://github.com/dvmrry/akamai-prolexic/releases) has static binaries for Linux, macOS and Windows (amd64, arm64) and their `SHA256SUMS`:
+
+```
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify prolexic_0.1.0_linux_amd64 --repo dvmrry/akamai-prolexic   # where the release has build provenance
+```
+
+Or with Go: `go install github.com/dvmrry/akamai-prolexic/cmd/prolexic@v0.1.0`.
+
 ## First run
 
 ```
@@ -80,6 +91,8 @@ make fuzz       # fuzz the parsers and the plan diff (FUZZTIME=30s each)
 make schemas    # regenerate schemas/ after changing a document type
 make docs       # regenerate docs/cli/ after changing a command or flag
 ```
+
+Releases come from pull requests: each one to main raises `VERSION`, and merging it tags `v<VERSION>` and publishes the binaries. CI blocks a pull request that doesn't raise it, so there is no separate tagging step.
 
 ## Credentials
 
