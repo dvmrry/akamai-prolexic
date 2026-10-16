@@ -238,6 +238,13 @@ func (r *applyRun) activate(ctx context.Context) error {
 				return r.failAndRollBack(ctx, i, apperr.Wrap(apperr.Upstream, err, "activate %s version %s: unknown whether it took effect", a.Name, a.Version))
 			}
 		}
+		// An accepted activation isn't proof: confirm it from the alias list,
+		// which may lag the call. Until confirmed it may yet land, so a failure
+		// counts it as live and the rollback covers it.
+		if err := r.confirmActive(ctx, i, planned); err != nil {
+			a.Status = StatusActive
+			return r.failAndRollBack(ctx, i, err)
+		}
 		a.Status = StatusActive
 		a.ActivatedAt = r.stamp()
 		r.progress("activated", i, "activated %s %s", a.Name, a.Version)
@@ -639,4 +646,33 @@ func sinceActivation(a *AliasApply) string {
 		return " after " + d.String()
 	}
 	return ""
+}
+
+// activationWindow is how long apply waits for the alias list to show an
+// accepted activation.
+const activationWindow = 2 * time.Minute
+
+// confirmActive polls the alias list until alias i's active version is the
+// one this apply activated. Someone else's version is a conflict; the old one
+// still active when the window ends means the activation didn't take effect.
+func (r *applyRun) confirmActive(ctx context.Context, i int, planned string) error {
+	a := &r.res.Aliases[i]
+	deadline := r.opts.Now().Add(activationWindow)
+	for {
+		cur, err := activeVersion(ctx, r.read, a.ID)
+		if err != nil {
+			return apperr.Wrap(apperr.KindOf(err), err, "confirm the activation of %s", a.Name)
+		}
+		switch {
+		case cur == a.Version:
+			return nil
+		case cur != planned:
+			return apperr.New(apperr.Conflict, "%s: %s is active, not this apply's %s: someone else activated it; find out who, then re-plan", a.Name, cur, a.Version)
+		case !r.opts.Now().Before(deadline):
+			return apperr.New(apperr.Upstream, "%s: the activation of %s was accepted, but after %s %s is still active: it didn't take effect. Check the alias's versions, then re-run apply (it re-uses %s)", a.Name, a.Version, activationWindow, planned, a.Version)
+		}
+		if err := r.opts.Sleep(ctx, min(r.opts.Interval, deadline.Sub(r.opts.Now()))); err != nil {
+			return err
+		}
+	}
 }

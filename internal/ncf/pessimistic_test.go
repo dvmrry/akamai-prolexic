@@ -47,8 +47,8 @@ func TestApplyAnActivationThatDoesNothingIsSaidPlainly(t *testing.T) {
 	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "didn't take effect") || strings.Contains(err.Error(), "are active") {
 		t.Errorf("err = %v", err)
 	}
-	if a := res.Aliases[0]; a.Status != ncf.StatusCreated {
-		t.Errorf("status = %s, want created: the version exists but isn't active", a.Status)
+	if a := res.Aliases[0]; a.Status != ncf.StatusFailed {
+		t.Errorf("status = %s, want failed: confirmed at activation, not at the production timeout", a.Status)
 	}
 	// Once activation works, a re-run finishes with the same version.
 	if _, err := applyThrough(t, s, s, f); err != nil || s.Live(101).ActiveVersion != "V2" {
@@ -90,5 +90,17 @@ func TestAnEmptyDeploymentStatusIsNotHealthy(t *testing.T) {
 	v, _ := ncf.Verify(context.Background(), s, p)
 	if v.Verified || len(v.Deployment) == 0 {
 		t.Errorf("verify: %+v", v)
+	}
+}
+
+// An alias no deployed rule uses never reaches production, so nothing after
+// the activation would notice it didn't happen: the activation itself must be
+// confirmed.
+func TestApplyConfirmsActivationWithoutProduction(t *testing.T) {
+	s := world()
+	s.Lag(101, "") // no deployed rule uses it: no production version
+	_, err := applyThrough(t, s, silentActivate{s}, desired("192.0.2.0/25", "198.51.100.9"))
+	if err == nil || !strings.Contains(err.Error(), "didn't take effect") {
+		t.Errorf("err = %v; an activation that didn't happen must not exit 0", err)
 	}
 }
