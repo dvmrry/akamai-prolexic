@@ -1,44 +1,17 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
-
-// RoutedSessionsDoc lists BGP sessions across customer names.
-type RoutedSessionsDoc struct {
-	output.Header
-	Customers []string               `json:"customers" doc:"The customer names queried."`
-	Sessions  []analytics.BGPSession `json:"sessions" doc:"Sorted by customer, dataCenter, routerName, customerBgpPeerIpv4."`
-	Failures  []analytics.Failure    `json:"failures" doc:"Customer names whose query failed."`
-}
-
-func (*RoutedSessionsDoc) SchemaID() string { return "prolexic.routed-sessions.v1" }
-
-func (d *RoutedSessionsDoc) Outcome() error { return failuresOutcome(d.Failures, d.Customers) }
-
-func (d *RoutedSessionsDoc) WriteText(w io.Writer) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "CUSTOMER\tDATA CENTER\tROUTER\tTUNNEL\tASN\tPEER V4\tPEER V6\tHEALTH V4\tHEALTH V6")
-	for _, s := range d.Sessions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n", s.Customer, s.DataCenter, s.RouterName,
-			dash(s.TunnelType), s.ASN, dash(s.CustomerBgpPeerIpv4), dash(s.CustomerBgpPeerIpv6), dash(s.HealthIpv4), dash(s.HealthIpv6))
-	}
-	if err := tw.Flush(); err != nil {
-		return err
-	}
-	return writeFailures(w, d.Failures)
-}
 
 func newRoutedSessionsCmd(a *app) *cobra.Command {
 	var customers []string
@@ -47,7 +20,7 @@ func newRoutedSessionsCmd(a *app) *cobra.Command {
 		Short: "BGP sessions per customer name",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return routedSessions(ctx, a, customers)
+			return docOf(a.ops().RoutedSessions(ctx, ops.RoutedSessionsInput{Customers: customers}))
 		}),
 	}
 	customerFlag(cmd, &customers)
@@ -57,27 +30,6 @@ func newRoutedSessionsCmd(a *app) *cobra.Command {
 // customerFlag is the --customer flag every fan-out command takes.
 func customerFlag(cmd *cobra.Command, customers *[]string) {
 	listVar(cmd.Flags(), customers, "customer", "customer name to query; repeatable or comma-separated (default: every in-use name)")
-}
-
-func routedSessions(ctx context.Context, a *app, customers []string) (output.Document, error) {
-	api, err := a.analytics()
-	if err != nil {
-		return nil, err
-	}
-	res, err := analytics.ForCustomers(ctx, api, analytics.ResolveCustomers, customers, api.BGPSessions)
-	if res == nil {
-		return nil, err
-	}
-	slices.SortStableFunc(res.Rows, func(x, y analytics.BGPSession) int {
-		return cmp.Or(
-			cmp.Compare(x.Customer, y.Customer),
-			cmp.Compare(x.DataCenter, y.DataCenter),
-			cmp.Compare(x.RouterName, y.RouterName),
-			cmp.Compare(x.CustomerBgpPeerIpv4, y.CustomerBgpPeerIpv4),
-			cmp.Compare(rowKey(x), rowKey(y)), // full tie-break: stable output whatever the API order
-		)
-	})
-	return &RoutedSessionsDoc{Customers: res.Customers, Sessions: res.Rows, Failures: res.Failures}, nil
 }
 
 // analytics is the Prolexic Analytics client, over the read credentials.

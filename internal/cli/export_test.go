@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // exportAPI is a fake account with two editable aliases (a deny-list
@@ -39,7 +40,7 @@ func TestExportBootstrap(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc := decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if !doc.Created || !doc.Written || len(doc.Aliases) != 2 || doc.Aliases[0].Name != "allow-v6" ||
 		strings.Join(doc.Aliases[1].Added, " ") != "192.0.2.0/25 198.51.100.7/32 GEO::DE" || len(doc.Aliases[1].Removed) != 0 {
 		t.Errorf("doc = %+v", doc)
@@ -71,7 +72,7 @@ func TestExportBootstrap(t *testing.T) {
 		t.Errorf("--role allow:\n%s", readFile(t, p2))
 	}
 	r = runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-	doc = decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc = decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if r.code != 0 || doc.Created || doc.Written || readFile(t, p) != got {
 		t.Errorf("second run: exit %d, doc %+v", r.code, doc)
 	}
@@ -138,7 +139,7 @@ func TestExportRefreshesOnlyNamedAliases(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc := decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if doc.Created || !doc.Written || len(doc.Aliases) != 1 {
 		t.Fatalf("doc = %+v", doc)
 	}
@@ -167,7 +168,7 @@ func TestExportRefreshesOnlyNamedAliases(t *testing.T) {
 	}
 	// Idempotent.
 	r = runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-	doc = decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc = decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if doc.Written || len(doc.Aliases[0].Added) != 0 || len(doc.Aliases[0].Removed) != 0 || doc.Aliases[0].Added == nil {
 		t.Errorf("second run: %+v", doc)
 	}
@@ -180,7 +181,7 @@ func TestExportAllAppendsEditableAliases(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc := decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if len(doc.Aliases) != 2 || doc.Aliases[0].Name != "allow-v6" || len(doc.Aliases[0].Added) != 2 {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -257,7 +258,7 @@ func TestExportIntoAnEmptyFileBootstraps(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc := decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if r.code != 0 || !doc.Created || !doc.Written {
 		t.Errorf("exit = %d, doc = %+v, stderr = %s", r.code, doc, r.stderr)
 	}
@@ -273,7 +274,7 @@ func TestExportDeclaresADestinationAsOwnSpace(t *testing.T) {
 	)
 	p := filepath.Join(t.TempDir(), "desired.json")
 	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
-	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	doc := decode[ops.ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if r.code != 0 || !slices.Equal(doc.OwnSpaceAdded, []string{"protected-dst"}) {
 		t.Fatalf("exit %d, ownSpaceAdded %v: %s", r.code, doc.OwnSpaceAdded, r.stderr)
 	}
@@ -284,7 +285,7 @@ func TestExportDeclaresADestinationAsOwnSpace(t *testing.T) {
 	// The exported file plans clean: the declaration and the role agree with
 	// the rules, so no warning and no mismatch.
 	r = runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--no-analytics-own-space", "--format", "json")
-	plan := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	plan := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	for _, f := range plan.Findings {
 		if f.Code != "own_space_analytics_skipped" {
 			t.Errorf("finding %s: %s", f.Code, f.Message)

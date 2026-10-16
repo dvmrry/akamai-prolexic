@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -190,7 +191,11 @@ func (a *app) loadRootCAs() (*x509.CertPool, int, error) {
 func loadCABundle(path string) (*x509.CertPool, int, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s: %v", path, fsErr(err))
+		var pe *os.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err // the message names the path already
+		}
+		return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s: %v", path, err)
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil {

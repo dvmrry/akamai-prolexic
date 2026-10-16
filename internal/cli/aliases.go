@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -198,4 +199,12 @@ func aliasesShow(ctx context.Context, a *app, name string, id int64, version str
 		Alias: al, Version: cmp.Or(got.Version, v), Active: v == al.ActiveVersion, Managed: !al.Editable,
 		Entries: normaliseEntries(got.Entries),
 	}, nil
+}
+
+func joinInts(n []int) string {
+	s := make([]string, len(n))
+	for i, v := range n {
+		s[i] = strconv.Itoa(v)
+	}
+	return strings.Join(s, ",")
 }

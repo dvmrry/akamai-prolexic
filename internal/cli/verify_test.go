@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // savePlan runs plan and saves its JSON, as a pipeline does.
@@ -30,7 +31,7 @@ func TestVerifyMatchingPlan(t *testing.T) {
 	plan := savePlan(t, api, writeDesired(t, desiredFixture)) // live already matches
 	before := len(api.calls)
 	r := runCLI(t, ncfEnv(api.env()), "verify", "--plan", plan)
-	doc := decode[VerifyDoc](t, r.stdout, "prolexic.verify.v1")
+	doc := decode[ops.VerifyDoc](t, r.stdout, "prolexic.verify.v1")
 	if r.code != 0 || !doc.Verified || len(doc.Aliases) != 1 || !doc.Aliases[0].Verified {
 		t.Errorf("exit = %d, doc = %+v, stderr = %s", r.code, doc, r.stderr)
 	}
@@ -47,7 +48,7 @@ func TestVerifyUnappliedPlanIsDrift(t *testing.T) {
 	runCLI(t, ncfEnv(Env{}), "add", "--file", desired, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
 	plan := savePlan(t, api, desired) // never applied
 	r := runCLI(t, ncfEnv(api.env()), "verify", "--plan", plan)
-	doc := decode[VerifyDoc](t, r.stdout, "prolexic.verify.v1")
+	doc := decode[ops.VerifyDoc](t, r.stdout, "prolexic.verify.v1")
 	if r.code != exitCode(apperr.Drift) || doc.Verified || len(doc.Aliases[0].Missing) != 1 || !strings.Contains(r.stderr, "don't match the plan") {
 		t.Errorf("exit = %d, doc = %+v, stderr = %s", r.code, doc, r.stderr)
 	}
@@ -84,7 +85,7 @@ func TestPlanApplyVerifyWithOneArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	planDoc := decode[PlanDoc](t, string(b), "prolexic.plan.v1")
+	planDoc := decode[ops.PlanDoc](t, string(b), "prolexic.plan.v1")
 	if !strings.Contains(r.stdout, planDoc.Digest) {
 		t.Errorf("the text and the saved JSON disagree on the digest %s", planDoc.Digest)
 	}
@@ -121,7 +122,7 @@ func TestDocumentsAreStamped(t *testing.T) {
 	env.Now = func() time.Time { return fixedNow }
 	plan := savePlan(t, api, writeDesired(t, desiredFixture))
 	r := runCLI(t, env, "verify", "--plan", plan)
-	doc := decode[VerifyDoc](t, r.stdout, "prolexic.verify.v1")
+	doc := decode[ops.VerifyDoc](t, r.stdout, "prolexic.verify.v1")
 	if doc.GeneratedAt != fixedNow.UTC().Format(time.RFC3339) || doc.Prolexic == "" || doc.AccountID != "A-EXAMPLE" {
 		t.Errorf("generatedAt %q, prolexic %q, accountId %q", doc.GeneratedAt, doc.Prolexic, doc.AccountID)
 	}

@@ -17,6 +17,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -244,7 +245,7 @@ func TestRoutedSessionsResolvesNamesAndSorts(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedSessionsDoc](t, r.stdout, "prolexic.routed-sessions.v1")
+	doc := decode[ops.RoutedSessionsDoc](t, r.stdout, "prolexic.routed-sessions.v1")
 	if strings.Join(doc.Customers, ",") != "example-a,example-b" {
 		t.Errorf("customers = %v (in-use names, sorted)", doc.Customers)
 	}
@@ -272,7 +273,7 @@ func TestRoutedSessionsReportsFailedNames(t *testing.T) {
 	if r.code != exitCode(apperr.Credentials) {
 		t.Errorf("exit = %d, want 3 (the failures' common code)", r.code)
 	}
-	doc := decode[RoutedSessionsDoc](t, r.stdout, "prolexic.routed-sessions.v1")
+	doc := decode[ops.RoutedSessionsDoc](t, r.stdout, "prolexic.routed-sessions.v1")
 	if len(doc.Sessions) != 2 || len(doc.Failures) != 1 || doc.Failures[0].Customer != "example-bad" {
 		t.Errorf("doc = %+v", doc)
 	}

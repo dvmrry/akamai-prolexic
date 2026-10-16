@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const targetsFixture = `{"targets":[
@@ -20,7 +21,7 @@ func TestTargetsList(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[TargetsDoc](t, r.stdout, "prolexic.targets.v1")
+	doc := decode[ops.TargetsDoc](t, r.stdout, "prolexic.targets.v1")
 	var ids []string
 	for _, x := range doc.Targets {
 		ids = append(ids, x.TargetID)
@@ -46,7 +47,7 @@ func TestTargetsListEmpty(t *testing.T) {
 	api := newFakeAPI(t)
 	api.json("GET /prolexic-network-health/v1/targets", 200, `{"targets":[]}`)
 	r := runCLI(t, api.env(), "targets", "list")
-	doc := decode[TargetsDoc](t, r.stdout, "prolexic.targets.v1")
+	doc := decode[ops.TargetsDoc](t, r.stdout, "prolexic.targets.v1")
 	if r.code != 0 || doc.Targets == nil || len(doc.Targets) != 0 {
 		t.Errorf("exit %d, targets %#v", r.code, doc.Targets)
 	}
@@ -63,7 +64,7 @@ func TestTargetsShow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[TargetDoc](t, r.stdout, "prolexic.target.v1")
+	doc := decode[ops.TargetDoc](t, r.stdout, "prolexic.target.v1")
 	if doc.Target.TargetID != "20" || doc.Target.TargetIP != "203.0.113.10" || doc.Target.TestIDs[0] != 3 {
 		t.Errorf("target = %+v", doc.Target)
 	}

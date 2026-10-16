@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // fanOutCommands are the commands that query once per customer name.
@@ -90,15 +91,14 @@ func TestOutcomesAreDataNotErrors(t *testing.T) {
 	env := api.env()
 	env.Home = t.TempDir()
 	a := &app{env: env, section: "default"}
-	doc, err := routedSessions(context.Background(), a, []string{"example-a"})
+	d, err := a.ops().RoutedSessions(context.Background(), ops.RoutedSessionsInput{Customers: []string{"example-a"}})
 	if err != nil {
 		t.Fatalf("a failed name returned an error: %v", err)
 	}
-	o, ok := doc.(outcomer)
-	if !ok || apperr.KindOf(o.Outcome()) != apperr.Credentials {
-		t.Errorf("outcome = %v", o)
+	if apperr.KindOf(d.Outcome()) != apperr.Credentials {
+		t.Errorf("outcome = %v", d.Outcome())
 	}
-	if d := doc.(*RoutedSessionsDoc); len(d.Failures) != 1 || d.Failures[0].Kind != apperr.Credentials {
+	if len(d.Failures) != 1 || d.Failures[0].Kind != apperr.Credentials {
 		t.Errorf("failures = %+v", d.Failures)
 	}
 }

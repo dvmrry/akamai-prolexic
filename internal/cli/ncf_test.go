@@ -11,6 +11,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // ncfEnv is env with a fixed date and the documentation ranges allowed,
@@ -71,13 +72,13 @@ func TestValidate(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	if doc := decode[ValidateDoc](t, r.stdout, "prolexic.validate.v1"); !doc.Valid || len(doc.Findings) != 0 {
+	if doc := decode[ops.ValidateDoc](t, r.stdout, "prolexic.validate.v1"); !doc.Valid || len(doc.Findings) != 0 {
 		t.Errorf("doc = %+v", doc)
 	}
 
 	bad := writeDesired(t, strings.Replace(desiredFixture, "198.51.100.7/32", "203.0.113.7/32", 1))
 	r = runCLI(t, ncfEnv(Env{}), "validate", "--file", bad)
-	doc := decode[ValidateDoc](t, r.stdout, "prolexic.validate.v1")
+	doc := decode[ops.ValidateDoc](t, r.stdout, "prolexic.validate.v1")
 	if r.code != exitCode(apperr.Validation) || doc.Valid || doc.Findings[0].Code != "own_space" {
 		t.Errorf("exit = %d, doc = %+v", r.code, doc)
 	}
@@ -147,7 +148,7 @@ func TestAddWritesOneCanonicalEntry(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ChangeDoc](t, r.stdout, "prolexic.change.v1")
+	doc := decode[ops.ChangeDoc](t, r.stdout, "prolexic.change.v1")
 	if !doc.Written || len(doc.Entries) != 2 || doc.Entries[1].CIDR != "GEO::DE" || doc.Entries[0].Added != "2026-10-14" {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -186,7 +187,7 @@ func TestAddWritesNothingOnAFinding(t *testing.T) {
 			p := writeDesired(t, desiredFixture)
 			args := append([]string{"add", "--file", p, "--ticket", "SEC-9", "--reason", "r", "block-v4"}, entries...)
 			r := runCLI(t, ncfEnv(Env{}), args...)
-			doc := decode[ChangeDoc](t, r.stdout, "prolexic.change.v1")
+			doc := decode[ops.ChangeDoc](t, r.stdout, "prolexic.change.v1")
 			if r.code != exitCode(apperr.Validation) || doc.Written || readFile(t, p) != desiredFixture {
 				t.Errorf("exit = %d, doc = %+v", r.code, doc)
 			}
@@ -216,7 +217,7 @@ func TestRemove(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[ChangeDoc](t, r.stdout, "prolexic.change.v1")
+	doc := decode[ops.ChangeDoc](t, r.stdout, "prolexic.change.v1")
 	if !doc.Written || doc.Ticket != "SEC-10" || doc.Entries[0].CIDR != "198.51.100.7/32" {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -262,7 +263,7 @@ func TestPlanAgainstV2(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if doc.Changes || !doc.OwnSpaceAnalytics || len(doc.Aliases) != 1 || doc.Aliases[0].Unchanged != 2 || doc.Aliases[0].ActiveVersion != "V1" {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -278,14 +279,14 @@ func TestPlanDriftAndOwnSpaceFromAnalytics(t *testing.T) {
 	p := writeDesired(t, desiredFixture)
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--exit-code")
-	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != exitCode(apperr.Drift) || !doc.Changes || len(doc.Aliases[0].Add) != 1 || !strings.HasPrefix(doc.Digest, "sha256:") {
 		t.Errorf("exit = %d, doc = %+v", r.code, doc)
 	}
 
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.200", "--ticket", "T", "--reason", "r")
 	r = runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
-	doc = decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc = decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != exitCode(apperr.Validation) || len(doc.Findings) != 1 || doc.Findings[0].Code != "own_space" ||
 		!strings.Contains(doc.Findings[0].Message, "analytics example-a/example-a") {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
@@ -298,7 +299,7 @@ func TestApplyThroughTheCLI(t *testing.T) {
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
 	saved := filepath.Join(t.TempDir(), "plan.json")
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--out", saved)
-	plan := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	plan := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if plan.Aliases[0].ActiveVersion != "V1" {
 		t.Fatalf("planned active version = %q", plan.Aliases[0].ActiveVersion)
 	}
@@ -312,7 +313,7 @@ func TestApplyThroughTheCLI(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ApplyDoc](t, r.stdout, "prolexic.apply.v1")
+	doc := decode[ops.ApplyDoc](t, r.stdout, "prolexic.apply.v1")
 	if doc.Result == nil || len(doc.Result.Aliases) != 1 || doc.Result.Aliases[0].Status != ncf.StatusDeployed || doc.Result.Aliases[0].Version != "V2" {
 		t.Errorf("result = %+v", doc.Result)
 	}
@@ -374,7 +375,7 @@ func TestPlanOwnSpaceIncludesCustomerNamesNotInUse(t *testing.T) {
 	p := writeDesired(t, desiredFixture)
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "192.0.2.200", "--ticket", "T", "--reason", "r")
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
-	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != exitCode(apperr.Validation) || len(doc.Findings) != 1 || !strings.Contains(doc.Findings[0].Message, "analytics example-old/") {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
 	}
@@ -385,7 +386,7 @@ func TestPlanRejectsOurOwnASNFromBGPSessions(t *testing.T) {
 	p := writeDesired(t, desiredFixture)
 	runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "ASN::64500", "--ticket", "T", "--reason", "r")
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
-	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != exitCode(apperr.Validation) || len(doc.Findings) != 1 || doc.Findings[0].Code != "own_space" ||
 		!strings.Contains(doc.Findings[0].Message, "our own AS (analytics example-a)") {
 		t.Errorf("exit = %d, findings = %+v", r.code, doc.Findings)
@@ -397,7 +398,7 @@ func TestPlanCustomerNameWithoutRoutedHasNoASNs(t *testing.T) {
 	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 404, `{"errorCode":"NOT_FOUND","message":"no routed service"}`)
 	p := writeDesired(t, desiredFixture)
 	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", p)
-	doc := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	doc := decode[ops.PlanDoc](t, r.stdout, "prolexic.plan.v1")
 	if r.code != 0 || !slices.ContainsFunc(doc.Findings, func(f ncf.Finding) bool { return f.Code == "own_space_asn_unknown" }) {
 		t.Errorf("exit = %d, findings = %+v; a 404 must be visible", r.code, doc.Findings)
 	}

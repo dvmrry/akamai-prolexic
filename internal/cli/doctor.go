@@ -10,6 +10,8 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/edgegrid"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
+	"github.com/dvmrry/akamai-prolexic/internal/networkhealth"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
@@ -175,11 +177,11 @@ func (a *app) clientStatus(role, section string) ClientStatus {
 func (a *app) liveChecks(ctx context.Context) []APIStatus {
 	return []APIStatus{
 		apiStatus("ncf", "NCF", func() error {
-			s, err := a.ncfRead()
+			c, err := a.readClient()
 			if err != nil {
 				return err
 			}
-			_, err = s.ListAliases(ctx)
+			_, err = ncfapi.NewV2(c).ListAliases(ctx)
 			return err
 		}),
 		apiStatus("analytics", "Analytics", func() error {
@@ -191,11 +193,11 @@ func (a *app) liveChecks(ctx context.Context) []APIStatus {
 			return err
 		}),
 		apiStatus("networkHealth", "Network Health", func() error {
-			c, err := a.networkHealth()
+			c, err := a.readClient()
 			if err != nil {
 				return err
 			}
-			_, err = c.Targets(ctx)
+			_, err = networkhealth.New(c).Targets(ctx)
 			return err
 		}),
 	}
