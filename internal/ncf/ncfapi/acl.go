@@ -51,10 +51,60 @@ type Range struct {
 	Max *int `json:"max,omitempty"`
 }
 
+// Span is an inclusive range with both ends known.
+type Span struct{ Min, Max int }
+
+// The full spans: a range covering one of them doesn't restrict.
+var (
+	AllProtocols = Span{0, 255}
+	AllPorts     = Span{0, 65535}
+)
+
+// span resolves r against the full span: a missing end takes full's. ok is
+// false when r gives no end at all.
+func (r *Range) span(full Span) (Span, bool) {
+	if r == nil || (r.Min == nil && r.Max == nil) {
+		return Span{}, false
+	}
+	s := full
+	if r.Min != nil {
+		s.Min = *r.Min
+	}
+	if r.Max != nil {
+		s.Max = *r.Max
+	}
+	return s, true
+}
+
 // PortRange is a TCP or UDP port pair.
 type PortRange struct {
 	SourcePort      *Range `json:"sourcePort,omitempty"`
 	DestinationPort *Range `json:"destinationPort,omitempty"`
+}
+
+// SourcePorts is the source port range the rule restricts to; ok is false
+// when it doesn't restrict (no range, or all of 0-65535).
+func (p *PortRange) SourcePorts() (Span, bool) {
+	if p == nil {
+		return Span{}, false
+	}
+	return restricted(p.SourcePort)
+}
+
+// DestinationPorts is SourcePorts for the destination port.
+func (p *PortRange) DestinationPorts() (Span, bool) {
+	if p == nil {
+		return Span{}, false
+	}
+	return restricted(p.DestinationPort)
+}
+
+func restricted(r *Range) (Span, bool) {
+	s, ok := r.span(AllPorts)
+	if !ok || s == AllPorts {
+		return Span{}, false
+	}
+	return s, true
 }
 
 // ACLParsed is a rule's parsed form; absent for remarks.
@@ -70,6 +120,15 @@ type ACLParsed struct {
 	UDP                *PortRange `json:"udp,omitempty"`
 	Established        bool       `json:"established,omitempty"`
 	Fragments          bool       `json:"fragments,omitempty"`
+}
+
+// Protocols is the IP protocol numbers the rule matches, AllProtocols for
+// every protocol; ok is false when the rule gives no protocol range.
+func (p *ACLParsed) Protocols() (Span, bool) {
+	if p == nil {
+		return Span{}, false
+	}
+	return p.Protocol.span(AllProtocols)
 }
 
 // ACLRuleDetail is one rule of an ACL version fetched with details.

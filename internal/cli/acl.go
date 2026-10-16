@@ -108,44 +108,30 @@ func (d *ACLDoc) WriteText(w io.Writer) error {
 
 var protocolNames = map[int]string{1: "icmp", 6: "tcp", 17: "udp", 47: "gre", 58: "icmpv6"}
 
-func protocolString(r *ncfapi.Range) string {
-	if r == nil || (r.Min == nil && r.Max == nil) {
-		return ""
-	}
-	lo, hi := 0, 255
-	if r.Min != nil {
-		lo = *r.Min
-	}
-	if r.Max != nil {
-		hi = *r.Max
-	}
+// protocolString names the rule's protocols: ip for all of them, a name for
+// the common numbers, else the number or min-max.
+func protocolString(p *ncfapi.ACLParsed) string {
+	s, ok := p.Protocols()
 	switch {
-	case lo == 0 && hi == 255:
+	case !ok:
+		return ""
+	case s == ncfapi.AllProtocols:
 		return "ip"
-	case lo == hi:
-		return cmp.Or(protocolNames[lo], strconv.Itoa(lo))
+	case s.Min == s.Max:
+		return cmp.Or(protocolNames[s.Min], strconv.Itoa(s.Min))
 	}
-	return fmt.Sprintf("%d-%d", lo, hi)
+	return fmt.Sprintf("%d-%d", s.Min, s.Max)
 }
 
-func rangeString(r *ncfapi.Range) string {
-	if r == nil || (r.Min == nil && r.Max == nil) {
+// spanString is a port restriction: empty when there is none.
+func spanString(s ncfapi.Span, ok bool) string {
+	switch {
+	case !ok:
 		return ""
+	case s.Min == s.Max:
+		return strconv.Itoa(s.Min)
 	}
-	lo, hi := 0, 65535
-	if r.Min != nil {
-		lo = *r.Min
-	}
-	if r.Max != nil {
-		hi = *r.Max
-	}
-	if lo == 0 && hi == 65535 {
-		return ""
-	}
-	if lo == hi {
-		return strconv.Itoa(lo)
-	}
-	return fmt.Sprintf("%d-%d", lo, hi)
+	return fmt.Sprintf("%d-%d", s.Min, s.Max)
 }
 
 func ruleRow(r ncfapi.ACLRuleDetail) ACLRuleRow {
@@ -155,14 +141,12 @@ func ruleRow(r ncfapi.ACLRuleDetail) ACLRuleRow {
 		return row
 	}
 	row.Action, row.Source, row.Destination = p.Action, p.SourceAddress, p.DestinationAddress
-	row.Protocol = protocolString(p.Protocol)
+	row.Protocol = protocolString(p)
 	row.IPVersion = cmp.Or(row.IPVersion, strings.ToUpper(p.IPVersion))
+	// One column per side: TCP's restriction, else UDP's.
 	for _, pr := range []*ncfapi.PortRange{p.TCP, p.UDP} {
-		if pr == nil {
-			continue
-		}
-		row.SourcePorts = cmp.Or(row.SourcePorts, rangeString(pr.SourcePort))
-		row.DestinationPorts = cmp.Or(row.DestinationPorts, rangeString(pr.DestinationPort))
+		row.SourcePorts = cmp.Or(row.SourcePorts, spanString(pr.SourcePorts()))
+		row.DestinationPorts = cmp.Or(row.DestinationPorts, spanString(pr.DestinationPorts()))
 	}
 	return row
 }

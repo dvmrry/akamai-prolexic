@@ -48,7 +48,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | `internal/analytics` | Prolexic Analytics client; `ForCustomers` runs a query once per customer name (commands use it, not `FanOut` directly) |
 | `internal/networkhealth` | Network Health client |
 | `internal/ncf` | the desired-state core: entries, desired file, checks, changes to the file (`AddEntries`, `RemoveEntries`, `Export`), role derivation, plan, apply, the `Store` port |
-| `internal/ncf/ncfapi` | `Store` and reads over NCF v2 |
+| `internal/ncf/ncfapi` | `Store` and reads over NCF v2, and what a rule's ranges mean (`Protocols`, `SourcePorts`: missing ends, every protocol, unrestricted ports) |
 | `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers for the own-space checks |
 | `internal/ncf/ncftest` | in-memory versioned `Store` with fault injection |
 | `internal/cli` | commands and wiring; one file per command family |
