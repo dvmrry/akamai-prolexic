@@ -222,3 +222,13 @@ func TestPlanWithErrorsShowsNoDigest(t *testing.T) {
 		t.Errorf("exit %d:\n%s", r.code, r.stdout)
 	}
 }
+
+// A plan saved by an older prolexic says so, rather than looking edited.
+func TestAnOlderPlanSaysToReplan(t *testing.T) {
+	old := filepath.Join(t.TempDir(), "plan.json")
+	os.WriteFile(old, []byte(`{"schema":"prolexic.plan.v1","digest":"sha256:x","fileDigest":"sha256:y","aliases":[]}`), 0o600)
+	r := runCLI(t, Env{}, "verify", "--plan", old)
+	if r.code != exitCode(apperr.Usage) || !strings.Contains(r.stderr, "older prolexic") {
+		t.Errorf("exit %d: %s", r.code, r.stderr)
+	}
+}

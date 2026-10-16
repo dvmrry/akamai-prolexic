@@ -105,8 +105,10 @@ func readPlan(path string) (*ncf.Plan, error) {
 	if want := (&PlanDoc{}).SchemaID(); doc.Schema != want {
 		return nil, apperr.New(apperr.Usage, "%s: schema %q, want %s (save prolexic plan's JSON output)", path, doc.Schema, want)
 	}
-	if doc.Digest == "" || doc.FileDigest == "" {
-		return nil, apperr.New(apperr.Usage, "%s: the plan has no digest or file digest; save it with this version's plan --out", path)
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(b, &keys) // it decoded above
+	if _, ok := keys["settings"]; !ok || doc.Digest == "" || doc.FileDigest == "" {
+		return nil, apperr.New(apperr.Usage, "%s was saved by an older prolexic (no settings or digests); run plan --out again", path)
 	}
 	return &doc.Plan, nil
 }
