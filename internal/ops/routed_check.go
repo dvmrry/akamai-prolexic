@@ -1,7 +1,6 @@
 package ops
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -13,7 +12,8 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
-// DefaultCheckInterval is the time between checks while RoutedCheck waits.
+// DefaultCheckInterval is the usual time between checks while RoutedCheck
+// waits: fronts offer it as the default; RoutedCheck never assumes it.
 const DefaultCheckInterval = 30 * time.Second
 
 // RoutedCheckInput asks whether a prefix has propagated to, or gone from,
@@ -22,9 +22,9 @@ type RoutedCheckInput struct {
 	Customers []string      // customer names; empty means every in-use name
 	Sites     []string      // only sessions in these data centers; empty means all
 	Prefix    string        // required; a bare address means /32 or /128
-	Expect    string        // present (the default) or absent
+	Expect    string        // present or absent; required
 	Wait      time.Duration // keep checking until satisfied or this long has passed; 0 checks once
-	Interval  time.Duration // time between checks while waiting; 0 means DefaultCheckInterval
+	Interval  time.Duration // time between checks while waiting; must be positive when Wait is
 }
 
 // RoutedCheckDoc is the result of a prefix propagation check.
@@ -75,14 +75,14 @@ func (r *Runtime) RoutedCheck(ctx context.Context, in RoutedCheckInput) (*Routed
 	if err != nil {
 		return nil, err
 	}
-	expect, err := analytics.ParseExpect(cmp.Or(in.Expect, string(analytics.ExpectPresent)))
+	expect, err := analytics.ParseExpect(in.Expect)
 	if err != nil {
 		return nil, err
 	}
-	interval := cmp.Or(in.Interval, DefaultCheckInterval)
-	if in.Wait < 0 || interval < 0 {
-		return nil, apperr.New(apperr.Usage, "wait and interval must not be negative")
+	if in.Wait < 0 || (in.Wait > 0 && in.Interval <= 0) {
+		return nil, apperr.New(apperr.Usage, "the wait must not be negative, and the interval must be positive when waiting")
 	}
+	interval := in.Interval
 	api, err := r.analytics()
 	if err != nil {
 		return nil, err

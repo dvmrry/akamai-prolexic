@@ -116,6 +116,8 @@ func TestRoutedCheckUsageErrors(t *testing.T) {
 		{"routed", "check", "--prefix", "nope"},
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--expect", "maybe"},
 		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "1m", "--interval", "0s"},
+		{"routed", "check", "--prefix", "203.0.113.0/24", "--expect", ""}, // an empty value is not "present"
+		{"routed", "check", "--prefix", "203.0.113.0/24", "--wait", "-1m"},
 	} {
 		if r := runCLI(t, api.env(), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d, want 2", args, r.code)
@@ -196,5 +198,16 @@ func TestRoutedCheckSessionsFailureDecidesTheExit(t *testing.T) {
 	}
 	if !strings.Contains(r.stderr, ", 1 failed names;") {
 		t.Errorf("a name failing both queries counted twice:\n%s", r.stderr)
+	}
+}
+
+// The interval matters only while waiting: a single check ignores it, as it
+// always has.
+func TestRoutedCheckIgnoresTheIntervalWithoutAWait(t *testing.T) {
+	api, _ := checkAPI(t, func(int) string { return routesBoth })
+	for _, iv := range []string{"0s", "-5s"} {
+		if r := runCLI(t, api.env(), "routed", "check", "--prefix", "203.0.113.0/24", "--interval", iv); r.code != 0 {
+			t.Errorf("--interval %s: exit = %d: %s", iv, r.code, r.stderr)
+		}
 	}
 }

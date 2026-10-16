@@ -35,6 +35,7 @@ The code is in three layers, so that other fronts (an MCP server, possibly a Ter
 - **Dependencies point down only.** SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and only `cli` and `internal/tools` import Cobra. `internal/hygiene` tests this.
 - Everything stays under `internal/` while every consumer lives in this module. `internal/` only stops imports from other modules, so it carries no public-API promise. Move to `pkg/` only if a consumer must live elsewhere.
 - **Operations take a `*ops.Runtime` and a typed input** and return the concrete document. A front builds the Runtime (clients over its credentials, a clock, a progress sink), maps its own input format onto the input type, and may repeat a check with a message naming its own flags; the operation owns the check. Messages in `ops` name fields, never flags (`internal/hygiene` tests this).
+- **Defaults belong to the fronts.** An operation never turns an empty or zero input into a default: it can't tell a value left out from one given explicitly, and a script passing `--expect "$X"` with `$X` empty must get an error, not a `present` check. The CLI takes its flag defaults from constants `ops` exports; an MCP front puts the same ones in its tool schemas. The one exception is the time window: `Window` is passed only when given, so an absent window takes the operation's default.
 
 ### Errors
 

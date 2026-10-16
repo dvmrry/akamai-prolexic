@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -19,9 +18,6 @@ func newRoutedCheckCmd(a *app) *cobra.Command {
 		Example: "  prolexic routed check --prefix 198.51.100.0/24 --wait 10m",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			if in.Interval <= 0 {
-				return nil, apperr.New(apperr.Usage, "--interval must be positive")
-			}
 			return docOf(a.ops().RoutedCheck(ctx, in))
 		}),
 	}

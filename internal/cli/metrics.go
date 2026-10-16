@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -21,10 +20,6 @@ func newMetricsCmd(a *app) *cobra.Command {
 		Example: "  prolexic metrics --type routed:bandwidthIn --since 6h",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			// Zero means the default in ops, so an explicit --samples 0 is caught here.
-			if in.Samples < 1 {
-				return nil, apperr.New(apperr.Usage, "--samples %d: must be at least 1", in.Samples)
-			}
 			var err error
 			if in.Window, err = win.window(); err != nil {
 				return nil, err

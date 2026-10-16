@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
@@ -100,5 +102,42 @@ func TestOutcomesAreDataNotErrors(t *testing.T) {
 	}
 	if len(d.Failures) != 1 || d.Failures[0].Kind != apperr.Credentials {
 		t.Errorf("failures = %+v", d.Failures)
+	}
+}
+
+// Operations never stand in a default for a value a front could have given
+// explicitly: an empty or zero value is refused, whichever front sent it.
+// Defaults are the front's (the CLI's flag defaults).
+func TestOperationsAssumeNoDefaults(t *testing.T) {
+	api := newFakeAPI(t)
+	env := api.env()
+	env.Home = t.TempDir()
+	r := (&app{env: env, section: "default"}).ops()
+	ctx := context.Background()
+	for name, call := range map[string]func() error{
+		"routed check, no expectation": func() error {
+			_, err := r.RoutedCheck(ctx, ops.RoutedCheckInput{Prefix: "203.0.113.0/24"})
+			return err
+		},
+		"routed check, waiting with no interval": func() error {
+			_, err := r.RoutedCheck(ctx, ops.RoutedCheckInput{Prefix: "203.0.113.0/24", Expect: "present", Wait: time.Minute})
+			return err
+		},
+		"metrics, no samples": func() error {
+			_, err := r.Metrics(ctx, ops.MetricsInput{Types: []string{"routed:bandwidthIn"}})
+			return err
+		},
+		"time series, no source": func() error {
+			_, err := r.TimeSeries(ctx, ops.TimeSeriesInput{Destinations: []string{"203.0.113.1"}})
+			return err
+		},
+		"export, no role": func() error {
+			_, err := r.Export(ctx, ops.ExportInput{File: filepath.Join(t.TempDir(), "desired.json")})
+			return err
+		},
+	} {
+		if err := call(); apperr.KindOf(err) != apperr.Usage {
+			t.Errorf("%s: err = %v, want a usage error", name, err)
+		}
 	}
 }

@@ -2,7 +2,6 @@ package ops
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -58,8 +57,8 @@ func (d *ExportDoc) WriteText(w io.Writer) error {
 type ExportInput struct {
 	File string // the desired file's path; a missing or empty file is bootstrapped
 	All  bool   // also add the editable live aliases the file doesn't name
-	// Role is the role of an alias no deployed rule references: deny (the
-	// default when empty) or allow. Deployed rules decide the rest.
+	// Role is the role of an alias no deployed rule references: deny or
+	// allow; required. Deployed rules decide the rest.
 	Role ncf.Role
 }
 
@@ -83,7 +82,7 @@ func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error
 	if err != nil {
 		return nil, err
 	}
-	res, err := ncf.Export(ctx, store, existing, ncf.ExportOptions{All: in.All, Role: cmp.Or(in.Role, ncf.RoleDeny)})
+	res, err := ncf.Export(ctx, store, existing, ncf.ExportOptions{All: in.All, Role: in.Role})
 	if err != nil {
 		return nil, err
 	}

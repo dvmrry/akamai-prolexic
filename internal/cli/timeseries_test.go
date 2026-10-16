@@ -73,6 +73,7 @@ func TestTimeSeriesFlagErrors(t *testing.T) {
 		{"time-series", "--destination", "nope"},
 		{"time-series", "--destination", "203.0.113.1", "--location", "Miami"},
 		{"time-series", "--destination", "203.0.113.1", "--source", "x"},
+		{"time-series", "--destination", "203.0.113.1", "--source", ""}, // an empty value is not "both"
 		{"time-series", "--destination", "203.0.113.1", "--samples", "-1"},
 	} {
 		if r := runCLI(t, env, args...); r.code != exitCode(apperr.Usage) {

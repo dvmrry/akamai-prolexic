@@ -44,7 +44,9 @@ func (d *MetricsDoc) WriteText(w io.Writer) error {
 	return writeFailures(w, d.Failures)
 }
 
-// Defaults of Metrics when its input leaves them zero.
+// MetricsDefaultSince is the window Metrics reads when none is given;
+// MetricsDefaultSamples is the usual sample count, which fronts offer as the
+// default (Metrics never assumes it).
 const (
 	MetricsDefaultSince   = 24 * time.Hour
 	MetricsDefaultSamples = 100
@@ -56,7 +58,7 @@ type MetricsInput struct {
 	Types     []string // SERVICE:METRIC, or fbm:METRIC:PROTOCOL; required
 	Subnet    string   // the subnet fbm types report on; fbm types need a subnet or an ip
 	IP        string   // the IP address fbm types report on
-	Samples   int      // data points to return; zero means MetricsDefaultSamples
+	Samples   int      // data points to return, at least 1
 	Window    Window   // zero means the last MetricsDefaultSince
 }
 
@@ -67,7 +69,7 @@ func (r *Runtime) Metrics(ctx context.Context, in MetricsInput) (*MetricsDoc, er
 	if err != nil {
 		return nil, err
 	}
-	q, err := analytics.ParseMetricQuery(in.Types, in.Subnet, in.IP, start, end, cmp.Or(in.Samples, MetricsDefaultSamples))
+	q, err := analytics.ParseMetricQuery(in.Types, in.Subnet, in.IP, start, end, in.Samples)
 	if err != nil {
 		return nil, err
 	}

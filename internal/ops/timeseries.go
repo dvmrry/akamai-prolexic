@@ -1,7 +1,6 @@
 package ops
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -38,7 +37,9 @@ func (d *TimeSeriesDoc) WriteText(w io.Writer) error {
 	return tw.Flush()
 }
 
-// Defaults of TimeSeries when its input leaves them zero.
+// TimeSeriesDefaultSince is the window TimeSeries reads when none is given;
+// TimeSeriesDefaultSource is the usual source, which fronts offer as the
+// default (TimeSeries never assumes it).
 const (
 	TimeSeriesDefaultSince  = 2 * time.Hour
 	TimeSeriesDefaultSource = "both"
@@ -48,7 +49,7 @@ const (
 type TimeSeriesInput struct {
 	Destinations []string // addresses or CIDR blocks; required
 	Locations    []string // data centers such as mia4, or agr for all aggregated; empty means agr
-	Source       string   // both, access_flow or border_flow; empty means TimeSeriesDefaultSource
+	Source       string   // both, access_flow or border_flow; required
 	Sum          bool     // also return the aggregatedData facet
 	Samples      int      // timestamps to return; zero means all in the window
 	Window       Window   // zero means the last TimeSeriesDefaultSince
@@ -60,7 +61,7 @@ func (r *Runtime) TimeSeries(ctx context.Context, in TimeSeriesInput) (*TimeSeri
 	if err != nil {
 		return nil, err
 	}
-	q, err := analytics.ParseTimeSeriesQuery(in.Destinations, in.Locations, cmp.Or(in.Source, TimeSeriesDefaultSource), in.Sum, in.Samples, start, end)
+	q, err := analytics.ParseTimeSeriesQuery(in.Destinations, in.Locations, in.Source, in.Sum, in.Samples, start, end)
 	if err != nil {
 		return nil, err
 	}
