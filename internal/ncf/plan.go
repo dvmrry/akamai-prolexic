@@ -15,7 +15,7 @@ import (
 // Plan is the diff of a desired file against live, with every finding.
 type Plan struct {
 	AccountID string      `json:"accountId"`
-	Digest    string      `json:"digest" doc:"sha256 over each alias's id, name, activeVersion and changes; apply --expect-digest must match."`
+	Digest    string      `json:"digest" doc:"sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
 	Changes   bool        `json:"changes"`
 	Aliases   []AliasPlan `json:"aliases"`
 	Findings  []Finding   `json:"findings"`
@@ -52,6 +52,7 @@ type AliasPlan struct {
 	Add           []Entry `json:"add"`
 	Remove        []Entry `json:"remove"`
 	Unchanged     int     `json:"unchanged"`
+	DesiredHash   string  `json:"desiredHash" doc:"sha256 over the alias's expected entries after apply (canonical, sorted): verify compares live with it."`
 
 	// desired is the full canonical entry list apply writes.
 	desired []string
@@ -263,6 +264,7 @@ func (c *Checker) diff(a Alias, l LiveAlias, add func(Severity, string, string, 
 	sortByValue(ap.Add)
 	sortByValue(ap.Remove)
 	sortCanonical(ap.desired)
+	ap.DesiredHash = entriesHash(ap.desired)
 	return ap, true
 }
 
@@ -299,7 +301,7 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 	}
 
 	if opts.MaxRemovals >= 0 && len(ap.Remove) > opts.MaxRemovals {
-		add(Error, "removal_threshold", a.Name, "", "would remove %d entries, more than the limit of %d; pass --max-removals to allow it", len(ap.Remove), opts.MaxRemovals)
+		add(Error, "removal_threshold", a.Name, "", "would remove %d entries, more than the removal limit of %d; raise the limit to allow it", len(ap.Remove), opts.MaxRemovals)
 	}
 }
 
@@ -395,10 +397,11 @@ func digest(aliases []AliasPlan) string {
 		ActiveVersion string   `json:"activeVersion"`
 		Add           []string `json:"add"`
 		Remove        []string `json:"remove"`
+		Desired       string   `json:"desired"`
 	}
 	pins := make([]pin, len(aliases))
 	for i, a := range aliases {
-		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove)}
+		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove), a.DesiredHash}
 	}
 	b, _ := json.Marshal(pins) // slices of plain structs always marshal
 	sum := sha256.Sum256(b)
@@ -501,4 +504,20 @@ func crossAliasMoves(aliases []AliasPlan, add func(Severity, string, string, str
 			}
 		}
 	}
+}
+
+// entriesHash is sha256 over a set of entries in canonical form, sorted and
+// without duplicates, so equal sets hash equal however the API spells them.
+func entriesHash(entries []string) string {
+	keys := make([]string, 0, len(entries))
+	for _, s := range entries {
+		if v, err := ParseLive(s); err == nil {
+			s = v.String()
+		}
+		keys = append(keys, s)
+	}
+	slices.Sort(keys)
+	b, _ := json.Marshal(slices.Compact(keys)) // a string slice always marshals
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }

@@ -33,7 +33,7 @@ type Packets struct {
 }
 
 // List returns the packets, as sent (with their ids).
-func (p Packets) List() []PacketTest { return slices.Clone(p.list) }
+func (p Packets) List() []PacketTest { return clonePackets(p.list) }
 
 // IPVersion is the packets' shared IP version: V4 or V6.
 func (p Packets) IPVersion() string { return p.ipVersion }
@@ -47,7 +47,7 @@ func ParsePackets(ps []PacketTest) (Packets, error) {
 	if len(ps) > MaxAnalyzerPackets {
 		return Packets{}, apperr.New(apperr.Usage, "%d packets: the analyzer takes at most %d", len(ps), MaxAnalyzerPackets)
 	}
-	out := Packets{list: slices.Clone(ps)}
+	out := Packets{list: clonePackets(ps)} // deep: a caller can't change a checked packet afterwards
 	seen := map[string]bool{}
 	for i := range out.list {
 		p := &out.list[i]
@@ -125,4 +125,21 @@ func checkPacket(p PacketTest) (string, error) {
 		return "V4", nil
 	}
 	return "V6", nil
+}
+
+// clonePackets copies ps deeply: the optional numbers are pointers and the
+// TCP flags a slice, which a shallow copy would share with the caller.
+func clonePackets(ps []PacketTest) []PacketTest {
+	out := make([]PacketTest, len(ps))
+	for i, p := range ps {
+		for _, f := range []**int{&p.SrcPort, &p.DstPort, &p.TTL, &p.PacketLength, &p.ICMPType, &p.ICMPCode} {
+			if *f != nil {
+				v := **f
+				*f = &v
+			}
+		}
+		p.TCPFlags = slices.Clone(p.TCPFlags)
+		out[i] = p
+	}
+	return out
 }

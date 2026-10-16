@@ -731,3 +731,29 @@ func TestApplyReportsProgress(t *testing.T) {
 		t.Errorf("waiting = %q", waiting)
 	}
 }
+
+// Aliases reaching production on the same poll are reported in plan order,
+// every run.
+func TestApplyProgressOrderIsStable(t *testing.T) {
+	for run := range 20 {
+		s := world()
+		s.Add(ncf.LiveAlias{ID: 103, Name: "block-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "198.51.100.200")
+		// No lag: both reach production by the first poll, so only the loop order decides.
+		f := desired("192.0.2.0/25", "198.51.100.9")
+		f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("198.51.100.201")})
+		var order []string
+		_, err := apply(t, s, f, func(o *ncf.ApplyOptions) {
+			o.Progress = func(p ncf.Progress) {
+				if p.Step == "in_production" {
+					order = append(order, p.Alias)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(order, []string{"block-b", "block-v4"}) {
+			t.Fatalf("run %d: in_production order = %v", run, order)
+		}
+	}
+}

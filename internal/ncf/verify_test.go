@@ -7,6 +7,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncftest"
 )
 
 // roundTrip is the plan as a pipeline hands it on: a JSON artifact.
@@ -65,5 +66,74 @@ func TestVerifyRefusesAPlanWithErrors(t *testing.T) {
 	p := &ncf.Plan{Findings: []ncf.Finding{{Severity: ncf.Error, Code: "own_space"}}}
 	if _, err := ncf.Verify(context.Background(), world(), p); apperr.KindOf(err) != apperr.Validation {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// applied returns a store with desired applied and the plan for it, as CI
+// would have saved it.
+func applied(t *testing.T) (*ncftest.Store, *ncf.File, *ncf.Plan) {
+	t.Helper()
+	s := world()
+	f := desired("192.0.2.0/25", "198.51.100.9")
+	p := roundTrip(t, plan(t, s, f, defaults))
+	if _, err := apply(t, s, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	return s, f, p
+}
+
+func TestVerifyCatchesAReplacedUnchangedEntry(t *testing.T) {
+	s, _, p := applied(t)
+	s.ActivateNow(101, "203.0.113.200", "198.51.100.9") // the unchanged /25 swapped: same count
+	v, _ := ncf.Verify(context.Background(), s, p)
+	if v.Verified || v.Aliases[0].SameSet {
+		t.Errorf("a swapped entry verified: %+v", v.Aliases[0])
+	}
+}
+
+func TestVerifyRefusesAnEditedPlan(t *testing.T) {
+	s, _, p := applied(t)
+	truncated := *p
+	truncated.Aliases = nil
+	edited := roundTrip(t, p)
+	edited.Aliases[0].Add = nil
+	stripped := roundTrip(t, p)
+	stripped.Aliases[0].DesiredHash = ""
+	for name, q := range map[string]*ncf.Plan{"truncated": &truncated, "edited": edited, "stripped": stripped} {
+		if _, err := ncf.Verify(context.Background(), s, q); apperr.KindOf(err) != apperr.Validation {
+			t.Errorf("%s: err = %v, want a refusal", name, err)
+		}
+	}
+}
+
+func TestVerifyNeedsAHealthySettledDeployment(t *testing.T) {
+	for name, d := range map[string]ncf.Deployment{
+		"failed rules": {Version: 7, FailedRules: 2},
+		"processing":   {Version: 7, Processing: true},
+	} {
+		s, _, p := applied(t)
+		s.Deploy = d
+		v, err := ncf.Verify(context.Background(), s, p)
+		if err != nil || v.Verified || len(v.Deployment) != 1 {
+			t.Errorf("%s: %+v, err = %v", name, v, err)
+		}
+	}
+}
+
+func TestVerifyNoticesAnAliasLeavingProduction(t *testing.T) {
+	s := world()
+	s.UseInRule(101, 1) // in production before the change
+	f := desired("192.0.2.0/25", "198.51.100.9")
+	p := roundTrip(t, plan(t, s, f, defaults))
+	if p.Aliases[0].ProdVersion == "" {
+		t.Fatal("fixture: the plan should see production")
+	}
+	if _, err := apply(t, s, f, nil); err != nil {
+		t.Fatal(err)
+	}
+	s.Lag(101, "") // no deployed rule uses it any more
+	v, _ := ncf.Verify(context.Background(), s, p)
+	if v.Verified || !v.Aliases[0].ProductionLag {
+		t.Errorf("left production but verified: %+v", v.Aliases[0])
 	}
 }

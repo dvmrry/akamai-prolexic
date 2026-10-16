@@ -58,6 +58,10 @@
                 },
                 "type": "array"
               },
+              "desiredHash": {
+                "description": "sha256 over the alias's expected entries after apply (canonical, sorted): verify compares live with it.",
+                "type": "string"
+              },
               "id": {
                 "type": "integer"
               },
@@ -129,6 +133,7 @@
             "required": [
               "activeVersion",
               "add",
+              "desiredHash",
               "id",
               "ipVersion",
               "name",
@@ -191,7 +196,7 @@
           "type": "object"
         },
         "digest": {
-          "description": "sha256 over each alias's id, name, activeVersion and changes; apply --expect-digest must match.",
+          "description": "sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
           "type": "string"
         },
         "findings": {

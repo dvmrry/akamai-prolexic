@@ -182,3 +182,20 @@ func TestRoutedCheckFailedNameIsNotSatisfied(t *testing.T) {
 		t.Errorf("exit = %d, want 3", r.code)
 	}
 }
+
+// A name failing both queries keeps the exit code it had before failures
+// became document data: the sessions failure decides it.
+func TestRoutedCheckSessionsFailureDecidesTheExit(t *testing.T) {
+	api, _ := checkAPI(t, func(int) string { return routesBoth })
+	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
+	api.json("POST /prolexic-analytics/v2/routed/tunnel/routes", 404, `{"title":"Not Found","status":404}`)
+	env := api.env()
+	fakeClock(&env)
+	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--expect", "absent", "--wait", "1m", "--interval", "30s")
+	if r.code != exitCode(apperr.Credentials) {
+		t.Errorf("exit = %d, want 3 (credentials): %s", r.code, r.stderr)
+	}
+	if !strings.Contains(r.stderr, ", 1 failed names;") {
+		t.Errorf("a name failing both queries counted twice:\n%s", r.stderr)
+	}
+}

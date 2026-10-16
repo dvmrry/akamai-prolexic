@@ -73,3 +73,19 @@ func TestAnalyzeACLRefusesUncheckedInput(t *testing.T) {
 		}
 	}
 }
+
+// A parsed list can't be changed through the caller's packets, or through
+// what List returns.
+func TestParsedPacketsAreTheirOwn(t *testing.T) {
+	in := []PacketTest{{Protocol: "tcp", SrcIP: "192.0.2.1", DstIP: "192.0.2.2", DstPort: port(443), TCPFlags: []string{"syn"}}}
+	parsed, err := ParsePackets(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	*in[0].DstPort, in[0].TCPFlags[0] = 99999, "bogus"
+	out := parsed.List()
+	*out[0].DstPort, out[0].TCPFlags[0] = 99999, "bogus"
+	if got := parsed.List()[0]; *got.DstPort != 443 || got.TCPFlags[0] != "syn" {
+		t.Errorf("checked packet changed: dport %d, flags %v", *got.DstPort, got.TCPFlags)
+	}
+}

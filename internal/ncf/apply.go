@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -293,7 +294,8 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 			prods[l.ID] = l.ProdVersion
 		}
 		var pending []string
-		for i, want := range target {
+		for _, i := range slices.Sorted(maps.Keys(target)) { // in plan order: stable progress
+			want := target[i]
 			prod, ok := prods[r.res.Aliases[i].ID]
 			if !ok {
 				err := apperr.New(apperr.Upstream, "poll %s: the alias is no longer listed", r.res.Aliases[i].Name)

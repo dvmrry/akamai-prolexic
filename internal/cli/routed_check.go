@@ -26,6 +26,8 @@ type RoutedCheckDoc struct {
 	Sessions  []analytics.SessionCheck   `json:"sessions" doc:"The expected sessions, sorted by customer, dataCenter, routerName, peer."`
 	Skipped   []analytics.SkippedSession `json:"skipped" doc:"Sessions with no BGP peer of the prefix's address family; not expected."`
 	Failures  []analytics.Failure        `json:"failures" doc:"Customer names whose query failed on the last attempt."`
+
+	sessionFailures int // Failures[:sessionFailures] came from the sessions query: they decide the outcome first
 }
 
 func (*RoutedCheckDoc) SchemaID() string { return "prolexic.routed-check.v1" }
@@ -110,6 +112,7 @@ func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixF
 			return nil, ctx.Err()
 		}
 		doc.Failures = nonNil(append(sfail, rfail...))
+		doc.sessionFailures = len(sfail)
 		res := analytics.EvaluateCheck(sessions, routes, prefix, expect, sites)
 		doc.Sessions, doc.Skipped = nonNil(res.Sessions), nonNil(res.Skipped)
 		doc.Satisfied = res.Satisfied() && len(doc.Failures) == 0
@@ -124,7 +127,7 @@ func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixF
 		}
 		next := min(interval, remaining)
 		a.progress(fmt.Sprintf("attempt %d: %d of %d sessions match --expect %s, %d failed names; checking again in %s (%s left)",
-			doc.Attempts, len(res.Sessions)-res.Off, len(res.Sessions), expect, len(doc.Failures), next, remaining.Round(time.Second)))
+			doc.Attempts, len(res.Sessions)-res.Off, len(res.Sessions), expect, failedNames(doc.Failures), next, remaining.Round(time.Second)))
 		if err := a.env.Sleep(ctx, next); err != nil {
 			return nil, err
 		}
@@ -134,7 +137,13 @@ func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixF
 // Outcome is how the last attempt ended: failed names, nothing to check, or
 // sessions that don't match the expectation.
 func (d *RoutedCheckDoc) Outcome() error {
-	if err := failuresOutcome(d.Failures, d.Customers); err != nil {
+	// The sessions query's failures come first, then the routes query's: a name
+	// failing both is reported with its sessions failure.
+	n := min(d.sessionFailures, len(d.Failures))
+	if err := failuresOutcome(d.Failures[:n], d.Customers); err != nil {
+		return err
+	}
+	if err := failuresOutcome(d.Failures[n:], d.Customers); err != nil {
 		return err
 	}
 	if len(d.Sessions) == 0 {
@@ -150,4 +159,14 @@ func (d *RoutedCheckDoc) Outcome() error {
 		}
 	}
 	return apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", off, len(d.Sessions), d.Expect, d.Prefix)
+}
+
+// failedNames counts the distinct customer names in failures: a name can fail
+// both the sessions and the routes query.
+func failedNames(failures []analytics.Failure) int {
+	seen := map[string]bool{}
+	for _, f := range failures {
+		seen[f.Customer] = true
+	}
+	return len(seen)
 }

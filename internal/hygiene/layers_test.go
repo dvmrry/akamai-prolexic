@@ -1,10 +1,12 @@
 package hygiene
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -61,6 +63,30 @@ func TestLayers(t *testing.T) {
 			if (strings.HasPrefix(dep, "github.com/spf13/cobra") || dep == module+"internal/cli") && !cliSide {
 				t.Errorf("%s imports %s: only the CLI and its tools may", dir, dep)
 			}
+		}
+	}
+}
+
+// TestSDKNamesNoFlags keeps CLI flag names out of SDK messages: the SDK
+// can't know which front called it, so it words errors in domain terms.
+func TestSDKNamesNoFlags(t *testing.T) {
+	flag := regexp.MustCompile(`(^|[\s("'])--[a-z]`)
+	for _, dir := range sdk {
+		files, _ := filepath.Glob(filepath.Join("..", "..", dir, "*.go"))
+		for _, p := range files {
+			if strings.HasSuffix(p, "_test.go") {
+				continue
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), p, nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ast.Inspect(f, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && flag.MatchString(lit.Value) {
+					t.Errorf("%s: %s names a CLI flag", p, lit.Value)
+				}
+				return true
+			})
 		}
 	}
 }

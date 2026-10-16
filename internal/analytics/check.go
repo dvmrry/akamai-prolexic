@@ -24,7 +24,7 @@ func ParseExpect(s string) (Expect, error) {
 	case ExpectPresent, ExpectAbsent:
 		return e, nil
 	}
-	return "", apperr.New(apperr.Usage, "--expect must be present or absent, not %q", s)
+	return "", apperr.New(apperr.Usage, "expectation %q: want present or absent", s)
 }
 
 // SessionCheck is one expected session and whether it carries the prefix.

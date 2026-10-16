@@ -42,6 +42,10 @@
             "description": "Production doesn't carry the active version yet.",
             "type": "boolean"
           },
+          "sameSet": {
+            "description": "The live entries hash to the plan's desiredHash: exactly the expected set.",
+            "type": "boolean"
+          },
           "stillLive": {
             "description": "Entries the plan removes that are still live.",
             "items": {
@@ -67,11 +71,19 @@
           "problems",
           "prodVersion",
           "productionLag",
+          "sameSet",
           "stillLive",
           "verified",
           "want"
         ],
         "type": "object"
+      },
+      "type": "array"
+    },
+    "deployment": {
+      "description": "What is wrong with the ACL deployment: failed, or still processing. Empty when healthy.",
+      "items": {
+        "type": "string"
       },
       "type": "array"
     },
@@ -86,12 +98,13 @@
       "type": "string"
     },
     "verified": {
-      "description": "Every alias matched.",
+      "description": "Every alias matched and the ACL deployment is healthy and settled.",
       "type": "boolean"
     }
   },
   "required": [
     "aliases",
+    "deployment",
     "digest",
     "planFile",
     "schema",
