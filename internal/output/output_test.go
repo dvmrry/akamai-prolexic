@@ -156,3 +156,37 @@ func TestJSONEscapesDELAndC1(t *testing.T) {
 		t.Errorf("round trip: %q, %v", doc.Message, err)
 	}
 }
+
+// Bidi overrides, zero-width characters, the BOM and line separators are
+// escaped in text and JSON: a right-to-left override can visually reverse or
+// forge a line. Ordinary non-ASCII text is left alone.
+func TestInvisibleCharactersAreEscaped(t *testing.T) {
+	hidden := []rune{0x202e, 0x200b, 0x2066, 0xfeff, 0x2028}
+	in, plain := "a", "e-acute "+string(rune(0xe9))+" cjk "+string(rune(0x4e2d))+" emoji "+string(rune(0x1f642))
+	for _, r := range hidden {
+		in += string(r) + "x"
+	}
+	in += plain
+	got := Sanitize(in)
+	for _, r := range hidden {
+		if strings.ContainsRune(got, r) {
+			t.Errorf("text: raw U+%04X in %q", r, got)
+		}
+	}
+	if !strings.Contains(got, "\\"+"u202e") || !strings.Contains(got, plain) {
+		t.Errorf("text = %q", got)
+	}
+	var buf bytes.Buffer
+	if err := Write(&buf, JSON, &nameDoc{Name: in}); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range hidden {
+		if strings.ContainsRune(buf.String(), r) {
+			t.Errorf("json: raw U+%04X", r)
+		}
+	}
+	var back struct{ Name string }
+	if err := json.Unmarshal(buf.Bytes(), &back); err != nil || back.Name != in || !strings.Contains(buf.String(), plain) {
+		t.Errorf("json round trip: %q, %v", back.Name, err)
+	}
+}

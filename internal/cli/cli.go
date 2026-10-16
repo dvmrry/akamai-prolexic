@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
@@ -82,6 +83,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 		env.Sleep = sleep
 	}
 	a := &app{env: env, format: output.Auto}
+	a.presetFormat(args) // so errors before flag parsing still honour an explicit choice
 	if len(args) > 0 && args[0] == "--version" {
 		args = append([]string{"version"}, args[1:]...)
 	}
@@ -210,4 +212,25 @@ func loadCABundle(path string) (*x509.CertPool, int, error) {
 		return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s holds no PEM certificate", path)
 	}
 	return pool, n, nil
+}
+
+// presetFormat reads an explicit format choice (--format or PROLEXIC_FORMAT)
+// before cobra parses anything, so an error raised during parsing (an
+// unknown flag, a wrong argument count) still honours it. The parsed flag
+// replaces it once parsing succeeds.
+func (a *app) presetFormat(args []string) {
+	v := a.env.Getenv("PROLEXIC_FORMAT")
+	for i, s := range args {
+		if s == "--" {
+			break
+		}
+		if s == "--format" && i+1 < len(args) {
+			v = args[i+1]
+		} else if after, ok := strings.CutPrefix(s, "--format="); ok {
+			v = after
+		}
+	}
+	if f, err := output.ParseFormat(v); v != "" && err == nil {
+		a.format, a.formatChosen = f, true
+	}
 }

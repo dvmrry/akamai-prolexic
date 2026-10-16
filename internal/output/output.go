@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -108,21 +109,20 @@ func writeJSON(w io.Writer, v any) error {
 	return err
 }
 
-// escapeControls escapes DEL and the C1 controls (U+0080 to U+009F), which
-// encoding/json leaves raw but a terminal or log viewer may act on. Such
+// escapeControls escapes DEL and the invisible characters (C1 controls, Unicode
+// format characters, line separators), which encoding/json leaves raw but a
+// terminal or log viewer may act on. Such
 // bytes can only occur inside JSON strings, so a \\u escape is always valid.
 func escapeControls(b []byte) []byte {
 	var out []byte
-	for i := 0; i < len(b); i++ {
-		switch {
-		case b[i] == 0x7f:
-			out = append(out, `\u007f`...)
-		case b[i] == 0xc2 && i+1 < len(b) && b[i+1] >= 0x80 && b[i+1] <= 0x9f:
-			out = fmt.Appendf(out, `\u%04x`, b[i+1])
-			i++
-		default:
-			out = append(out, b[i])
+	for len(b) > 0 {
+		r, size := utf8.DecodeRune(b)
+		if r == 0x7f || (size > 1 && invisible(r)) {
+			out = escapeRune(out, r)
+		} else {
+			out = append(out, b[:size]...)
 		}
+		b = b[size:]
 	}
 	return out
 }

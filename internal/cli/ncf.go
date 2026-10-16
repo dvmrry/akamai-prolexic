@@ -439,7 +439,7 @@ func newPlanCmd(a *app) *cobra.Command {
 		Use:   "plan",
 		Short: "diff the desired file against live and validate it",
 		Long: "Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. " +
-			"--out saves the plan's JSON to a file (for apply --plan and verify --plan) and shows the text on stdout, from the same run.",
+			"--out also saves the plan's JSON to a file (for apply --plan and verify --plan); stdout follows --format, so --format text gives a reviewer the text from the same run.",
 		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
 			if out != "" {
@@ -456,7 +456,7 @@ func newPlanCmd(a *app) *cobra.Command {
 	}
 	p.register(cmd)
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "exit 7 when the plan has changes (drift)")
-	cmd.Flags().StringVar(&out, "out", "", "also save the plan's JSON to this file; stdout shows text unless --format json")
+	cmd.Flags().StringVar(&out, "out", "", "also save the plan's JSON to this file (stdout still follows --format)")
 	return cmd
 }
 

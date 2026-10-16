@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -343,5 +344,24 @@ func TestRootCAsTrustADeclaredCA(t *testing.T) {
 	trusted := New(creds, Options{RootCAs: pool})
 	if err := trusted.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, &map[string]any{}); err != nil {
 		t.Errorf("with the CA declared: %v", err)
+	}
+}
+
+// An API error body that echoes the request URL doesn't leak the host or the
+// account switch key either.
+func TestEchoedErrorBodiesAreRedacted(t *testing.T) {
+	var host string
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(400)
+		fmt.Fprintf(w, `{"title":"Bad for %s","detail":"bad request to https://%s/x?accountSwitchKey=SWITCH"}`, host, host)
+	})
+	host = c.base.Host
+	err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, nil)
+	u := apperr.UpstreamOf(err)
+	for _, s := range []string{err.Error(), u.Title, u.Detail} {
+		if strings.Contains(s, host) || strings.Contains(s, "SWITCH") {
+			t.Errorf("leaked: %q", s)
+		}
 	}
 }

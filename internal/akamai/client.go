@@ -254,7 +254,7 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 		}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return statusError(req, resp.StatusCode, b)
+		return c.redactUpstream(statusError(req, resp.StatusCode, b))
 	}
 	// A 2xx that isn't the API's answer must not pass as one: an intercepting
 	// proxy's page, or an empty body where data was expected. Read as empty,
@@ -457,4 +457,26 @@ func untrusted(err error) bool {
 	var cv *tls.CertificateVerificationError
 	var ua x509.UnknownAuthorityError
 	return errors.As(err, &cv) || errors.As(err, &ua)
+}
+
+// redactUpstream applies redact to an API error's own text: a problem body
+// can echo the request URL, and with it the host and the account switch key.
+func (c *Client) redactUpstream(err error) error {
+	var e *apperr.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	scrub := func(s string) string {
+		for _, secret := range []string{c.base.Host, c.accountKey} {
+			if secret != "" {
+				s = strings.ReplaceAll(s, secret, "<redacted>")
+			}
+		}
+		return s
+	}
+	e.Message = scrub(e.Message)
+	if u := e.Upstream; u != nil {
+		u.Title, u.Detail, u.ErrorCode = scrub(u.Title), scrub(u.Detail), scrub(u.ErrorCode)
+	}
+	return err
 }

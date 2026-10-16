@@ -143,7 +143,7 @@ func TestDispatch(t *testing.T) {
 	}{
 		{"no args", nil, apperr.Usage, "", "missing command"},
 		{"help", []string{"--help"}, apperr.OK, "Plan, apply and verify:", ""},
-		{"help command", []string{"help", "plan"}, apperr.OK, "--out saves the plan", ""},
+		{"help command", []string{"help", "plan"}, apperr.OK, "stdout follows --format", ""},
 		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for "prolexic routed"; run 'prolexic routed --help'`},
 		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command "bogus" for "prolexic routed"`},
 		{"unknown", []string{"bogus"}, apperr.Usage, "", `unknown command "bogus"; run 'prolexic --help'`},
@@ -376,5 +376,25 @@ func TestFormatIsJSONByDefault(t *testing.T) {
 	}
 	if r := runCLI(t, Env{}, "bogus", "--format", "json"); !strings.HasPrefix(r.stderr, "{") {
 		t.Errorf("--format json error: stderr = %q, want the JSON document", r.stderr)
+	}
+}
+
+// An explicit JSON choice holds for errors raised while parsing flags too.
+func TestExplicitJSONHoldsForParseErrors(t *testing.T) {
+	jsonEnv := Env{Getenv: func(k string) string {
+		if k == "PROLEXIC_FORMAT" {
+			return "json"
+		}
+		return ""
+	}}
+	for name, run := range map[string]result{
+		"flag":       runCLI(t, Env{}, "validate", "--bogusflag", "--format", "json"),
+		"flag=":      runCLI(t, Env{}, "validate", "--format=json", "--bogusflag"),
+		"env":        runCLI(t, jsonEnv, "validate", "--bogusflag"),
+		"extra args": runCLI(t, jsonEnv, "validate", "extra-arg"),
+	} {
+		if run.code != exitCode(apperr.Usage) || !strings.HasPrefix(run.stderr, "{") {
+			t.Errorf("%s: exit %d, stderr %q", name, run.code, run.stderr)
+		}
 	}
 }

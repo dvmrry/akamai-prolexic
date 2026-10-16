@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -48,8 +50,8 @@ func (s *safeWriter) Write(p []byte) (int, error) {
 			} else {
 				out = append(out, b)
 			}
-		case r >= 0x80 && r <= 0x9f:
-			out = fmt.Appendf(out, `\u%04x`, r)
+		case invisible(r):
+			out = escapeRune(out, r)
 		default:
 			out = append(out, in[i:i+size]...)
 		}
@@ -88,4 +90,22 @@ func Sanitize(s string) string {
 	sw.Write([]byte(s))
 	sw.flush()
 	return b.String()
+}
+
+// invisible reports a character that acts on a display instead of showing:
+// C1 controls, Unicode format characters (bidi overrides and isolates, which
+// can visually reverse or forge a line, zero-width characters, the BOM) and
+// the line and paragraph separators.
+func invisible(r rune) bool {
+	return (r >= 0x80 && r <= 0x9f) || unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029
+}
+
+// escapeRune appends r as \uXXXX, a surrogate pair beyond the BMP, which is
+// valid in JSON strings and readable in text.
+func escapeRune(out []byte, r rune) []byte {
+	if r > 0xffff {
+		r1, r2 := utf16.EncodeRune(r)
+		return fmt.Appendf(out, `\u%04x\u%04x`, r1, r2)
+	}
+	return fmt.Appendf(out, `\u%04x`, r)
 }
