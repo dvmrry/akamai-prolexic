@@ -63,6 +63,7 @@ The exit codes are a contract:
 make build      # bin/prolexic
 make install    # ~/go/bin/prolexic
 make check      # gofmt, go vet, go test, gitleaks
+make fuzz       # fuzz the parsers and the plan diff (FUZZTIME=30s each)
 make schemas    # regenerate schemas/ after changing a document type
 make docs       # regenerate docs/cli/ after changing a command or flag
 ```

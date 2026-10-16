@@ -8,7 +8,7 @@ LDFLAGS := -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSI
 	-X github.com/dvmrry/akamai-prolexic/internal/version.commit=$(COMMIT) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.date=$(DATE)
 
-.PHONY: build install fmt-check vet test race schemas docs secret-scan check
+.PHONY: build install fmt-check vet test race fuzz schemas docs secret-scan check
 
 build:
 	go build -ldflags '$(LDFLAGS)' -o bin/prolexic ./cmd/prolexic
@@ -28,6 +28,14 @@ test:
 
 race:
 	go test -race ./...
+
+# Fuzz each target for FUZZTIME (go test runs only one -fuzz target at a
+# time). make check replays only the seed inputs; run this now and then.
+FUZZTIME ?= 30s
+fuzz:
+	@for t in FuzzEntry FuzzDesiredFile FuzzEntriesHash FuzzPlanDiff; do \
+		echo "== $$t"; go test ./internal/ncf -run '^$$' -fuzz "^$$t\$$" -fuzztime $(FUZZTIME); \
+	done
 
 # Regenerate schemas/ from the Go document types (TestSchemas checks them).
 schemas:

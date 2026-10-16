@@ -3,6 +3,7 @@ package ncf_test
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
@@ -152,4 +153,65 @@ func TestVerifyListsOnce(t *testing.T) {
 	if n := s.Count("GetAlias") - gets; n != 0 {
 		t.Errorf("GetAlias called %d times", n)
 	}
+}
+
+// FuzzPlanDiff: for any live set and desired set (drawn from a pool, live in
+// the API's spellings), live minus the plan's removes plus its adds is
+// exactly the desired set, and unchanged counts the rest.
+func FuzzPlanDiff(f *testing.F) {
+	pool := []struct{ authored, live string }{
+		{"192.0.2.0/25", "192.0.2.0/25"}, {"198.51.100.7", "198.51.100.7/32"}, {"198.51.100.8/32", "198.51.100.8"},
+		{"198.51.100.64/26", "198.51.100.64/26"}, {"GEO::DE", "GEO::DE"}, {"ASN::64500", "ASN::64500"},
+		{"192.0.2.128/25", "192.0.2.128/25"}, {"198.51.100.9", "198.51.100.9/32"},
+	}
+	f.Add(uint8(0b00000011), uint8(0b00000110))
+	f.Add(uint8(0), uint8(0xff))
+	f.Add(uint8(0xff), uint8(0))
+	f.Fuzz(func(t *testing.T, liveBits, wantBits uint8) {
+		var live, want []string
+		for i, e := range pool {
+			if liveBits&(1<<i) != 0 {
+				live = append(live, e.live)
+			}
+			if wantBits&(1<<i) != 0 {
+				want = append(want, e.authored)
+			}
+		}
+		s := world()
+		s.ActivateNow(101, live...)
+		p := plan(t, s, desired(want...), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive})
+		if len(p.Aliases) != 1 {
+			t.Fatalf("plan = %+v", p)
+		}
+		ap := p.Aliases[0]
+		result := map[string]bool{}
+		for _, e := range live {
+			result[canon(t, e)] = true
+		}
+		for _, e := range ap.Remove {
+			delete(result, canon(t, e.CIDR))
+		}
+		for _, e := range ap.Add {
+			result[canon(t, e.CIDR)] = true
+		}
+		wantSet := map[string]bool{}
+		for _, e := range want {
+			wantSet[canon(t, e)] = true
+		}
+		if !maps.Equal(result, wantSet) {
+			t.Fatalf("live %v, want %v: live - remove %v + add %v = %v", live, want, ap.Remove, ap.Add, result)
+		}
+		if ap.Unchanged != len(wantSet)-len(ap.Add) {
+			t.Fatalf("unchanged = %d, want %d", ap.Unchanged, len(wantSet)-len(ap.Add))
+		}
+	})
+}
+
+func canon(t *testing.T, s string) string {
+	t.Helper()
+	v, err := ncf.ParseLive(s)
+	if err != nil {
+		t.Fatalf("%q: %v", s, err)
+	}
+	return v.String()
 }

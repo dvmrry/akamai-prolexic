@@ -12,6 +12,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 ## Commands
 
 - `make check`: gofmt, `go vet`, `go test`, gitleaks. Run it before every commit.
+- `make fuzz`: fuzzes the entry parser, the desired file, the entry-set hash and the plan diff for `FUZZTIME` each (default 30s). `make check` replays only their seeds; run this after touching parsing or the diff.
 - `make schemas`: regenerates `schemas/` after a document type changes. `TestSchemas` fails if a type and its schema drift.
 - `make docs`: regenerates `docs/cli/` (the Markdown CLI reference) from the Cobra tree after a command or flag changes. `TestDocsCurrent` fails when it is stale.
 - `make build`: builds `bin/prolexic`, with the version injected through ldflags.
