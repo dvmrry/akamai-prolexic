@@ -212,6 +212,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		c.liveChecks(a, full, &ap, checked, ownASNs, opts, add)
 		p.Aliases = append(p.Aliases, ap)
 	}
+	crossAliasMoves(p.Aliases, add)
 
 	slices.SortFunc(p.Aliases, func(x, y AliasPlan) int { return cmpString(x.Name, y.Name) })
 	for _, a := range p.Aliases {
@@ -463,4 +464,41 @@ func cmpString(a, b string) int {
 		return 1
 	}
 	return 0
+}
+
+// crossAliasMoves warns when space leaves one deny-side alias while another
+// gains it in the same apply. Each alias changes atomically, but aliases
+// activate and reach production one at a time, so there is a moment when
+// neither blocks it. Two applies close the gap: the addition, then the
+// removal.
+func crossAliasMoves(aliases []AliasPlan, add func(Severity, string, string, string, string, ...any)) {
+	deny := func(a AliasPlan) bool { return a.Role == RoleDeny && a.Type != "DIPA" }
+	covers := func(x, y string) bool {
+		vx, ex := ParseLive(x)
+		vy, ey := ParseLive(y)
+		if ex != nil || ey != nil {
+			return false
+		}
+		if vx.Kind() == KindPrefix && vy.Kind() == KindPrefix {
+			return vx.Prefix().Overlaps(vy.Prefix())
+		}
+		return vx.String() == vy.String() // GEO:: and ASN:: entries move only as themselves
+	}
+	for _, from := range aliases {
+		if !deny(from) {
+			continue
+		}
+		for _, r := range from.Remove {
+			for _, to := range aliases {
+				if to.Name == from.Name || !deny(to) {
+					continue
+				}
+				if i := slices.IndexFunc(to.Add, func(e Entry) bool { return covers(r.CIDR, e.CIDR) }); i >= 0 {
+					add(Warning, "cross_alias_move", from.Name, r.CIDR,
+						"%s leaves %s while %s gains %s: aliases activate one at a time, so for a moment neither blocks it; to avoid that, apply the addition first, then the removal",
+						r.CIDR, from.Name, to.Name, to.Add[i].CIDR)
+				}
+			}
+		}
+	}
 }

@@ -387,3 +387,29 @@ func TestPlanReportsLiveOwnSpaceWarnings(t *testing.T) {
 		t.Errorf("findings = %q", got)
 	}
 }
+
+func TestPlanWarnsWhenSpaceMovesBetweenDenyAliases(t *testing.T) {
+	setup := func(role ncf.Role) (*ncftest.Store, *ncf.File) {
+		s := world()
+		s.Add(ncf.LiveAlias{ID: 103, Name: "block-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "198.51.100.200")
+		f := desired("198.51.100.7") // 192.0.2.0/25 leaves block-v4 ...
+		f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-b", ID: 103, Type: "SOURCE", Role: role,
+			Entries: entries("198.51.100.200", "192.0.2.0/26", "192.0.2.64/26")}) // ... and lands in block-b, split
+		return s, f
+	}
+	s, f := setup(ncf.RoleDeny)
+	got := findingCodes(plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}).Findings)
+	if !slices.Equal(got, []string{"warning cross_alias_move block-v4 192.0.2.0/25"}) {
+		t.Errorf("deny to deny: findings = %q", got)
+	}
+	s, f = setup(ncf.RoleAllow)
+	if got := findingCodes(plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}).Findings); len(got) != 0 {
+		t.Errorf("deny to allow is a change of meaning, not a move: findings = %q", got)
+	}
+	// A split within one alias is atomic: no warning.
+	s = world()
+	s.ActivateNow(101, "192.0.2.0/24", "198.51.100.7")
+	if got := findingCodes(plan(t, s, desired("192.0.2.0/26", "192.0.2.64/26", "198.51.100.7"), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}).Findings); len(got) != 0 {
+		t.Errorf("split within one alias: findings = %q", got)
+	}
+}
