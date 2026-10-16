@@ -3,6 +3,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
     "rules": {
       "description": "Sorted by ruleId.",
       "items": {

@@ -6,9 +6,17 @@
     "description": {
       "type": "string"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "production": {
       "description": "This is the version deployment status reports in production.",
       "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
     },
     "rules": {
       "description": "In index order.",

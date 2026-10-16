@@ -82,6 +82,10 @@
       ],
       "type": "object"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "limits": {
       "description": "Sorted by type. Counts cover customer-editable aliases only, not account totals.",
       "items": {
@@ -112,6 +116,10 @@
         "type": "object"
       },
       "type": "array"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
     },
     "schema": {
       "type": "string"

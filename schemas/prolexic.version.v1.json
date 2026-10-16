@@ -12,10 +12,18 @@
     "date": {
       "type": "string"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "go": {
       "type": "string"
     },
     "os": {
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
       "type": "string"
     },
     "schema": {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -21,14 +22,26 @@ type Document interface {
 	SchemaID() string
 	WriteText(w io.Writer) error
 	setSchema(id string)
+	stamp(at time.Time, version string)
 }
 
-// Header carries the "schema" field. Embed it in every Document.
+// Header carries the "schema" field, and when and by which prolexic the
+// document was made: an apply or verify document is a record someone files.
+// Embed it in every Document.
 type Header struct {
-	Schema string `json:"schema"`
+	Schema      string `json:"schema"`
+	GeneratedAt string `json:"generatedAt,omitempty" doc:"When the document was made (RFC 3339, UTC)."`
+	Prolexic    string `json:"prolexic,omitempty" doc:"The prolexic version that made it."`
 }
 
 func (h *Header) setSchema(id string) { h.Schema = id }
+
+func (h *Header) stamp(at time.Time, version string) {
+	h.GeneratedAt, h.Prolexic = at.UTC().Format(time.RFC3339), version
+}
+
+// Stamp records when and by which version doc was made.
+func Stamp(doc Document, at time.Time, version string) { doc.stamp(at, version) }
 
 // Format selects the rendering.
 type Format string

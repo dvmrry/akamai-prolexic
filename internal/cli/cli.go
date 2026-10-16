@@ -22,6 +22,7 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/edgegrid"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
+	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
 
 // Env is the process environment, injectable for tests.
@@ -77,6 +78,7 @@ func Run(ctx context.Context, args []string, env Env) int {
 	}
 	err := a.execute(ctx, args)
 	if doc := a.doc; doc != nil {
+		output.Stamp(doc, env.Now(), version.Current().Version)
 		if werr := output.Write(env.Stdout, a.format, doc); werr != nil && err == nil {
 			err = werr
 		}
@@ -96,7 +98,9 @@ func (a *app) fail(err error) int {
 	if format == output.Auto {
 		format = output.Text
 	}
-	if werr := output.Write(a.env.Stderr, format, output.NewErrorDoc(err, code)); werr != nil {
+	ed := output.NewErrorDoc(err, code)
+	output.Stamp(ed, a.env.Now(), version.Current().Version)
+	if werr := output.Write(a.env.Stderr, format, ed); werr != nil {
 		fmt.Fprintf(a.env.Stderr, "prolexic: %v\n", err)
 	}
 	return code

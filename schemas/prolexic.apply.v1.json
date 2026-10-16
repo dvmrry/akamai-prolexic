@@ -6,6 +6,10 @@
     "file": {
       "type": "string"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "plan": {
       "additionalProperties": false,
       "description": "The fresh plan apply computed.",
@@ -244,10 +248,17 @@
       ],
       "type": "object"
     },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
     "result": {
       "additionalProperties": false,
       "description": "Absent when apply refused before writing (plan errors, digest moved).",
       "properties": {
+        "accountId": {
+          "type": "string"
+        },
         "aliases": {
           "items": {
             "additionalProperties": false,
@@ -388,6 +399,7 @@
         }
       },
       "required": [
+        "accountId",
         "aliases",
         "alreadyApplied",
         "digest"

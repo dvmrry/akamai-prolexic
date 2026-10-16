@@ -21,6 +21,7 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfanalytics"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
+	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
 
 // The desired-file commands. validate, fmt, add and remove are offline: no
@@ -660,6 +661,7 @@ func toProduction(a ncf.AliasApply) string {
 // text form unless --format json was asked for: one run gives the reviewer's
 // text and the machine's JSON, so they can't disagree.
 func (a *app) saveDocument(path string, doc output.Document) error {
+	output.Stamp(doc, a.env.Now(), version.Current().Version)
 	var buf bytes.Buffer
 	if err := output.Write(&buf, output.JSON, doc); err != nil {
 		return err

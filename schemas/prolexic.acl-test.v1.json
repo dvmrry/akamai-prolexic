@@ -3,6 +3,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "ipVersion": {
       "description": "V4 or V6: only the version's rules of this family were tested.",
       "type": "string"
@@ -10,6 +14,10 @@
     "production": {
       "description": "That version is in production.",
       "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
     },
     "results": {
       "description": "One per packet, in the order given.",

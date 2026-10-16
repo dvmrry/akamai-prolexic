@@ -56,6 +56,7 @@ const (
 
 // ApplyResult reports what apply did, alias by alias.
 type ApplyResult struct {
+	AccountID      string       `json:"accountId"`
 	Digest         string       `json:"digest"`
 	AlreadyApplied bool         `json:"alreadyApplied" doc:"Live already matched the file, so nothing was written; apply only waited for production to catch up."`
 	Aliases        []AliasApply `json:"aliases"`
@@ -148,7 +149,7 @@ type applyRun struct {
 func newApplyRun(c *Checker, read, write Store, plan *Plan, opts ApplyOptions) *applyRun {
 	r := &applyRun{
 		c: c, read: read, write: write, plan: plan, opts: opts,
-		res:     &ApplyResult{Digest: plan.Digest, AlreadyApplied: !plan.Changes, Aliases: make([]AliasApply, len(plan.Aliases))},
+		res:     &ApplyResult{AccountID: plan.AccountID, Digest: plan.Digest, AlreadyApplied: !plan.Changes, Aliases: make([]AliasApply, len(plan.Aliases))},
 		comment: "prolexic apply " + plan.Digest,
 	}
 	for i, ap := range plan.Aliases {

@@ -101,6 +101,14 @@
       },
       "type": "array"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
     "proxy": {
       "additionalProperties": false,
       "properties": {

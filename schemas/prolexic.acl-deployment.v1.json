@@ -3,9 +3,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "production": {
       "description": "The version in production; 0 when none is.",
       "type": "integer"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
     },
     "ruleSets": {
       "description": "Newest version first, then by status.",

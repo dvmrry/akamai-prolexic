@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -102,5 +103,19 @@ func TestApplyTakesExactlyOneReviewedDigest(t *testing.T) {
 		if r := runCLI(t, Env{}, args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit %d: %s", args[3:], r.code, r.stderr)
 		}
+	}
+}
+
+// Every document says when and by which prolexic it was made; apply and
+// verify also carry the account, since they are the records someone files.
+func TestDocumentsAreStamped(t *testing.T) {
+	api := ncfAPI(t)
+	env := ncfEnv(api.env())
+	env.Now = func() time.Time { return fixedNow }
+	plan := savePlan(t, api, writeDesired(t, desiredFixture))
+	r := runCLI(t, env, "verify", "--plan", plan)
+	doc := decode[VerifyDoc](t, r.stdout, "prolexic.verify.v1")
+	if doc.GeneratedAt != fixedNow.UTC().Format(time.RFC3339) || doc.Prolexic == "" || doc.AccountID != "A-EXAMPLE" {
+		t.Errorf("generatedAt %q, prolexic %q, accountId %q", doc.GeneratedAt, doc.Prolexic, doc.AccountID)
 	}
 }

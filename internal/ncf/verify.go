@@ -26,6 +26,7 @@ type AliasVerify struct {
 
 // VerifyResult compares a plan's expected end state with a fresh read.
 type VerifyResult struct {
+	AccountID  string        `json:"accountId"`
 	Digest     string        `json:"digest" doc:"The verified plan's digest."`
 	Verified   bool          `json:"verified" doc:"Every alias matched and the ACL deployment is healthy and settled."`
 	Aliases    []AliasVerify `json:"aliases"`
@@ -46,7 +47,7 @@ func Verify(ctx context.Context, store Store, p *Plan) (*VerifyResult, error) {
 	if got := digest(p.Aliases); got != p.Digest {
 		return nil, apperr.New(apperr.Validation, "the plan's digest %s doesn't match its aliases (%s): the file was edited or truncated", p.Digest, got)
 	}
-	res := &VerifyResult{Digest: p.Digest, Verified: true, Aliases: []AliasVerify{}, Deployment: []string{}}
+	res := &VerifyResult{AccountID: p.AccountID, Digest: p.Digest, Verified: true, Aliases: []AliasVerify{}, Deployment: []string{}}
 	for _, ap := range p.Aliases {
 		if ap.DesiredHash == "" {
 			return nil, apperr.New(apperr.Validation, "alias %s has no desiredHash: not a plan this version of prolexic made", ap.Name)

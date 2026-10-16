@@ -3,6 +3,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "accountId": {
+      "type": "string"
+    },
     "aliases": {
       "items": {
         "additionalProperties": false,
@@ -91,7 +94,15 @@
       "description": "The verified plan's digest.",
       "type": "string"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "planFile": {
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
       "type": "string"
     },
     "schema": {
@@ -103,6 +114,7 @@
     }
   },
   "required": [
+    "accountId",
     "aliases",
     "deployment",
     "digest",

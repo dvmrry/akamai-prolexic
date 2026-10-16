@@ -229,9 +229,17 @@
       },
       "type": "array"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "ownSpaceAnalytics": {
       "description": "Whether Prolexic Analytics protected prefixes were part of the own-space check.",
       "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
     },
     "schema": {
       "type": "string"

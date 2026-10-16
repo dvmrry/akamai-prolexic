@@ -7,6 +7,10 @@
       "description": "The process exit code.",
       "type": "integer"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
     "kind": {
       "enum": [
         "bug",
@@ -22,6 +26,10 @@
       "type": "string"
     },
     "message": {
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
       "type": "string"
     },
     "schema": {

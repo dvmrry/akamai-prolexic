@@ -10,6 +10,14 @@
       "description": "The customer name queried.",
       "type": "string"
     },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
     "rows": {
       "description": "One row per location and target, sorted by location, ip, netmask, eventPeakId.",
       "items": {
