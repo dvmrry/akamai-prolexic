@@ -161,20 +161,16 @@ func writeFindings(w io.Writer, fs []ncf.Finding) error {
 	return nil
 }
 
-// fileLocks serialise each file's read, change and write within this
+// fileMu serialises every read, change and write of a file within this
 // process: concurrent calls (the MCP front runs tool calls in parallel)
 // would otherwise each read the old file, and the last write would drop the
-// other's change. Keyed by the cleaned absolute path.
-var fileLocks sync.Map
+// other's change. One lock for all files: a lock per path would let two
+// spellings of one file (Desired.json on a case-insensitive disk) race, and
+// these operations are quick.
+var fileMu sync.Mutex
 
-// lockFile locks path's read-modify-write and returns the unlock.
-func lockFile(path string) (unlock func()) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		abs = path
-	}
-	m, _ := fileLocks.LoadOrStore(filepath.Clean(abs), &sync.Mutex{})
-	mu := m.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+// lockFiles takes the file lock and returns the unlock.
+func lockFiles() (unlock func()) {
+	fileMu.Lock()
+	return fileMu.Unlock
 }

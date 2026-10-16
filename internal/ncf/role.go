@@ -23,6 +23,10 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 	for _, idx := range prodRules {
 		r, ok := rules[idx]
 		if !ok {
+			// A rule uses the alias that prolexic can't read (no parsed
+			// details, or a duplicated index): it might deny, so the side
+			// is unverified, not derived from the rules that can be read.
+			unknownAction = true
 			continue
 		}
 		src, dst := refersTo(r.Source, name), refersTo(r.Destination, name)
@@ -96,11 +100,20 @@ func refersTo(addr, name string) bool {
 	return addr == name || strings.HasSuffix(addr, "::"+name)
 }
 
-// RulesByIndex indexes deployed rules for DerivedRole.
+// RulesByIndex indexes deployed rules for DerivedRole. An index two rules
+// share is left out: keeping either would hide the other (a deny behind a
+// permit), and a missing index makes the derivation unverified.
 func RulesByIndex(rules []ACLRule) map[int]ACLRule {
 	m := make(map[int]ACLRule, len(rules))
+	dup := map[int]bool{}
 	for _, r := range rules {
+		if _, seen := m[r.Index]; seen {
+			dup[r.Index] = true
+		}
 		m[r.Index] = r
+	}
+	for idx := range dup {
+		delete(m, idx)
 	}
 	return m
 }

@@ -126,10 +126,6 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 	if _, ok := schema["properties"]; !ok {
 		schema["properties"] = map[string]any{}
 	}
-	names := map[string]bool{}
-	for name := range schema["properties"].(map[string]any) {
-		names[name] = true
-	}
 	no, yes := false, true
 	// A tool that writes overwrites a local file: destructive, though git
 	// has the old one.
@@ -148,7 +144,7 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 				}
 			}()
 			var args A
-			if err := decodeArgs(req.Params.Arguments, &args, names); err != nil {
+			if err := decodeArgs(req.Params.Arguments, &args, schema); err != nil {
 				return f.result(nil, err), nil
 			}
 			doc, err := t.run(ctx, f, args)
@@ -158,19 +154,13 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 
 // decodeArgs decodes a tool's arguments strictly: an unknown argument is an
 // error, not something silently ignored, and names match the schema exactly
-// (encoding/json alone would take "Prefix" for "prefix").
-func decodeArgs(raw json.RawMessage, v any, names map[string]bool) error {
+// at every depth (encoding/json alone would take "Prefix" for "prefix").
+func decodeArgs(raw json.RawMessage, v any, schema map[string]any) error {
 	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		raw = json.RawMessage("{}")
 	}
-	var top map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &top); err != nil {
-		return apperr.Wrap(apperr.Usage, err, "arguments")
-	}
-	for name := range top {
-		if !names[name] {
-			return apperr.New(apperr.Usage, "arguments: unknown field %q", name)
-		}
+	if err := exactNames(raw, schema, ""); err != nil {
+		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -262,4 +252,36 @@ func (f *front) path(p string) (string, error) {
 		}
 	}
 	return rel, nil // the operation opens it under the runtime's Dir (the root); documents show it as given
+}
+
+// exactNames refuses an object key the schema doesn't name exactly, at any
+// depth. A value of the wrong type is left to the decoder to report.
+func exactNames(raw json.RawMessage, schema map[string]any, at string) error {
+	if props, ok := schema["properties"].(map[string]any); ok {
+		var obj map[string]json.RawMessage
+		if json.Unmarshal(raw, &obj) != nil {
+			return nil
+		}
+		for name, v := range obj {
+			p, ok := props[name].(map[string]any)
+			if !ok {
+				return apperr.New(apperr.Usage, "arguments: unknown field %q", at+name)
+			}
+			if err := exactNames(v, p, at+name+"."); err != nil {
+				return err
+			}
+		}
+	}
+	if items, ok := schema["items"].(map[string]any); ok {
+		var arr []json.RawMessage
+		if json.Unmarshal(raw, &arr) != nil {
+			return nil
+		}
+		for i, v := range arr {
+			if err := exactNames(v, items, fmt.Sprintf("%s%d.", at, i)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

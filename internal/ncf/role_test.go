@@ -73,3 +73,20 @@ func TestMentionsIsWholeName(t *testing.T) {
 		t.Errorf("DerivedRole(edge) = %q, %v; want destination", r, ok)
 	}
 }
+
+// A rule the alias is used by but that isn't in the rule map (no parsed
+// details) could be a deny: the side is unverified, not derived from the
+// rules that are readable. Duplicated indexes are unknown the same way.
+func TestDerivedRoleNeedsEveryRule(t *testing.T) {
+	permit := ACLRule{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}
+	if role, ok := DerivedRole("block-v4", []int{1, 2}, RulesByIndex([]ACLRule{permit})); ok {
+		t.Errorf("rule 2 missing: derived %s", role)
+	}
+	deny := ACLRule{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}
+	if role, ok := DerivedRole("block-v4", []int{1}, RulesByIndex([]ACLRule{deny, permit})); ok {
+		t.Errorf("index 1 duplicated: derived %s", role)
+	}
+	if role, ok := DerivedRole("block-v4", []int{1}, RulesByIndex([]ACLRule{permit})); !ok || role != RoleAllow {
+		t.Errorf("every rule readable: %s %v", role, ok)
+	}
+}

@@ -71,7 +71,7 @@ func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error
 	if in.Role != ncf.RoleDeny && in.Role != ncf.RoleAllow { // ncf.Export checks too; this is before any read
 		return nil, apperr.New(apperr.Usage, "the role for aliases no deployed rule references must be deny or allow, not %q", in.Role)
 	}
-	defer lockFile(r.abs(in.File))()
+	defer lockFiles()()
 	// A missing or empty (whitespace-only) file bootstraps: an empty file is a
 	// placeholder, not a damaged desired file.
 	var existing *ncf.File

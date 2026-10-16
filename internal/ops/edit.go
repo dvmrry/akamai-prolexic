@@ -95,7 +95,7 @@ type FmtInput struct {
 
 // Fmt rewrites the desired file in canonical form, offline.
 func (r *Runtime) Fmt(in FmtInput) (*FmtDoc, error) {
-	defer lockFile(r.abs(in.File))()
+	defer lockFiles()()
 	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ type AddInput struct {
 // Add adds entries to one alias and rewrites the file canonically, unless a
 // finding blocks the change (ncf.Change.Blocked); then nothing is written.
 func (r *Runtime) Add(in AddInput) (*ChangeDoc, error) {
-	defer lockFile(r.abs(in.File))()
+	defer lockFiles()()
 	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ type RemoveInput struct {
 // Remove removes entries from one alias and rewrites the file canonically,
 // unless a finding blocks the change.
 func (r *Runtime) Remove(in RemoveInput) (*ChangeDoc, error) {
-	defer lockFile(r.abs(in.File))()
+	defer lockFiles()()
 	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err

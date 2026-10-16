@@ -3,6 +3,7 @@ package mcpfront
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -508,5 +509,41 @@ func TestSchemaLimitsMatchTheConstants(t *testing.T) {
 	}
 	if d, _ := props["routed_check.wait"]["description"].(string); !strings.Contains(d, "at most "+short(ops.MaxCheckWait)) {
 		t.Errorf("routed_check.wait: %q", d)
+	}
+}
+
+// On a case-insensitive disk (macOS), two spellings of one file must not
+// race each other's changes.
+func TestConcurrentChangesUnderTwoSpellingsBothLand(t *testing.T) {
+	root := t.TempDir()
+	writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+	if _, err := os.Stat(filepath.Join(root, "Desired.json")); err != nil {
+		t.Skip("case-sensitive filesystem")
+	}
+	cs := connect(t, Options{Runtime: offline(), Root: root})
+	var wg sync.WaitGroup
+	for i := range 10 {
+		name := []string{"desired.json", "Desired.json"}[i%2]
+		wg.Go(func() {
+			if texts, isErr := call(t, cs, "add", map[string]any{"file": name, "alias": "block-v4", "entries": []string{fmt.Sprintf("198.51.100.%d", 10+i)}, "ticket": "SEC-1", "reason": "r"}); isErr {
+				t.Errorf("add via %s: %q", name, texts)
+			}
+		})
+	}
+	wg.Wait()
+	b, _ := os.ReadFile(filepath.Join(root, "desired.json"))
+	for i := range 10 {
+		if e := fmt.Sprintf("198.51.100.%d/32", 10+i); !strings.Contains(string(b), e) {
+			t.Errorf("%s was lost", e)
+		}
+	}
+}
+
+// Nested names are exact too: a packet's SRCIP is not its srcIp.
+func TestNestedArgumentsAreExact(t *testing.T) {
+	cs := connect(t, Options{Runtime: offline(), Root: t.TempDir()})
+	texts, isErr := call(t, cs, "acl_test", map[string]any{"packets": []any{map[string]any{"protocol": "tcp", "SRCIP": "192.0.2.1", "dstIp": "198.51.100.1"}}})
+	if !isErr || !strings.Contains(texts[len(texts)-1], `unknown field \"packets.0.SRCIP\"`) {
+		t.Errorf("%v %q", isErr, texts)
 	}
 }

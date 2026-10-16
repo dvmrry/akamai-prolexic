@@ -501,3 +501,18 @@ func TestUnverifiedFileRoleIsCheckedAsDeny(t *testing.T) {
 		}
 	}
 }
+
+// End to end: a permit rule plus a rule prolexic can't read is checked as
+// deny, so own space in the alias is still an error.
+func TestPlanChecksAnAliasWithAnUnreadableRuleAsDeny(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	s.UseInRule(101, 1)
+	s.UseInRule(101, 2) // rule 2 has no parsed details: not in Rules
+	f := desired("192.0.2.0/25", "203.0.113.0/26")
+	f.Aliases[0].Role = ncf.RoleAllow
+	p := plan(t, s, f, defaults)
+	if !slices.Contains(findingCodes(p.Findings), "error own_space block-v4 203.0.113.0/26") || p.Aliases[0].RoleSource != ncf.RoleUnverified {
+		t.Errorf("findings = %v, role source %s", findingCodes(p.Findings), p.Aliases[0].RoleSource)
+	}
+}
