@@ -11,6 +11,8 @@ package cli
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,6 +57,12 @@ type app struct {
 	section      string
 	writeSection string
 	accountKey   string
+	caBundle     string // --ca-bundle: extra root CAs (a TLS-inspecting proxy's)
+
+	rootCAs    *x509.CertPool // loaded from caBundle on first use
+	rootCAsErr error
+	rootCAsN   int
+	loadedCAs  bool
 
 	formatFlag string          // --format as given; parsed into format before a command runs
 	doc        output.Document // what the command returned, printed by Run
@@ -153,5 +161,51 @@ func (a *app) client(section string, readOnly bool) (*akamai.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return akamai.New(c, akamai.Options{Base: a.env.Transport, Scheme: a.env.Scheme, ReadOnly: readOnly}), nil
+	pool, _, err := a.loadRootCAs()
+	if err != nil {
+		return nil, err
+	}
+	return akamai.New(c, akamai.Options{Base: a.env.Transport, Scheme: a.env.Scheme, ReadOnly: readOnly, RootCAs: pool}), nil
+}
+
+// loadRootCAs returns the system roots plus --ca-bundle's certificates, and
+// how many it added; nil when no bundle is declared. A bundle that can't be
+// read or holds no certificate is an error, never silently ignored.
+func (a *app) loadRootCAs() (*x509.CertPool, int, error) {
+	if a.loadedCAs {
+		return a.rootCAs, a.rootCAsN, a.rootCAsErr
+	}
+	a.loadedCAs = true
+	if a.caBundle == "" {
+		return nil, 0, nil
+	}
+	a.rootCAs, a.rootCAsN, a.rootCAsErr = loadCABundle(a.caBundle)
+	return a.rootCAs, a.rootCAsN, a.rootCAsErr
+}
+
+func loadCABundle(path string) (*x509.CertPool, int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s: %v", path, fsErr(err))
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	n := 0
+	for block, rest := pem.Decode(b); block != nil; block, rest = pem.Decode(rest) {
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s: certificate %d: %v", path, n+1, err)
+		}
+		pool.AddCert(cert)
+		n++
+	}
+	if n == 0 {
+		return nil, 0, apperr.New(apperr.Usage, "--ca-bundle %s holds no PEM certificate", path)
+	}
+	return pool, n, nil
 }

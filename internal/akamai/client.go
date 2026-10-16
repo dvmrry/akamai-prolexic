@@ -13,6 +13,8 @@ package akamai
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,6 +61,10 @@ type Options struct {
 	Base http.RoundTripper
 	// Scheme overrides "https", for tests against a plain httptest server.
 	Scheme string
+	// RootCAs, when set, are the roots TLS trusts: the system's plus a
+	// declared bundle, such as a TLS-inspecting proxy's CA. Verification is
+	// never turned off.
+	RootCAs *x509.CertPool
 	// ReadOnly makes the client refuse every request that isn't a read (a GET,
 	// or marked ReadOnly) before sending it. Read paths get a read-only client,
 	// so they can't write even by mistake.
@@ -70,6 +76,16 @@ func New(creds edgegrid.Credentials, opts Options) *Client {
 	base := opts.Base
 	if base == nil {
 		base = http.DefaultTransport.(*http.Transport).Clone()
+	}
+	if opts.RootCAs != nil {
+		if t, ok := base.(*http.Transport); ok {
+			t = t.Clone() // never change a transport the caller owns
+			if t.TLSClientConfig == nil {
+				t.TLSClientConfig = &tls.Config{}
+			}
+			t.TLSClientConfig.RootCAs = opts.RootCAs
+			base = t
+		}
 	}
 	scheme := opts.Scheme
 	if scheme == "" {
@@ -165,14 +181,18 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 			if ctx.Err() != nil && safe {
 				return fmt.Errorf("%s %s: %w", req.Method, req.Path, ctx.Err())
 			}
-			if ctx.Err() == nil && attempt < attempts && !proxyAuth(err) {
+			if ctx.Err() == nil && attempt < attempts && !proxyAuth(err) && !untrusted(err) {
 				if err := c.sleep(ctx, c.backoff(attempt, "")); err != nil {
 					return err
 				}
 				continue
 			}
+			msg := fmt.Sprintf("%s %s", req.Method, req.Path)
+			if untrusted(err) {
+				msg += ": the server's certificate isn't trusted (behind a TLS-inspecting proxy, declare its CA bundle)"
+			}
 			return &apperr.Error{
-				Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s", req.Method, req.Path), Err: err,
+				Kind: apperr.Upstream, Message: msg, Err: err,
 				Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Ambiguous: !safe},
 			}
 		}
@@ -430,3 +450,11 @@ type redacted struct {
 
 func (r *redacted) Error() string { return r.msg }
 func (r *redacted) Unwrap() error { return r.err }
+
+// untrusted reports a certificate that didn't verify: retrying can't help,
+// and the cause is usually a TLS-inspecting proxy whose CA isn't declared.
+func untrusted(err error) bool {
+	var cv *tls.CertificateVerificationError
+	var ua x509.UnknownAuthorityError
+	return errors.As(err, &cv) || errors.As(err, &ua)
+}

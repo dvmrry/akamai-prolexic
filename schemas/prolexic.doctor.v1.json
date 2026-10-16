@@ -128,6 +128,28 @@
     "schema": {
       "type": "string"
     },
+    "tls": {
+      "additionalProperties": false,
+      "properties": {
+        "caBundle": {
+          "description": "A CA bundle is declared (--ca-bundle or PROLEXIC_CA_BUNDLE).",
+          "type": "boolean"
+        },
+        "certificates": {
+          "description": "Certificates the bundle added to the system roots.",
+          "type": "integer"
+        },
+        "error": {
+          "description": "Why the bundle can't be used; every API command would fail.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "caBundle",
+        "certificates"
+      ],
+      "type": "object"
+    },
     "version": {
       "additionalProperties": false,
       "properties": {
@@ -165,6 +187,7 @@
     "clients",
     "proxy",
     "schema",
+    "tls",
     "version"
   ],
   "type": "object"

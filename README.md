@@ -72,6 +72,8 @@ make docs       # regenerate docs/cli/ after changing a command or flag
 
 Akamai API clients authenticate with EdgeGrid credentials. These come from the environment first (`AKAMAI_HOST`, … for the read section; `AKAMAI_WRITE_HOST`, … for the write section), then from `~/.edgerc`. Only `apply` uses the write section. Every other command gets a read-only client that refuses to send a write.
 
+Behind a corporate proxy, prolexic follows `HTTPS_PROXY`/`NO_PROXY`, and `--ca-bundle` (or `PROLEXIC_CA_BUNDLE`) declares a TLS-inspecting proxy's CA. See [docs/runbook.md](docs/runbook.md#behind-a-corporate-proxy).
+
 Credentials never go in this repo: `.edgerc` is gitignored, `.gitleaks.toml` flags EdgeGrid tokens, and `internal/hygiene` fails on globally routable addresses in tracked files.
 
 ## License

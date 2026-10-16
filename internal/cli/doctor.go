@@ -22,6 +22,7 @@ type DoctorDoc struct {
 	Version version.Info   `json:"version"`
 	Clients []ClientStatus `json:"clients"`
 	Proxy   ProxyStatus    `json:"proxy"`
+	TLS     TLSStatus      `json:"tls"`
 	APIs    []APIStatus    `json:"apis,omitempty" doc:"With --live: one read per API, in the order ncf, analytics, networkHealth."`
 }
 
@@ -51,6 +52,14 @@ type ProxyStatus struct {
 	NoProxy    bool `json:"noProxy"`
 }
 
+// TLSStatus says which roots TLS trusts: the system's, plus a declared CA
+// bundle (a TLS-inspecting proxy's CA).
+type TLSStatus struct {
+	CABundle     bool   `json:"caBundle" doc:"A CA bundle is declared (--ca-bundle or PROLEXIC_CA_BUNDLE)."`
+	Certificates int    `json:"certificates" doc:"Certificates the bundle added to the system roots."`
+	Error        string `json:"error,omitempty" doc:"Why the bundle can't be used; every API command would fail."`
+}
+
 func (*DoctorDoc) SchemaID() string { return "prolexic.doctor.v1" }
 
 // Outcome: missing write credentials are normal (read-only use, PR builds);
@@ -58,6 +67,9 @@ func (*DoctorDoc) SchemaID() string { return "prolexic.doctor.v1" }
 func (d *DoctorDoc) Outcome() error {
 	if !d.Clients[0].Resolved {
 		return apperr.New(apperr.Credentials, "read credentials not resolved")
+	}
+	if d.TLS.Error != "" {
+		return apperr.New(apperr.Usage, "%s", d.TLS.Error)
 	}
 	var failed []string
 	kind := apperr.Kind("")
@@ -106,6 +118,14 @@ func (d *DoctorDoc) WriteText(w io.Writer) error {
 			fmt.Fprintf(w, "%-12s  FAILED (%s): %s\n", s.API, s.Kind, s.Message)
 		}
 	}
+	tlsLine := "system roots only"
+	switch {
+	case d.TLS.Error != "":
+		tlsLine = "CA bundle unusable: " + d.TLS.Error
+	case d.TLS.CABundle:
+		tlsLine = fmt.Sprintf("system roots plus %d certificates from the CA bundle", d.TLS.Certificates)
+	}
+	fmt.Fprintf(w, "\ntls: %s", tlsLine)
 	_, err := fmt.Fprintf(w, "\nproxy: %s\n", proxy)
 	return err
 }
@@ -131,8 +151,9 @@ func doctor(ctx context.Context, a *app, live bool) (output.Document, error) {
 			HTTPSProxy: a.env.Getenv("HTTPS_PROXY") != "" || a.env.Getenv("https_proxy") != "",
 			NoProxy:    a.env.Getenv("NO_PROXY") != "" || a.env.Getenv("no_proxy") != "",
 		},
+		TLS: a.tlsStatus(),
 	}
-	if live && doc.Clients[0].Resolved {
+	if live && doc.Clients[0].Resolved && doc.TLS.Error == "" {
 		doc.APIs = a.liveChecks(ctx)
 	}
 	return doc, nil
@@ -200,4 +221,16 @@ func apiStatus(id, name string, check func() error) APIStatus {
 		st.Message = fmt.Sprintf("the %s read failed; retry, or check the network and proxy", name)
 	}
 	return st
+}
+
+func (a *app) tlsStatus() TLSStatus {
+	if a.caBundle == "" {
+		return TLSStatus{}
+	}
+	_, n, err := a.loadRootCAs()
+	s := TLSStatus{CABundle: true, Certificates: n}
+	if err != nil {
+		s.Error = err.Error()
+	}
+	return s
 }

@@ -21,6 +21,7 @@ prolexic [flags]
 
 ```
       --account-key string     accountSwitchKey, overriding the credentials' account_key ($PROLEXIC_ACCOUNT_KEY)
+      --ca-bundle string       PEM file of extra root CAs to trust, e.g. a TLS-inspecting proxy's (); verification is never turned off
       --edgerc string          EdgeGrid credentials file (default ~/.edgerc; $PROLEXIC_EDGERC)
       --format string          output format: auto (text on a terminal, else json), json or text (default "auto")
   -h, --help                   help for prolexic

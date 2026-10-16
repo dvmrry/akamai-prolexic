@@ -2,6 +2,7 @@ package akamai
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -319,5 +320,28 @@ func TestTransportErrorsHideTheURL(t *testing.T) {
 func TestProxyAuthIsNotRetried(t *testing.T) {
 	if !proxyAuth(errors.New("Proxy Authentication Required")) || proxyAuth(errors.New("connection refused")) {
 		t.Error("a 407 from the proxy must not be retried; other transport errors may be")
+	}
+}
+
+// A declared CA bundle makes a server signed by that CA trusted (the case of
+// a TLS-inspecting proxy); without it the same server is refused.
+func TestRootCAsTrustADeclaredCA(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	creds := edgegrid.Credentials{Host: strings.TrimPrefix(srv.URL, "https://"), ClientToken: "ct", ClientSecret: "cs", AccessToken: "at"}
+
+	plain := New(creds, Options{})
+	plain.MaxAttempts = 1
+	if err := plain.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, &map[string]any{}); err == nil {
+		t.Fatal("an unknown CA was trusted without a bundle")
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	trusted := New(creds, Options{RootCAs: pool})
+	if err := trusted.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, &map[string]any{}); err != nil {
+		t.Errorf("with the CA declared: %v", err)
 	}
 }

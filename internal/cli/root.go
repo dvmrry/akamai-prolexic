@@ -90,6 +90,7 @@ func (a *app) root() *cobra.Command {
 	pf.StringVar(&a.section, "section", envOr(a.env.Getenv, "PROLEXIC_SECTION", "default"), "credentials section for reads ($PROLEXIC_SECTION)")
 	pf.StringVar(&a.writeSection, "write-section", envOr(a.env.Getenv, "PROLEXIC_WRITE_SECTION", "write"), "credentials section for writes; only apply uses it ($PROLEXIC_WRITE_SECTION)")
 	pf.StringVar(&a.accountKey, "account-key", a.env.Getenv("PROLEXIC_ACCOUNT_KEY"), "accountSwitchKey, overriding the credentials' account_key ($PROLEXIC_ACCOUNT_KEY)")
+	pf.StringVar(&a.caBundle, "ca-bundle", a.env.Getenv("PROLEXIC_CA_BUNDLE"), "PEM file of extra root CAs to trust, e.g. a TLS-inspecting proxy's (); verification is never turned off")
 	root.AddCommand(a.tree()...)
 	for _, g := range sections {
 		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})

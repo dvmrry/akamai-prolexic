@@ -20,6 +20,13 @@ then:   prolexic verify --plan plan.json
   - `analytics FAILED (credentials)` means `plan` will fail too, because plan reads your own space from Analytics. Ask for Analytics read access on the API client. Until then, `plan --no-analytics-own-space` works, and says in a warning that it skipped that check.
 - **`apply` needs the write credentials** (the `write` section, or `AKAMAI_WRITE_*`). Every other command works without them.
 
+## Behind a corporate proxy
+
+- **Proxy:** prolexic follows `HTTPS_PROXY` and `NO_PROXY` (or their lower-case forms), and nothing else. There's no PAC file support: resolve the PAC once and set `HTTPS_PROXY` to the proxy it picks for the Akamai API hosts.
+- **Proxy sign-in:** Basic auth works in the URL (`http://user:pass@proxy:8080`). NTLM or Kerberos (Negotiate) doesn't. Run a local helper that does the corporate sign-in, such as `px` or `cntlm`, and point `HTTPS_PROXY` at it (e.g. `http://127.0.0.1:3128`). A proxy asking for credentials (HTTP 407) fails at once and isn't retried.
+- **TLS inspection:** if the proxy re-signs HTTPS, declare its CA with `--ca-bundle ca.pem` or `PROLEXIC_CA_BUNDLE=ca.pem`. It's a PEM file, which may hold several certificates. They're trusted in addition to the system roots, and verification is never turned off. Without it, every API command fails with "the server's certificate isn't trusted".
+- **Check it:** `prolexic doctor --live` shows whether `HTTPS_PROXY` is set, how many certificates the bundle added, and whether each API answers.
+
 ## Exit 2: usage
 
 The command line is wrong: a missing flag, an unknown command, a bad value. The message names the `--help` to read. Nothing was contacted.
