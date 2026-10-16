@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -31,6 +32,27 @@ func (a *app) run(body func(ctx context.Context, args []string) (output.Document
 		}
 		return err
 	}
+}
+
+// ops is the operations' runtime: this invocation's clients, clock and
+// progress lines on stderr.
+func (a *app) ops() *ops.Runtime {
+	return &ops.Runtime{
+		ReadClient: a.readClient, WriteClient: a.writeClient,
+		Now: a.env.Now, Sleep: a.env.Sleep, Progress: a.progress, Bogons: a.env.Bogons,
+	}
+}
+
+// docOf returns an operation's document as an output.Document: a nil
+// *D stays a nil interface, not a non-nil one holding a nil pointer.
+func docOf[D any, P interface {
+	*D
+	output.Document
+}](doc P, err error) (output.Document, error) {
+	if doc == nil {
+		return nil, err
+	}
+	return doc, err
 }
 
 // CommandTree is the command tree with no environment, for generated

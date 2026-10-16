@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const checkSessions = `[
@@ -53,7 +54,7 @@ func TestRoutedCheckPresentSatisfied(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
+	doc := decode[ops.RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	if !doc.Satisfied || doc.Attempts != 1 || doc.Prefix != "203.0.113.0/24" || doc.Expect != "present" || len(doc.Sessions) != 2 ||
 		!doc.Sessions[0].Carried || doc.Sessions[0].DataCenter != "DC-A" || doc.Skipped == nil || doc.Sites == nil {
 		t.Errorf("doc = %+v", doc)
@@ -66,7 +67,7 @@ func TestRoutedCheckNotSatisfiedIsDrift(t *testing.T) {
 	if r.code != exitCode(apperr.Drift) || !strings.Contains(r.stderr, "1 of 2 sessions") {
 		t.Errorf("exit = %d, stderr: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
+	doc := decode[ops.RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	if doc.Satisfied || doc.Sessions[1].Carried {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -94,7 +95,7 @@ func TestRoutedCheckSiteAndFamily(t *testing.T) {
 	// v6: edge-2 has no v6 peer, so it is skipped rather than expected; the
 	// route list has no v6 route, so the one expected session is off.
 	r = runCLI(t, api.env(), "routed", "check", "--customer", "example-a", "--prefix", "2001:db8:1::/48")
-	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
+	doc := decode[ops.RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	if r.code != exitCode(apperr.Drift) || len(doc.Sessions) != 1 || len(doc.Skipped) != 1 || doc.Skipped[0].RouterName != "edge-2" {
 		t.Errorf("exit = %d, doc = %+v", r.code, doc)
 	}
@@ -135,7 +136,7 @@ func TestRoutedCheckWaitPollsUntilSatisfied(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
+	doc := decode[ops.RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	if !doc.Satisfied || doc.Attempts != 3 || attempts.Load() != 3 || len(*slept) != 2 || (*slept)[0] != 30*time.Second {
 		t.Errorf("attempts = %d (%d fetches), slept = %v, doc = %+v", doc.Attempts, attempts.Load(), *slept, doc)
 	}
@@ -149,7 +150,7 @@ func TestRoutedCheckWaitTimesOut(t *testing.T) {
 	env := api.env()
 	slept := fakeClock(&env)
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "70s", "--interval", "30s")
-	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
+	doc := decode[ops.RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	// Attempts at 0s, 30s, 60s and 70s: the last sleep is clipped to the deadline.
 	if r.code != exitCode(apperr.Drift) || doc.Attempts != 4 || len(*slept) != 3 || (*slept)[2] != 10*time.Second {
 		t.Errorf("exit = %d, attempts = %d, slept = %v", r.code, doc.Attempts, *slept)

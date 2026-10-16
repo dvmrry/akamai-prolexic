@@ -2,61 +2,16 @@ package cli
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"text/tabwriter"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
-// RoutedCheckDoc is the result of a prefix propagation check.
-type RoutedCheckDoc struct {
-	output.Header
-	Customers []string                   `json:"customers" doc:"The customer names queried."`
-	Prefix    string                     `json:"prefix" doc:"The normalised prefix checked."`
-	Expect    string                     `json:"expect" doc:"present: every expected session carries the prefix; absent: none does."`
-	Sites     []string                   `json:"sites" doc:"The --site filter; empty means every data center."`
-	Satisfied bool                       `json:"satisfied" doc:"Whether the expectation held on the last attempt, with no failures and at least one expected session."`
-	Attempts  int                        `json:"attempts" doc:"How many times sessions and routes were fetched."`
-	Sessions  []analytics.SessionCheck   `json:"sessions" doc:"The expected sessions, sorted by customer, dataCenter, routerName, peer."`
-	Skipped   []analytics.SkippedSession `json:"skipped" doc:"Sessions with no BGP peer of the prefix's address family; not expected."`
-	Failures  []analytics.Failure        `json:"failures" doc:"Customer names whose query failed on the last attempt."`
-
-	sessionFailures int // Failures[:sessionFailures] came from the sessions query: they decide the outcome first
-}
-
-func (*RoutedCheckDoc) SchemaID() string { return "prolexic.routed-check.v1" }
-
-func (d *RoutedCheckDoc) WriteText(w io.Writer) error {
-	fmt.Fprintf(w, "prefix %s expected %s: ", d.Prefix, d.Expect)
-	if d.Satisfied {
-		fmt.Fprintf(w, "satisfied (attempts: %d)\n", d.Attempts)
-	} else {
-		fmt.Fprintf(w, "NOT satisfied (attempts: %d)\n", d.Attempts)
-	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "CUSTOMER\tDATA CENTER\tROUTER\tPEER\tCARRIED")
-	for _, s := range d.Sessions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%t\n", s.Customer, s.DataCenter, s.RouterName, s.Peer, s.Carried)
-	}
-	if err := tw.Flush(); err != nil {
-		return err
-	}
-	for _, s := range d.Skipped {
-		fmt.Fprintf(w, "skipped (no peer of this family): %s %s %s\n", s.Customer, s.DataCenter, s.RouterName)
-	}
-	return writeFailures(w, d.Failures)
-}
-
 func newRoutedCheckCmd(a *app) *cobra.Command {
-	var customers, sites []string
-	var prefix, expect string
-	var wait, interval time.Duration
+	var in ops.RoutedCheckInput
 	cmd := &cobra.Command{
 		Use:     "check",
 		Short:   "check a prefix has propagated (or gone) on every session",
@@ -64,109 +19,19 @@ func newRoutedCheckCmd(a *app) *cobra.Command {
 		Example: "  prolexic routed check --prefix 198.51.100.0/24 --wait 10m",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return routedCheck(ctx, a, customers, sites, prefix, expect, wait, interval)
+			if in.Interval <= 0 {
+				return nil, apperr.New(apperr.Usage, "--interval must be positive")
+			}
+			return docOf(a.ops().RoutedCheck(ctx, in))
 		}),
 	}
-	customerFlag(cmd, &customers)
+	customerFlag(cmd, &in.Customers)
 	f := cmd.Flags()
-	listVar(f, &sites, "site", "only sessions in this data center; repeatable or comma-separated")
-	f.StringVar(&prefix, "prefix", "", "the prefix to check (required; a bare address means /32 or /128)")
-	f.StringVar(&expect, "expect", "present", "present: every expected session carries the prefix; absent: none does")
-	f.DurationVar(&wait, "wait", 0, "keep checking until satisfied or this long has passed (0: check once)")
-	f.DurationVar(&interval, "interval", 30*time.Second, "time between checks while waiting")
+	listVar(f, &in.Sites, "site", "only sessions in this data center; repeatable or comma-separated")
+	f.StringVar(&in.Prefix, "prefix", "", "the prefix to check (required; a bare address means /32 or /128)")
+	f.StringVar(&in.Expect, "expect", "present", "present: every expected session carries the prefix; absent: none does")
+	f.DurationVar(&in.Wait, "wait", 0, "keep checking until satisfied or this long has passed (0: check once)")
+	f.DurationVar(&in.Interval, "interval", ops.DefaultCheckInterval, "time between checks while waiting")
 	_ = cmd.MarkFlagRequired("prefix")
 	return cmd
-}
-
-func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixFlag, expectFlag string, wait, interval time.Duration) (output.Document, error) {
-	prefix, err := analytics.ParsePrefix(prefixFlag)
-	if err != nil {
-		return nil, err
-	}
-	expect, err := analytics.ParseExpect(expectFlag)
-	if err != nil {
-		return nil, err
-	}
-	if wait < 0 || (wait > 0 && interval <= 0) {
-		return nil, apperr.New(apperr.Usage, "--wait must be >= 0 and --interval > 0")
-	}
-	api, err := a.analytics()
-	if err != nil {
-		return nil, err
-	}
-	names, err := analytics.ResolveCustomers(ctx, api, customers)
-	if err != nil {
-		return nil, err
-	}
-
-	deadline := a.env.Now().Add(wait)
-	doc := &RoutedCheckDoc{Customers: names, Prefix: prefix.String(), Expect: string(expect), Sites: nonNil(sites)}
-	for {
-		doc.Attempts++
-		sessions, sfail, _ := analytics.FanOut(ctx, names, api.BGPSessions)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		routes, rfail, _ := analytics.FanOut(ctx, names, api.Routes)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		doc.Failures = nonNil(append(sfail, rfail...))
-		doc.sessionFailures = len(sfail)
-		res := analytics.EvaluateCheck(sessions, routes, prefix, expect, sites)
-		doc.Sessions, doc.Skipped = nonNil(res.Sessions), nonNil(res.Skipped)
-		doc.Satisfied = res.Satisfied() && len(doc.Failures) == 0
-		// Stop when satisfied, when there is nothing to check (waiting won't
-		// change that), or at the deadline. Outcome says which.
-		if doc.Satisfied || (len(res.Sessions) == 0 && len(doc.Failures) == 0) {
-			return doc, nil
-		}
-		remaining := deadline.Sub(a.env.Now())
-		if remaining <= 0 {
-			return doc, nil
-		}
-		next := min(interval, remaining)
-		a.progress(fmt.Sprintf("attempt %d: %d of %d sessions match --expect %s, %d failed names; checking again in %s (%s left)",
-			doc.Attempts, len(res.Sessions)-res.Off, len(res.Sessions), expect, failedNames(doc.Failures), next, remaining.Round(time.Second)))
-		if err := a.env.Sleep(ctx, next); err != nil {
-			return nil, err
-		}
-	}
-}
-
-// Outcome is how the last attempt ended: failed names, nothing to check, or
-// sessions that don't match the expectation.
-func (d *RoutedCheckDoc) Outcome() error {
-	// The sessions query's failures come first, then the routes query's: a name
-	// failing both is reported with its sessions failure.
-	n := min(d.sessionFailures, len(d.Failures))
-	if err := failuresOutcome(d.Failures[:n], d.Customers); err != nil {
-		return err
-	}
-	if err := failuresOutcome(d.Failures[n:], d.Customers); err != nil {
-		return err
-	}
-	if len(d.Sessions) == 0 {
-		return apperr.New(apperr.NotFound, "no session to check for %s: %d skipped (no peer of that family), the rest filtered out by --site/--customer", d.Prefix, len(d.Skipped))
-	}
-	if d.Satisfied {
-		return nil
-	}
-	off := 0
-	for _, s := range d.Sessions {
-		if s.Carried != (d.Expect == string(analytics.ExpectPresent)) {
-			off++
-		}
-	}
-	return apperr.New(apperr.Drift, "%d of %d sessions do not match --expect %s for %s", off, len(d.Sessions), d.Expect, d.Prefix)
-}
-
-// failedNames counts the distinct customer names in failures: a name can fail
-// both the sessions and the routes query.
-func failedNames(failures []analytics.Failure) int {
-	seen := map[string]bool{}
-	for _, f := range failures {
-		seen[f.Customer] = true
-	}
-	return len(seen)
 }

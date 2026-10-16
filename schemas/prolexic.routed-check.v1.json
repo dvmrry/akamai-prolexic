@@ -107,7 +107,7 @@
       "type": "array"
     },
     "sites": {
-      "description": "The --site filter; empty means every data center.",
+      "description": "The data-center filter; empty means every data center.",
       "items": {
         "type": "string"
       },

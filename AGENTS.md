@@ -51,6 +51,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | `internal/ncf/ncfapi` | `Store` and reads over NCF v2, and what a rule's ranges mean (`Protocols`, `SourcePorts`: missing ends, every protocol, unrestricted ports) |
 | `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers for the own-space checks |
 | `internal/ncf/ncftest` | in-memory versioned `Store` with fault injection |
+| `internal/ops` | the operations: one per command, typed input to a Document (`Runtime` carries the clients, clock and progress); every front calls them |
 | `internal/cli` | commands and wiring; one file per command family |
 
 The packages form three layers (SDK, operations, fronts); `docs/design.md` (Layers) has the rules for errors and input validation. Dependencies point down only: SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and `internal/hygiene` tests it. Reusable logic goes in the SDK packages, not in `internal/cli`.

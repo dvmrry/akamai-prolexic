@@ -87,3 +87,12 @@ func timeSeries(ctx context.Context, a *app, dests, locs []string, source string
 		Start: start.Format(time.RFC3339), End: end.Format(time.RFC3339), Points: nonNil(pts),
 	}, nil
 }
+
+// epoch renders UNIX seconds as RFC 3339 UTC; 0 (unset) as "-".
+func epoch(e analytics.Epoch) string {
+	sec := e.Unix()
+	if sec <= 0 {
+		return "-"
+	}
+	return time.Unix(sec, 0).UTC().Format(time.RFC3339)
+}

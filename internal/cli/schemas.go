@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/dvmrry/akamai-prolexic/internal/jsonschema"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
@@ -21,8 +22,8 @@ func documents() []output.Document {
 		&AliasDoc{},
 		&AliasVersionsDoc{},
 		&ApplyDoc{},
-		&AttackDoc{},
-		&AttacksDoc{},
+		&ops.AttackDoc{},
+		&ops.AttacksDoc{},
 		&ChangeDoc{},
 		&CustomersDoc{},
 		&EventsDoc{},
@@ -36,12 +37,12 @@ func documents() []output.Document {
 		&ProtectedDoc{},
 		&RuleHitDoc{},
 		&RuleHitsDoc{},
-		&RoutedCheckDoc{},
+		&ops.RoutedCheckDoc{},
 		&RoutedHealthDoc{},
 		&RoutedRoutesDoc{},
 		&RoutedSessionsDoc{},
 		&ScrubCentersDoc{},
-		&StatusDoc{},
+		&ops.StatusDoc{},
 		&TargetDoc{},
 		&TargetsDoc{},
 		&TimeSeriesDoc{},

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // Live answers 404 NOT_FOUND for a window with no attacks.
@@ -22,14 +23,14 @@ func TestAttacksListEmptyWindowIs404(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if len(doc.Attacks) != 0 || len(doc.Failures) != 0 {
 		t.Errorf("doc = %+v", doc)
 	}
 
 	// The empty name does not hide the others, and other errors still fail.
 	r = runCLI(t, env, "attacks", "list", "--customer", "example-a,example-b")
-	doc = decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc = decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if r.code != 0 || len(doc.Attacks) != 2 {
 		t.Errorf("exit %d, attacks %d", r.code, len(doc.Attacks))
 	}

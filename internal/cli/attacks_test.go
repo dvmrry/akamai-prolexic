@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 var fixedNow = time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
@@ -30,7 +31,7 @@ func TestAttacksListWindowAndSort(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if doc.Start != "2026-01-01T00:00:00Z" || doc.End != "2026-01-02T00:00:00Z" {
 		t.Errorf("window = %s .. %s", doc.Start, doc.End)
 	}
@@ -57,7 +58,7 @@ func TestAttacksListExplicitWindowAndEscaping(t *testing.T) {
 	if r.code != 0 || !strings.HasSuffix(path, "/contract/example%20a/start/1767225600/end/1767229200") {
 		t.Errorf("exit %d, escaped path %q, stderr %s", r.code, path, r.stderr)
 	}
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if doc.Attacks == nil || len(doc.Attacks) != 0 {
 		t.Errorf("attacks = %#v, want []", doc.Attacks)
 	}
@@ -89,7 +90,7 @@ func TestAttacksListSurfacesInvalidSpanPerCustomer(t *testing.T) {
 	if r.code == 0 {
 		t.Fatalf("exit = 0")
 	}
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if len(doc.Failures) != 1 || !strings.Contains(doc.Failures[0].Message, "invalid start/end") {
 		t.Errorf("failures = %+v", doc.Failures)
 	}
@@ -103,7 +104,7 @@ func TestAttacksListEnvelopeFailure(t *testing.T) {
 	env := api.env()
 	env.Now = func() time.Time { return fixedNow }
 	r := runCLI(t, env, "attacks", "list", "--customer", "example-a")
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if r.code != exitCode(apperr.Upstream) || len(doc.Failures) != 1 || !strings.Contains(doc.Failures[0].Message, "range too long") {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
@@ -121,7 +122,7 @@ func TestAttacksShow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[AttackDoc](t, r.stdout, "prolexic.attack.v1")
+	doc := decode[ops.AttackDoc](t, r.stdout, "prolexic.attack.v1")
 	if doc.AttackID != 901 || len(doc.Rows) != 2 || doc.Rows[0].Location != "LOC-A" || doc.Rows[1].EventBw != 900 {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -150,7 +151,7 @@ func TestAttacksLenientEpochs(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("list exit = %d: %s", r.code, r.stderr)
 	}
-	doc := decode[AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
+	doc := decode[ops.AttacksDoc](t, r.stdout, "prolexic.attacks.v1")
 	if a := doc.Attacks[0]; a.StartTime != 1767300000 || a.EndTime != 1767301000 || a.EventStartTime != 1767300000 {
 		t.Errorf("attack = %+v", a)
 	}
@@ -158,7 +159,7 @@ func TestAttacksLenientEpochs(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("show exit = %d: %s", r.code, r.stderr)
 	}
-	one := decode[AttackDoc](t, r.stdout, "prolexic.attack.v1")
+	one := decode[ops.AttackDoc](t, r.stdout, "prolexic.attack.v1")
 	if one.Rows[0].StartTime != 1767300000 || one.Rows[0].EndTime != 0 {
 		t.Errorf("row = %+v", one.Rows[0])
 	}

@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // ncfStatusFixtures adds the deployment-status and /stats routes to a fake.
@@ -23,7 +25,7 @@ func TestStatusUsesListOnly(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[StatusDoc](t, r.stdout, "prolexic.status.v1")
+	doc := decode[ops.StatusDoc](t, r.stdout, "prolexic.status.v1")
 	if doc.Deployment.Version != 7 || doc.Deployment.FailedRules != 1 || !doc.Deployment.Processing || doc.Deployment.State != "PRODUCTION" {
 		t.Errorf("deployment = %+v", doc.Deployment)
 	}
@@ -48,35 +50,5 @@ func TestStatusText(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.stdout, "deployment: version 7, state PRODUCTION, 1 failed rules, PROCESSING") ||
 		!strings.Contains(r.stdout, "block-v4") {
 		t.Errorf("exit %d, stdout:\n%s", r.code, r.stdout)
-	}
-}
-
-func TestStatusDocText(t *testing.T) {
-	// The marker needs an alias with a pending activation, so render a
-	// document directly.
-	d := &StatusDoc{Aliases: []StatusAlias{
-		{Name: "pending", ActiveVersion: "V9", ProdVersion: "V8"},
-		{Name: "fine", ActiveVersion: "V4", ProdVersion: "V4"},
-		{Name: "unused", ActiveVersion: "V1", ProdVersion: ""}, // no deployed rule uses it: nothing is pending
-	}}
-	var b strings.Builder
-	if err := d.WriteText(&b); err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range strings.Split(b.String(), "\n") {
-		switch {
-		case strings.HasPrefix(line, "pending"):
-			if !strings.Contains(line, "ACTIVATION PENDING") {
-				t.Errorf("pending: %q", line)
-			}
-		case strings.HasPrefix(line, "unused"):
-			if strings.Contains(line, "PENDING") || !strings.Contains(line, "not in production") {
-				t.Errorf("unused: %q", line)
-			}
-		case strings.HasPrefix(line, "fine"):
-			if strings.Contains(line, "PENDING") || strings.Contains(line, "LOW") {
-				t.Errorf("fine: %q", line)
-			}
-		}
 	}
 }

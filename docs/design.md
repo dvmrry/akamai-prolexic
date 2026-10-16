@@ -29,12 +29,12 @@ The code is in three layers, so that other fronts (an MCP server, possibly a Ter
 | layer | packages | does |
 | --- | --- | --- |
 | **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncfanalytics`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
-| **operations** | the command bodies in `internal/cli` (for now) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
+| **operations** | `internal/ops` (the read commands not yet moved are still bodies in `internal/cli`) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
 | **fronts** | `internal/cli` (Cobra), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
 
 - **Dependencies point down only.** SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and only `cli` and `internal/tools` import Cobra. `internal/hygiene` tests this.
 - Everything stays under `internal/` while every consumer lives in this module. `internal/` only stops imports from other modules, so it carries no public-API promise. Move to `pkg/` only if a consumer must live elsewhere.
-- **Not yet separate:** the operations are still functions in `internal/cli` that take the CLI's `*app`. Extracting them, with a typed input per operation, waits until a second front (MCP) is scheduled.
+- **Operations take a `*ops.Runtime` and a typed input** and return the concrete document. A front builds the Runtime (clients over its credentials, a clock, a progress sink), maps its own input format onto the input type, and may repeat a check with a message naming its own flags; the operation owns the check. Messages in `ops` name fields, never flags (`internal/hygiene` tests this).
 
 ### Errors
 

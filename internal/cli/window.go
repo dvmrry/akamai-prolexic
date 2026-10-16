@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 // windowFlags are the time-window flags shared by attacks and events:
@@ -60,4 +61,24 @@ func (w *windowFlags) resolve(now time.Time) (start, end time.Time, given bool, 
 		return start, end, false, apperr.New(apperr.Usage, "the window start (%s) must be before its end (%s)", start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339))
 	}
 	return start.UTC(), end.UTC(), true, nil
+}
+
+// window is the flags as an ops.Window. --since goes in only when given, so
+// the operation's default (the one register showed) applies otherwise. The
+// combinations are checked here too, for messages that name the flags.
+func (w *windowFlags) window() (ops.Window, error) {
+	sinceSet := w.flags.Changed("since")
+	switch {
+	case sinceSet && (w.start != "" || w.end != ""):
+		return ops.Window{}, apperr.New(apperr.Usage, "--since can't be combined with --start/--end")
+	case sinceSet && w.since <= 0:
+		return ops.Window{}, apperr.New(apperr.Usage, "--since must be positive")
+	case w.end != "" && w.start == "":
+		return ops.Window{}, apperr.New(apperr.Usage, "--end needs --start")
+	}
+	win := ops.Window{Start: w.start, End: w.end}
+	if sinceSet {
+		win.Since = w.since
+	}
+	return win, nil
 }

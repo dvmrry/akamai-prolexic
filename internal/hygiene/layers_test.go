@@ -21,8 +21,9 @@ var sdk = []string{
 	"internal/ncf", "internal/ncf/ncfapi", "internal/ncf/ncfanalytics", "internal/ncf/ncftest", "internal/apperr", "internal/textsafe", "internal/version",
 }
 
-// frontOnly are imports the SDK must never use.
-var frontOnly = []string{module + "internal/cli", module + "internal/output", module + "internal/jsonschema", "github.com/spf13/cobra"}
+// frontOnly are imports the SDK must never use: the fronts, and the operations
+// layer above the SDK.
+var frontOnly = []string{module + "internal/cli", module + "internal/ops", module + "internal/output", module + "internal/jsonschema", "github.com/spf13/cobra"}
 
 // TestLayers keeps dependencies pointing down: the SDK never imports a front,
 // and only the CLI and its tools import Cobra or the CLI.
@@ -67,11 +68,12 @@ func TestLayers(t *testing.T) {
 	}
 }
 
-// TestSDKNamesNoFlags keeps CLI flag names out of SDK messages: the SDK
-// can't know which front called it, so it words errors in domain terms.
+// TestSDKNamesNoFlags keeps CLI flag names out of SDK and operation messages
+// (and document schemas): neither can know which front called it, so they
+// word errors in domain terms.
 func TestSDKNamesNoFlags(t *testing.T) {
 	flag := regexp.MustCompile(`(^|[\s("'])--[a-z]`)
-	for _, dir := range sdk {
+	for _, dir := range append(slices.Clone(sdk), "internal/ops") {
 		files, _ := filepath.Glob(filepath.Join("..", "..", dir, "*.go"))
 		for _, p := range files {
 			if strings.HasSuffix(p, "_test.go") {
