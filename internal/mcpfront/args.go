@@ -21,17 +21,17 @@ type customersArg struct {
 
 // windowArg is a time window: since, or start and end.
 type windowArg struct {
-	Since string `json:"since,omitempty" doc:"How far back from now, as a duration such as 24h or 90m; exclusive with start and end. Default: the tool's own window."`
-	Start string `json:"start,omitempty" doc:"Window start, RFC 3339, e.g. 2026-01-01T00:00:00Z."`
-	End   string `json:"end,omitempty" doc:"Window end, RFC 3339; default now."`
+	Since *string `json:"since,omitempty" doc:"How far back from now, as a duration such as 24h or 90m; exclusive with start and end. Default: the tool's own window."`
+	Start string  `json:"start,omitempty" doc:"Window start, RFC 3339, e.g. 2026-01-01T00:00:00Z."`
+	End   string  `json:"end,omitempty" doc:"Window end, RFC 3339; default now."`
 }
 
 // window is the argument as an ops.Window: since only when given, so the
 // operation's default applies otherwise.
 func (w windowArg) window() (ops.Window, error) {
 	win := ops.Window{Start: w.Start, End: w.End}
-	if w.Since != "" {
-		d, err := duration("since", w.Since)
+	if w.Since != nil {
+		d, err := duration("since", *w.Since)
 		if err != nil {
 			return win, err
 		}

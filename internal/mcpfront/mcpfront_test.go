@@ -419,3 +419,94 @@ func TestOutcomeSurvivesAnError(t *testing.T) {
 		t.Errorf("%v %q", res.IsError, texts)
 	}
 }
+
+// Every file argument is confined, not only validate's: plan's out and
+// verify's plan too. Only .json files outside hidden directories, and no
+// error names the root's local path.
+func TestEveryFileArgumentIsConfined(t *testing.T) {
+	root := t.TempDir()
+	writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+	for _, d := range []string{".git", ".github"} {
+		if err := os.Mkdir(filepath.Join(root, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real, _ := filepath.EvalSymlinks(root)
+	cs := connect(t, Options{Runtime: offline(), Root: root})
+	for _, c := range []struct {
+		tool string
+		args map[string]any
+	}{
+		{"plan", map[string]any{"file": "desired.json", "out": ".git/x.json"}},
+		{"plan", map[string]any{"file": "desired.json", "out": ".github/x.json"}},
+		{"plan", map[string]any{"file": "desired.json", "out": "notes.md"}},
+		{"plan", map[string]any{"file": "desired.json", "out": "../x.json"}},
+		{"verify", map[string]any{"plan": "../plan.json"}},
+		{"verify", map[string]any{"plan": ".git/plan.json"}},
+		{"export", map[string]any{"file": ".git/desired.json"}},
+		{"validate", map[string]any{"file": "missing.json"}},
+	} {
+		texts, isErr := call(t, cs, c.tool, c.args)
+		last := texts[len(texts)-1]
+		if !isErr || strings.Contains(last, root) || strings.Contains(last, real) {
+			t.Errorf("%s %v: %v %q", c.tool, c.args, isErr, texts)
+		}
+	}
+	for _, d := range []string{".git", ".github"} {
+		if entries, _ := os.ReadDir(filepath.Join(root, d)); len(entries) != 0 {
+			t.Errorf("%s gained %d files", d, len(entries))
+		}
+	}
+}
+
+// Argument names match the schema exactly, and an explicit empty duration is
+// an error, not "absent".
+func TestArgumentsAreExact(t *testing.T) {
+	root := t.TempDir()
+	writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+	cs := connect(t, Options{Runtime: offline(), Root: root})
+	for _, c := range []struct {
+		tool string
+		args map[string]any
+	}{
+		{"validate", map[string]any{"File": "desired.json"}},
+		{"routed_check", map[string]any{"Prefix": "203.0.113.0/24"}},
+		{"attacks_list", map[string]any{"since": ""}},
+		{"routed_check", map[string]any{"prefix": "203.0.113.0/24", "wait": ""}},
+	} {
+		texts, isErr := call(t, cs, c.tool, c.args)
+		if !isErr || !strings.Contains(texts[len(texts)-1], `"kind": "usage"`) {
+			t.Errorf("%s %v: %v %q", c.tool, c.args, isErr, texts)
+		}
+	}
+}
+
+// The limits a schema states are the ones the operations enforce: tags and
+// descriptions restate constants, which they can't reference.
+func TestSchemaLimitsMatchTheConstants(t *testing.T) {
+	cs := connect(t, Options{Runtime: offline(), Root: t.TempDir()})
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	props := map[string]map[string]any{}
+	for _, tl := range res.Tools {
+		b, _ := json.Marshal(tl.InputSchema)
+		var s struct {
+			Properties map[string]map[string]any `json:"properties"`
+		}
+		_ = json.Unmarshal(b, &s)
+		for name, p := range s.Properties {
+			props[tl.Name+"."+name] = p
+		}
+	}
+	if p := props["plan.maxRemovals"]; p["minimum"] != float64(0) || p["maximum"] != float64(ncf.DefaultMaxRemovals) {
+		t.Errorf("plan.maxRemovals: %v", p)
+	}
+	if d, _ := props["routed_check.interval"]["description"].(string); !strings.Contains(d, "at least "+short(ops.MinCheckInterval)) {
+		t.Errorf("routed_check.interval: %q", d)
+	}
+	if d, _ := props["routed_check.wait"]["description"].(string); !strings.Contains(d, "at most "+short(ops.MaxCheckWait)) {
+		t.Errorf("routed_check.wait: %q", d)
+	}
+}

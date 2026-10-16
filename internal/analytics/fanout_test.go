@@ -76,3 +76,17 @@ func TestFailuresErrorCountsDistinctNames(t *testing.T) {
 		t.Errorf("err = %v (%s)", err, apperr.KindOf(err))
 	}
 }
+
+// A query that panics fails its own name; the process and the other names
+// carry on.
+func TestFanOutRecoversAPanickingQuery(t *testing.T) {
+	rows, failures, _ := FanOut(context.Background(), []string{"example-a", "example-b"}, func(_ context.Context, name string) ([]string, error) {
+		if name == "example-b" {
+			panic("an answer no decoder expected")
+		}
+		return []string{name}, nil
+	})
+	if len(rows) != 1 || rows[0] != "example-a" || len(failures) != 1 || failures[0].Customer != "example-b" || failures[0].Kind != apperr.Bug {
+		t.Errorf("rows %v, failures %+v", rows, failures)
+	}
+}

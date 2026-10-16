@@ -65,8 +65,8 @@ type routedCheckArgs struct {
 	Sites    []string `json:"sites,omitempty" doc:"Only sessions in these data centers; default all."`
 	Prefix   string   `json:"prefix" doc:"The prefix to check; a bare address means /32 or /128."`
 	Expect   *string  `json:"expect,omitempty" enum:"present,absent" default:"present" doc:"present: every expected BGP session carries the prefix; absent: none does."`
-	Wait     string   `json:"wait,omitempty" doc:"Keep checking until satisfied or this long has passed, e.g. 10m; default: check once."`
-	Interval *string  `json:"interval,omitempty" default:"30s" doc:"Time between checks while waiting."`
+	Wait     *string  `json:"wait,omitempty" doc:"Keep checking until satisfied or this long has passed, e.g. 10m, at most 1h; default: check once."`
+	Interval *string  `json:"interval,omitempty" default:"30s" doc:"Time between checks while waiting, at least 5s."`
 }
 
 var routedCheckTool = tool[routedCheckArgs]{
@@ -76,8 +76,8 @@ var routedCheckTool = tool[routedCheckArgs]{
 		in := ops.RoutedCheckInput{Customers: a.Customers, Sites: a.Sites, Prefix: a.Prefix,
 			Expect: orDefault(a.Expect, string(analytics.ExpectPresent))}
 		var err error
-		if a.Wait != "" {
-			if in.Wait, err = duration("wait", a.Wait); err != nil {
+		if a.Wait != nil {
+			if in.Wait, err = duration("wait", *a.Wait); err != nil {
 				return nil, err
 			}
 		}
@@ -146,7 +146,7 @@ var addTool = tool[addArgs]{
 
 type planArgs struct {
 	fileArg
-	MaxRemovals *int   `json:"maxRemovals,omitempty" default:"10" doc:"Most entries one alias may lose, from 0 up to the default: a plan made here can tighten the removal limit, never loosen it."`
+	MaxRemovals *int   `json:"maxRemovals,omitempty" default:"10" minimum:"0" maximum:"10" doc:"Most entries one alias may lose, from 0 up to the default: a plan made here can tighten the removal limit, never loosen it."`
 	Out         string `json:"out,omitempty" doc:"Also save the plan's JSON to this file, relative to the root: a new file, or a saved plan to replace."`
 }
 

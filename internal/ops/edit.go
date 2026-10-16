@@ -46,7 +46,7 @@ type ValidateInput struct {
 
 // Validate runs the offline checks: no credentials, no network.
 func (r *Runtime) Validate(in ValidateInput) (*ValidateDoc, error) {
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ type FmtInput struct {
 // Fmt rewrites the desired file in canonical form, offline.
 func (r *Runtime) Fmt(in FmtInput) (*FmtDoc, error) {
 	defer lockFile(r.abs(in.File))()
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (r *Runtime) Fmt(in FmtInput) (*FmtDoc, error) {
 	if doc.Canonical || in.Check {
 		return doc, nil
 	}
-	if err := writeFileAtomic(r.abs(in.File), canon); err != nil {
+	if err := writeFileAtomic(r.file(in.File), canon); err != nil {
 		return nil, err
 	}
 	doc.Written = true
@@ -167,7 +167,7 @@ type AddInput struct {
 // finding blocks the change (ncf.Change.Blocked); then nothing is written.
 func (r *Runtime) Add(in AddInput) (*ChangeDoc, error) {
 	defer lockFile(r.abs(in.File))()
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (r *Runtime) Add(in AddInput) (*ChangeDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	return commitChange(r.abs(in.File), &ChangeDoc{File: in.File, Action: "add", Ticket: in.Ticket}, ch)
+	return commitChange(r.file(in.File), &ChangeDoc{File: in.File, Action: "add", Ticket: in.Ticket}, ch)
 }
 
 // RemoveInput removes entries from one alias of the desired file.
@@ -188,7 +188,7 @@ type RemoveInput struct {
 // unless a finding blocks the change.
 func (r *Runtime) Remove(in RemoveInput) (*ChangeDoc, error) {
 	defer lockFile(r.abs(in.File))()
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -196,11 +196,11 @@ func (r *Runtime) Remove(in RemoveInput) (*ChangeDoc, error) {
 	if err != nil {
 		return nil, err
 	}
-	return commitChange(r.abs(in.File), &ChangeDoc{File: in.File, Action: "remove", Ticket: in.Ticket}, ch)
+	return commitChange(r.file(in.File), &ChangeDoc{File: in.File, Action: "remove", Ticket: in.Ticket}, ch)
 }
 
 // commitChange writes the change to path unless its findings block it.
-func commitChange(path string, doc *ChangeDoc, ch *ncf.Change) (*ChangeDoc, error) {
+func commitChange(path file, doc *ChangeDoc, ch *ncf.Change) (*ChangeDoc, error) {
 	doc.Alias, doc.Entries, doc.Findings = ch.Alias, ch.Entries, ch.Findings
 	if ch.Blocked() {
 		return doc, nil // not written: Outcome reports it

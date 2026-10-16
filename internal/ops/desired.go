@@ -17,59 +17,67 @@ import (
 	"github.com/dvmrry/akamai-prolexic/internal/version"
 )
 
-// readDesired reads and decodes the desired file at path.
-func readDesired(path string) (*ncf.File, []byte, error) {
-	if path == "" {
+// file is a path as an operation opens it and as its messages show it: the
+// caller's spelling, so neither a document nor an error names the local
+// directory a front resolved it in (Runtime.Dir).
+type file struct{ open, show string }
+
+// file is the input path given, opened under Dir.
+func (r *Runtime) file(given string) file { return file{open: r.abs(given), show: given} }
+
+// readDesired reads and decodes the desired file.
+func readDesired(p file) (*ncf.File, []byte, error) {
+	if p.open == "" {
 		return nil, nil, apperr.New(apperr.Usage, "the desired file's path is required")
 	}
-	fh, err := os.Open(path)
+	fh, err := os.Open(p.open)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, apperr.New(apperr.NotFound, "no desired file %s", path)
+		return nil, nil, apperr.New(apperr.NotFound, "no desired file %s", p.show)
 	}
 	if err != nil {
-		return nil, nil, apperr.Wrap(apperr.Usage, err, "open %s", path)
+		return nil, nil, apperr.New(apperr.Usage, "open %s: %v", p.show, fsErr(err))
 	}
 	defer fh.Close()
 	return ncf.Decode(fh)
 }
 
-// writeFileAtomic replaces path with b via a temporary file in the same
+// writeFileAtomic replaces the file with b via a temporary file in the same
 // directory, keeping the file's mode.
-func writeFileAtomic(path string, b []byte) error {
+func writeFileAtomic(p file, b []byte) error {
 	mode := os.FileMode(0o644)
-	if st, err := os.Stat(path); err == nil {
+	if st, err := os.Stat(p.open); err == nil {
 		mode = st.Mode().Perm()
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	tmp, err := os.CreateTemp(filepath.Dir(p.open), "."+filepath.Base(p.open)+".*")
 	if err != nil {
-		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
+		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(b); err != nil {
 		tmp.Close()
-		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
+		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
 	if err := tmp.Chmod(mode); err != nil {
 		tmp.Close()
-		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
+		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
 	if err := tmp.Close(); err != nil {
-		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
+		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
+	if err := os.Rename(tmp.Name(), p.open); err != nil {
+		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
 	return nil
 }
 
 // readIfExists returns the file's bytes, or nil if it doesn't exist.
-func readIfExists(path string) ([]byte, error) {
-	b, err := os.ReadFile(path)
+func readIfExists(p file) ([]byte, error) {
+	b, err := os.ReadFile(p.open)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, apperr.Wrap(apperr.Usage, err, "read %s", path)
+		return nil, apperr.New(apperr.Usage, "read %s: %v", p.show, fsErr(err))
 	}
 	return b, nil
 }
@@ -91,14 +99,14 @@ func fsErr(err error) error {
 // saveDocument writes doc's JSON to path, atomically, stamped as if it were
 // printed. A front can show the document in another format from the same
 // run, and the two can't disagree.
-func (r *Runtime) saveDocument(path string, doc output.Document) error {
+func (r *Runtime) saveDocument(p file, doc output.Document) error {
 	output.Stamp(doc, r.now(), version.Current().Version)
 	var buf bytes.Buffer
 	if err := output.Write(&buf, output.JSON, doc); err != nil {
 		return err
 	}
-	if err := writeFileAtomic(path, buf.Bytes()); err != nil {
-		return apperr.Wrap(apperr.Usage, err, "save %s", path)
+	if err := writeFileAtomic(p, buf.Bytes()); err != nil {
+		return apperr.Wrap(apperr.Usage, err, "save %s", p.show)
 	}
 	return nil
 }
@@ -106,8 +114,9 @@ func (r *Runtime) saveDocument(path string, doc output.Document) error {
 // checkOutPath refuses a path for a saved plan that would destroy
 // something: the desired file itself, a symbolic link (the write would
 // replace the link), or a directory.
-func checkOutPath(out, desired string) error {
-	st, err := os.Lstat(out)
+func checkOutPath(outFile, desired file) error {
+	out := outFile.show
+	st, err := os.Lstat(outFile.open)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -120,13 +129,13 @@ func checkOutPath(out, desired string) error {
 	case st.IsDir():
 		return apperr.New(apperr.Usage, "the plan's output path %s is a directory; give a file path", out)
 	}
-	if ds, err := os.Stat(desired); err == nil && os.SameFile(st, ds) {
+	if ds, err := os.Stat(desired.open); err == nil && os.SameFile(st, ds) {
 		return apperr.New(apperr.Usage, "the plan's output path %s is the desired file; save the plan elsewhere", out)
 	}
 	// An existing file may only be a saved plan, replaced by a fresh one:
 	// anything else (a CI config, a reviewed file) is not this tool's to
 	// overwrite.
-	b, err := os.ReadFile(out)
+	b, err := os.ReadFile(outFile.open)
 	if err != nil {
 		return apperr.New(apperr.Usage, "the plan's output path %s: %v", out, fsErr(err))
 	}

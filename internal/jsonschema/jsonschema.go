@@ -9,7 +9,8 @@
 //   - embedded structs are flattened;
 //   - `enum:"A,B"` restricts a string field;
 //   - `doc:"..."` becomes the property's description;
-//   - `default:"..."` becomes its default, typed like the field.
+//   - `default:"..."`, `minimum:"..."` and `maximum:"..."` become those
+//     keywords, typed like the field.
 //
 // A type that implements Schemaer supplies its own schema.
 package jsonschema
@@ -159,6 +160,12 @@ func collectFields(t reflect.Type, seen []reflect.Type, props map[string]any, re
 		if def, ok := f.Tag.Lookup("default"); ok {
 			ps["default"] = defaultValue(f.Type, def)
 		}
+		if v, ok := f.Tag.Lookup("minimum"); ok {
+			ps["minimum"] = defaultValue(f.Type, v)
+		}
+		if v, ok := f.Tag.Lookup("maximum"); ok {
+			ps["maximum"] = defaultValue(f.Type, v)
+		}
 		props[name] = ps
 		if !strings.Contains(opts, "omitempty") && !strings.Contains(opts, "omitzero") {
 			*required = append(*required, name)
@@ -166,8 +173,9 @@ func collectFields(t reflect.Type, seen []reflect.Type, props map[string]any, re
 	}
 }
 
-// defaultValue is a `default:"..."` tag as a JSON value of the field's type:
-// a number or boolean for those kinds, else the string as written.
+// defaultValue is a tag value (default, minimum, maximum) as a JSON value of
+// the field's type: a number or boolean for those kinds, else the string as
+// written.
 func defaultValue(t reflect.Type, s string) any {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -178,7 +186,7 @@ func defaultValue(t reflect.Type, s string) any {
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64, reflect.Bool:
 		if err := json.Unmarshal([]byte(s), &v); err != nil {
-			panic(fmt.Sprintf("jsonschema: default %q is not a %s", s, t.Kind()))
+			panic(fmt.Sprintf("jsonschema: tag value %q is not a %s", s, t.Kind()))
 		}
 		return v
 	}

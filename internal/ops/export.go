@@ -76,7 +76,7 @@ func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error
 	// placeholder, not a damaged desired file.
 	var existing *ncf.File
 	if b, rerr := os.ReadFile(r.abs(in.File)); rerr != nil || len(bytes.TrimSpace(b)) > 0 {
-		f, _, err := readDesired(r.abs(in.File))
+		f, _, err := readDesired(r.file(in.File))
 		if err != nil && apperr.KindOf(err) != apperr.NotFound {
 			return nil, err
 		}
@@ -97,10 +97,10 @@ func (r *Runtime) Export(ctx context.Context, in ExportInput) (*ExportDoc, error
 	}
 	// Skip the write when the file already holds exactly these bytes: no
 	// mtime churn, and written=false says nothing was touched.
-	if old, err := readIfExists(r.abs(in.File)); err != nil {
+	if old, err := readIfExists(r.file(in.File)); err != nil {
 		return nil, err
 	} else if !bytes.Equal(old, canon) {
-		if err := writeFileAtomic(r.abs(in.File), canon); err != nil {
+		if err := writeFileAtomic(r.file(in.File), canon); err != nil {
 			return nil, err
 		}
 		doc.Written = true

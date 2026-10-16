@@ -37,6 +37,14 @@ func FanOut[T any](ctx context.Context, customers []string, query func(context.C
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			// A panic here (an answer no decoder expected) would end the
+			// process, past any recover in the caller's goroutine: it
+			// becomes this name's failure instead.
+			defer func() {
+				if p := recover(); p != nil {
+					results[i] = result{err: apperr.New(apperr.Bug, "query for %s failed unexpectedly: %v", name, p)}
+				}
+			}()
 			rows, err := query(ctx, name)
 			results[i] = result{rows, err}
 		})

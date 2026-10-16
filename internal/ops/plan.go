@@ -130,11 +130,11 @@ func (r *Runtime) Plan(ctx context.Context, in PlanInput) (*PlanDoc, error) {
 		return nil, apperr.New(apperr.Usage, "the removal limit must be -1 (no limit) or at least 0, not %d", in.MaxRemovals)
 	}
 	if in.Out != "" {
-		if err := checkOutPath(r.abs(in.Out), r.abs(in.File)); err != nil {
+		if err := checkOutPath(r.file(in.Out), r.file(in.File)); err != nil {
 			return nil, err
 		}
 	}
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (r *Runtime) Plan(ctx context.Context, in PlanInput) (*PlanDoc, error) {
 	}
 	doc := &PlanDoc{File: in.File, Plan: *p, OwnSpaceAnalytics: !in.SkipLiveOwnSpace, changesAreDrift: in.ChangesAreDrift}
 	if in.Out != "" {
-		if err := r.saveDocument(r.abs(in.Out), doc); err != nil {
+		if err := r.saveDocument(r.file(in.Out), doc); err != nil {
 			return doc, err
 		}
 	}
@@ -204,11 +204,11 @@ type ApplyInput struct {
 // step is reported as progress. Its refusals and failures are errors,
 // returned with the document saying what happened.
 func (r *Runtime) Apply(ctx context.Context, in ApplyInput) (*ApplyDoc, error) {
-	reviewed, err := ReadPlan(r.abs(in.Plan))
+	reviewed, err := readPlan(r.file(in.Plan))
 	if err != nil {
 		return nil, err
 	}
-	f, raw, err := readDesired(r.abs(in.File))
+	f, raw, err := readDesired(r.file(in.File))
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ type VerifyInput struct {
 // Verify reads every alias in a saved plan fresh and checks the plan's end
 // state (ncf.Verify). Read-only.
 func (r *Runtime) Verify(ctx context.Context, in VerifyInput) (*VerifyDoc, error) {
-	p, err := ReadPlan(r.abs(in.Plan))
+	p, err := readPlan(r.file(in.Plan))
 	if err != nil {
 		return nil, err
 	}
@@ -290,16 +290,19 @@ func (r *Runtime) Verify(ctx context.Context, in VerifyInput) (*VerifyDoc, error
 
 // ReadPlan reads a plan document that Plan saved, refusing one saved by an
 // older prolexic.
-func ReadPlan(path string) (*ncf.Plan, error) {
-	if path == "" {
+func ReadPlan(path string) (*ncf.Plan, error) { return readPlan(file{open: path, show: path}) }
+
+func readPlan(p file) (*ncf.Plan, error) {
+	path := p.show
+	if p.open == "" {
 		return nil, apperr.New(apperr.Usage, "the saved plan's path is required")
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(p.open)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, apperr.New(apperr.NotFound, "no plan file %s", path)
 	}
 	if err != nil {
-		return nil, apperr.Wrap(apperr.Usage, err, "read %s", path)
+		return nil, apperr.New(apperr.Usage, "read %s: %v", path, fsErr(err))
 	}
 	var doc struct {
 		Schema string `json:"schema"`

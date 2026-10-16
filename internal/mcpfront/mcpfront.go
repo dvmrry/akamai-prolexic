@@ -34,7 +34,7 @@ import (
 )
 
 // Instructions is what the server tells the agent when it connects.
-const Instructions = `prolexic: Akamai Prolexic and Network Cloud Firewall, read-only, plus edits to a local desired file.
+const Instructions = `prolexic: Akamai Prolexic and Network Cloud Firewall, read-only, plus local files: edits to the desired file (add, remove, fmt, export) and saved plans (plan with out).
 
 Every tool returns a JSON document with a "schema" field (prolexic.<name>.v1). A result with an "outcome" note is data, not a failure: a check that isn't satisfied, or customer names whose query failed.
 
@@ -126,6 +126,10 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 	if _, ok := schema["properties"]; !ok {
 		schema["properties"] = map[string]any{}
 	}
+	names := map[string]bool{}
+	for name := range schema["properties"].(map[string]any) {
+		names[name] = true
+	}
 	no, yes := false, true
 	// A tool that writes overwrites a local file: destructive, though git
 	// has the old one.
@@ -144,7 +148,7 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 				}
 			}()
 			var args A
-			if err := decodeArgs(req.Params.Arguments, &args); err != nil {
+			if err := decodeArgs(req.Params.Arguments, &args, names); err != nil {
 				return f.result(nil, err), nil
 			}
 			doc, err := t.run(ctx, f, args)
@@ -153,10 +157,20 @@ func (t tool[A]) register(s *mcp.Server, f *front) {
 }
 
 // decodeArgs decodes a tool's arguments strictly: an unknown argument is an
-// error, not something silently ignored.
-func decodeArgs(raw json.RawMessage, v any) error {
-	if len(bytes.TrimSpace(raw)) == 0 {
+// error, not something silently ignored, and names match the schema exactly
+// (encoding/json alone would take "Prefix" for "prefix").
+func decodeArgs(raw json.RawMessage, v any, names map[string]bool) error {
+	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		raw = json.RawMessage("{}")
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		return apperr.Wrap(apperr.Usage, err, "arguments")
+	}
+	for name := range top {
+		if !names[name] {
+			return apperr.New(apperr.Usage, "arguments: unknown field %q", name)
+		}
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -204,9 +218,11 @@ func (f *front) render(doc output.Document) string {
 }
 
 // path resolves a file argument against the root and keeps it there: the
-// agent can't read or write a file elsewhere on disk, and a symbolic link
-// can't lead out of the root. "" stays "" (the operation reports the missing
-// path). The file itself need not exist yet; its directory must.
+// agent can't read or write a file elsewhere on disk, a symbolic link can't
+// lead out of the root, and only .json files outside hidden directories are
+// reachable. It returns the path relative to the root. "" stays "" (the
+// operation reports the missing path). The file itself need not exist yet;
+// its directory must.
 func (f *front) path(p string) (string, error) {
 	if p == "" {
 		return "", nil
@@ -224,11 +240,26 @@ func (f *front) path(p string) (string, error) {
 	if st, err := os.Lstat(real); err == nil && st.Mode()&os.ModeSymlink != 0 {
 		return "", apperr.New(apperr.Usage, "%s is a symbolic link; give the path of a real file", p)
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return "", apperr.Wrap(apperr.Usage, err, "%s", p)
+		var pe *os.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err // its path is the resolved one, under the root
+		}
+		return "", apperr.New(apperr.Usage, "%s: %v", p, err)
 	}
 	rel, err := filepath.Rel(f.root, real)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", apperr.New(apperr.Usage, "%s is outside the root %s", p, f.root)
+		return "", apperr.New(apperr.Usage, "%s is outside the root", p)
+	}
+	// The tools read and write JSON: the desired file and saved plans. A
+	// hidden path (.git, .github, .envrc) is never one of them, and no tool
+	// should create files there.
+	if filepath.Ext(rel) != ".json" {
+		return "", apperr.New(apperr.Usage, "%s: the tools read and write .json files only", p)
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if strings.HasPrefix(part, ".") {
+			return "", apperr.New(apperr.Usage, "%s: hidden files and directories are off limits", p)
+		}
 	}
 	return rel, nil // the operation opens it under the runtime's Dir (the root); documents show it as given
 }
