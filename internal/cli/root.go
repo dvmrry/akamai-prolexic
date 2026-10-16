@@ -120,6 +120,7 @@ func (a *app) tree() []*cobra.Command {
 			newTargetsListCmd(a), newTargetsShowCmd(a)),
 		newTimeSeriesCmd(a),
 		newValidateCmd(a),
+		newVerifyCmd(a),
 		newVersionCmd(a),
 	}
 }

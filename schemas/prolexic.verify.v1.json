@@ -1,0 +1,101 @@
+{
+  "$id": "prolexic.verify.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aliases": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "live": {
+            "description": "Live entry count.",
+            "type": "integer"
+          },
+          "missing": {
+            "description": "Entries the plan adds that aren't live.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "problems": {
+            "description": "What doesn't match, in words.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prodVersion": {
+            "description": "Empty when no deployed rule uses the alias: nothing to carry.",
+            "type": "string"
+          },
+          "productionLag": {
+            "description": "Production doesn't carry the active version yet.",
+            "type": "boolean"
+          },
+          "stillLive": {
+            "description": "Entries the plan removes that are still live.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verified": {
+            "description": "Every added entry is live, no removed entry is, the count matches, and production carries the active version.",
+            "type": "boolean"
+          },
+          "want": {
+            "description": "Expected count: the plan's unchanged entries plus its additions.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "id",
+          "live",
+          "missing",
+          "name",
+          "problems",
+          "prodVersion",
+          "productionLag",
+          "stillLive",
+          "verified",
+          "want"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "digest": {
+      "description": "The verified plan's digest.",
+      "type": "string"
+    },
+    "planFile": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "verified": {
+      "description": "Every alias matched.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "aliases",
+    "digest",
+    "planFile",
+    "schema",
+    "verified"
+  ],
+  "type": "object"
+}

@@ -41,5 +41,6 @@ prolexic [flags]
 * [prolexic targets](prolexic_targets.md)	 - Network Health targets (read-only)
 * [prolexic time-series](prolexic_time-series.md)	 - flow usage and attack traffic per destination (read-only)
 * [prolexic validate](prolexic_validate.md)	 - offline checks of the desired file: no credentials, no network
+* [prolexic verify](prolexic_verify.md)	 - check a saved plan's expected end state against a fresh read (read-only)
 * [prolexic version](prolexic_version.md)	 - print the version
 

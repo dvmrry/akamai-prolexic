@@ -47,6 +47,7 @@ func documents() []output.Document {
 		&TimeSeriesDoc{},
 		&VersionDoc{},
 		&ValidateDoc{},
+		&VerifyDoc{},
 	}
 }
 
