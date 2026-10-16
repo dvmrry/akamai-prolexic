@@ -90,6 +90,9 @@ func FailuresError(failures []Failure, total int) error {
 // (deduplicated, in the given order), otherwise every in-use name of the
 // account, sorted.
 func ResolveCustomers(ctx context.Context, c *Client, explicit []string) ([]string, error) {
+	if err := CheckNames(explicit); err != nil {
+		return nil, err
+	}
 	all, err := c.CustomerNames(ctx)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.KindOf(err), err, "resolve customer names")
@@ -104,7 +107,7 @@ func ResolveCustomers(ctx context.Context, c *Client, explicit []string) ([]stri
 		}
 		var out []string
 		for _, n := range explicit {
-			if n == "" || slices.Contains(out, n) {
+			if slices.Contains(out, n) {
 				continue
 			}
 			if !known[n] {
@@ -160,4 +163,15 @@ func ForCustomers[T any](ctx context.Context, c *Client, resolve Resolver, expli
 		failures = []Failure{}
 	}
 	return &Result[T]{Customers: names, Rows: rows, Failures: failures}, nil
+}
+
+// CheckNames refuses explicit customer names that can't be meant: an empty
+// name given explicitly is a mistake, not "no filter", and dropping it would
+// query no names and report an empty success. Callers check before building
+// a client, so the agent or person learns what's wrong first.
+func CheckNames(explicit []string) error {
+	if slices.Contains(explicit, "") {
+		return apperr.New(apperr.Usage, "a customer name is empty")
+	}
+	return nil
 }

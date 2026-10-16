@@ -84,6 +84,14 @@ var routedCheckTool = tool[routedCheckArgs]{
 		if in.Interval, err = duration("interval", orDefault(a.Interval, ops.DefaultCheckInterval.String())); err != nil {
 			return nil, err
 		}
+		if in.Wait > 0 {
+			select {
+			case f.waits <- struct{}{}:
+				defer func() { <-f.waits }()
+			default:
+				return nil, apperr.New(apperr.Usage, "%d routed checks are already waiting; let one finish, or check once without a wait", maxWaitingChecks)
+			}
+		}
 		return output.Doc(f.rt.RoutedCheck(ctx, in))
 	},
 }
@@ -348,7 +356,7 @@ type metricsArgs struct {
 	Types   []string `json:"types" doc:"SERVICE:METRIC, or fbm:METRIC:PROTOCOL."`
 	Subnet  string   `json:"subnet,omitempty" doc:"The subnet fbm types report on; fbm types need a subnet or an ip."`
 	IP      string   `json:"ip,omitempty" doc:"The IP address fbm types report on."`
-	Samples *int     `json:"samples,omitempty" default:"100" doc:"Data points to return, at least 1."`
+	Samples *int     `json:"samples,omitempty" default:"100" minimum:"1" doc:"Data points to return, at least 1."`
 }
 
 var metricsTool = tool[metricsArgs]{
@@ -370,7 +378,7 @@ type timeSeriesArgs struct {
 	Locations    []string `json:"locations,omitempty" doc:"Data centers such as mia4, or agr for all aggregated; default agr."`
 	Source       *string  `json:"source,omitempty" enum:"both,access_flow,border_flow" default:"both" doc:"both, access_flow (Akamai router) or border_flow (customer router)."`
 	Sum          bool     `json:"sum,omitempty" doc:"Also return the aggregated data."`
-	Samples      int      `json:"samples,omitempty" doc:"Timestamps to return; 0 or absent: all in the window."`
+	Samples      int      `json:"samples,omitempty" minimum:"0" doc:"Timestamps to return; 0 or absent: all in the window."`
 }
 
 var timeSeriesTool = tool[timeSeriesArgs]{

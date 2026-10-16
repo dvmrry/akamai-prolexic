@@ -63,7 +63,7 @@ func (r *Runtime) RoutedRoutes(ctx context.Context, in RoutedRoutesInput) (*Rout
 		}
 		want = p
 	}
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

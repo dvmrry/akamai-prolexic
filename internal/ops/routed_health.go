@@ -50,7 +50,7 @@ type RoutedHealthInput struct {
 // RoutedHealth lists healthy and total tunnels per location and router; a
 // name whose query failed is reported in the document, not as an error.
 func (r *Runtime) RoutedHealth(ctx context.Context, in RoutedHealthInput) (*RoutedHealthDoc, error) {
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

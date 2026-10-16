@@ -66,7 +66,7 @@ func (r *Runtime) Events(ctx context.Context, in EventsInput) (*EventsDoc, error
 	if err != nil {
 		return nil, err
 	}
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

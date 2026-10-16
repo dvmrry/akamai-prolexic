@@ -61,7 +61,10 @@ func (r *Runtime) Aliases(ctx context.Context, in AliasesInput) (*AliasesDoc, er
 // oneAlias refuses a selector that names no alias or two ways at once.
 // Operations check it first, before building a client.
 func oneAlias(name string, id int64) error {
-	if (name == "") == (id == 0) {
+	switch {
+	case id < 0:
+		return apperr.New(apperr.Usage, "the alias id must be positive")
+	case (name == "") == (id == 0):
 		return apperr.New(apperr.Usage, "give exactly one of the alias name and the alias id")
 	}
 	return nil

@@ -91,6 +91,15 @@ func (r *Runtime) analytics() (*analytics.Client, error) {
 	return analytics.New(c), nil
 }
 
+// analyticsFor is the Analytics client for a query over customers, after
+// checking the names: an argument error comes before a credentials error.
+func (r *Runtime) analyticsFor(customers []string) (*analytics.Client, error) {
+	if err := analytics.CheckNames(customers); err != nil {
+		return nil, err
+	}
+	return r.analytics()
+}
+
 // networkHealth is the Network Health client, over the read credentials.
 func (r *Runtime) networkHealth() (*networkhealth.Client, error) {
 	c, err := r.ReadClient()

@@ -73,7 +73,7 @@ func (r *Runtime) Metrics(ctx context.Context, in MetricsInput) (*MetricsDoc, er
 	if err != nil {
 		return nil, err
 	}
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

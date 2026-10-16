@@ -66,7 +66,7 @@ func (r *Runtime) Attacks(ctx context.Context, in AttacksInput) (*AttacksDoc, er
 	if err != nil {
 		return nil, err
 	}
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

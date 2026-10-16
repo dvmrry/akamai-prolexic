@@ -55,7 +55,7 @@ type ProtectedInput struct {
 // customer name; a name whose query failed is reported in the document, not
 // as an error.
 func (r *Runtime) Protected(ctx context.Context, in ProtectedInput) (*ProtectedDoc, error) {
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

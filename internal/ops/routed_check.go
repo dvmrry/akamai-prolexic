@@ -95,7 +95,7 @@ func (r *Runtime) RoutedCheck(ctx context.Context, in RoutedCheckInput) (*Routed
 		return nil, apperr.New(apperr.Usage, "the interval must be at least %s when waiting", MinCheckInterval)
 	}
 	interval := in.Interval
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

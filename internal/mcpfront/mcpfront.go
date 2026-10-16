@@ -52,10 +52,15 @@ type Options struct {
 	Root string
 }
 
+// maxWaitingChecks caps the routed_check calls waiting at once: each polls
+// the API for up to an hour.
+const maxWaitingChecks = 4
+
 // front is one MCP session's state: the runtime and the file root.
 type front struct {
-	rt   *ops.Runtime
-	root string // absolute, symbolic links resolved
+	rt    *ops.Runtime
+	root  string        // absolute, symbolic links resolved
+	waits chan struct{} // one slot per waiting routed_check
 }
 
 // New builds the MCP server with every tool registered.
@@ -83,7 +88,7 @@ func New(o Options) (*mcp.Server, error) {
 	}
 	rt := *o.Runtime // a copy: relative paths resolve in the root, whatever the caller's runtime says
 	rt.Dir = root
-	f := &front{rt: &rt, root: root}
+	f := &front{rt: &rt, root: root, waits: make(chan struct{}, maxWaitingChecks)}
 	s := mcp.NewServer(&mcp.Implementation{Name: "prolexic", Version: version.Current().Version}, &mcp.ServerOptions{Instructions: Instructions})
 	for _, t := range tools() {
 		t.register(s, f)

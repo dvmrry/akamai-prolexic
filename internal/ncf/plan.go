@@ -520,7 +520,11 @@ func cmpString(a, b string) int {
 // neither blocks it. Two applies close the gap: the addition, then the
 // removal.
 func crossAliasMoves(aliases []AliasPlan, add func(Severity, string, string, string, string, ...any)) {
-	deny := func(a AliasPlan) bool { return a.Role == RoleDeny && a.Type != "DIPA" }
+	// The side the own-space checks use: a role only the file states is checked
+	// as deny, so it counts as deny here too.
+	deny := func(a AliasPlan) bool {
+		return a.Type != "DIPA" && (a.Role == RoleDeny || a.RoleSource == RoleFromFile)
+	}
 	covers := func(x, y string) bool {
 		vx, ex := ParseLive(x)
 		vy, ey := ParseLive(y)

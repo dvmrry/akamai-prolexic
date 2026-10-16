@@ -352,12 +352,13 @@ func TestArgumentChecksComeFirst(t *testing.T) {
 	writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
 	cs := connect(t, Options{Runtime: offline(), Root: root})
 	for key, args := range map[string]map[string]any{
-		"alias_show":     {},
-		"alias_versions": {"name": "block-v4", "id": 101},
-		"export":         {"file": "desired.json", "role": ""},
-		"plan":           {"file": "desired.json", "maxRemovals": -5},
-		"plan, loosened": {"file": "desired.json", "maxRemovals": -1},
-		"plan, raised":   {"file": "desired.json", "maxRemovals": 11},
+		"alias_show":              {},
+		"alias_versions":          {"name": "block-v4", "id": 101},
+		"alias_show, negative id": {"id": -4},
+		"export":                  {"file": "desired.json", "role": ""},
+		"plan":                    {"file": "desired.json", "maxRemovals": -5},
+		"plan, loosened":          {"file": "desired.json", "maxRemovals": -1},
+		"plan, raised":            {"file": "desired.json", "maxRemovals": 11},
 	} {
 		name, _, _ := strings.Cut(key, ",")
 		texts, isErr := call(t, cs, name, args)
@@ -504,6 +505,9 @@ func TestSchemaLimitsMatchTheConstants(t *testing.T) {
 	if p := props["plan.maxRemovals"]; p["minimum"] != float64(0) || p["maximum"] != float64(ncf.DefaultMaxRemovals) {
 		t.Errorf("plan.maxRemovals: %v", p)
 	}
+	if p := props["metrics.samples"]; p["minimum"] != float64(1) || p["default"] != float64(ops.MetricsDefaultSamples) {
+		t.Errorf("metrics.samples: %v", p)
+	}
 	if d, _ := props["routed_check.interval"]["description"].(string); !strings.Contains(d, "at least "+short(ops.MinCheckInterval)) {
 		t.Errorf("routed_check.interval: %q", d)
 	}
@@ -545,5 +549,34 @@ func TestNestedArgumentsAreExact(t *testing.T) {
 	texts, isErr := call(t, cs, "acl_test", map[string]any{"packets": []any{map[string]any{"protocol": "tcp", "SRCIP": "192.0.2.1", "dstIp": "198.51.100.1"}}})
 	if !isErr || !strings.Contains(texts[len(texts)-1], `unknown field \"packets.0.SRCIP\"`) {
 		t.Errorf("%v %q", isErr, texts)
+	}
+}
+
+// An explicit empty customer name is an error: dropping it would query no
+// names and report an empty success ("no events").
+func TestEmptyCustomerNameRefused(t *testing.T) {
+	cs := connect(t, Options{Runtime: offline(), Root: t.TempDir()})
+	for _, tool := range []string{"events", "attacks_list", "protected", "routed_sessions"} {
+		texts, isErr := call(t, cs, tool, map[string]any{"customers": []string{""}})
+		if !isErr || !strings.Contains(texts[len(texts)-1], `"kind": "usage"`) {
+			t.Errorf("%s: %v %q", tool, isErr, texts)
+		}
+	}
+}
+
+// At most maxWaitingChecks routed_check calls wait at once; one more is
+// refused before it reaches the API, and a single check still runs.
+func TestWaitingChecksAreCapped(t *testing.T) {
+	f := &front{rt: offline(), waits: make(chan struct{}, maxWaitingChecks)}
+	for range maxWaitingChecks {
+		f.waits <- struct{}{}
+	}
+	wait := "10m"
+	_, err := routedCheckTool.run(context.Background(), f, routedCheckArgs{Prefix: "203.0.113.0/24", Wait: &wait})
+	if apperr.KindOf(err) != apperr.Usage || !strings.Contains(err.Error(), "already waiting") {
+		t.Errorf("a fifth waiting check: %v", err)
+	}
+	if _, err := routedCheckTool.run(context.Background(), f, routedCheckArgs{Prefix: "203.0.113.0/24"}); apperr.KindOf(err) != apperr.Credentials {
+		t.Errorf("a check without a wait: %v (want it to reach the API)", err)
 	}
 }

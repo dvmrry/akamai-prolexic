@@ -45,7 +45,7 @@ type RoutedSessionsInput struct {
 // RoutedSessions lists the BGP sessions of each customer name; a name whose
 // query failed is reported in the document, not as an error.
 func (r *Runtime) RoutedSessions(ctx context.Context, in RoutedSessionsInput) (*RoutedSessionsDoc, error) {
-	api, err := r.analytics()
+	api, err := r.analyticsFor(in.Customers)
 	if err != nil {
 		return nil, err
 	}

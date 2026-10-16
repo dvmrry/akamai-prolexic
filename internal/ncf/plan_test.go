@@ -411,9 +411,17 @@ func TestPlanWarnsWhenSpaceMovesBetweenDenyAliases(t *testing.T) {
 	if !slices.Equal(got, []string{"warning cross_alias_move block-v4 192.0.2.0/25"}) {
 		t.Errorf("deny to deny: findings = %q", got)
 	}
+	// To a verified allow alias it is a change of meaning, not a move.
 	s, f = setup(ncf.RoleAllow)
+	s.Rules = []ncf.ACLRule{{Index: 2, Action: "permit", Source: "SRC::A-EXAMPLE::block-b", Destination: "any"}}
+	s.UseInRule(103, 2)
 	if got := findingCodes(plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}).Findings); len(got) != 0 {
-		t.Errorf("deny to allow is a change of meaning, not a move: findings = %q", got)
+		t.Errorf("deny to verified allow is a change of meaning, not a move: findings = %q", got)
+	}
+	// An allow role only the file states is checked as deny, so it is a move.
+	s, f = setup(ncf.RoleAllow)
+	if got := findingCodes(plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}).Findings); !slices.Equal(got, []string{"warning cross_alias_move block-v4 192.0.2.0/25"}) {
+		t.Errorf("deny to unverified allow: findings = %q", got)
 	}
 	// A split within one alias is atomic: no warning.
 	s = world()
