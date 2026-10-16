@@ -19,7 +19,7 @@ func newAliasesVersionsCmd(a *app) *cobra.Command {
 			if err := requireOneAlias(in.Name, in.ID); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().AliasVersions(ctx, in))
+			return output.Doc(a.ops().AliasVersions(ctx, in))
 		}),
 	}
 	aliasSelector(cmd, &in.Name, &in.ID)

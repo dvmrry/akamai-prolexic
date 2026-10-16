@@ -24,7 +24,7 @@ func newExportCmd(a *app) *cobra.Command {
 			if in.Role != ncf.RoleDeny && in.Role != ncf.RoleAllow { // the fallback for aliases no rule uses
 				return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", role)
 			}
-			return docOf(a.ops().Export(ctx, in))
+			return output.Doc(a.ops().Export(ctx, in))
 		}),
 	}
 	fileFlag(cmd, &in.File)

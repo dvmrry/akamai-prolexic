@@ -15,7 +15,7 @@ func newTargetsListCmd(a *app) *cobra.Command {
 		Short: "every target of the account",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Targets(ctx))
+			return output.Doc(a.ops().Targets(ctx))
 		}),
 	}
 }
@@ -27,7 +27,7 @@ func newTargetsShowCmd(a *app) *cobra.Command {
 		Short: "one target by id",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Target(ctx, in))
+			return output.Doc(a.ops().Target(ctx, in))
 		}),
 	}
 	cmd.Flags().StringVar(&in.ID, "id", "", "target id (required)")

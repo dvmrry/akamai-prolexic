@@ -16,7 +16,7 @@ func newRoutedRoutesCmd(a *app) *cobra.Command {
 		Short: "routes announced to Akamai per customer name",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().RoutedRoutes(ctx, in))
+			return output.Doc(a.ops().RoutedRoutes(ctx, in))
 		}),
 	}
 	customerFlag(cmd, &in.Customers)

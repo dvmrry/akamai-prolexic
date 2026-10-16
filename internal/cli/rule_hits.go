@@ -15,7 +15,7 @@ func newRuleHitsListCmd(a *app) *cobra.Command {
 		Short: "match statistics of every rule",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().RuleHits(ctx))
+			return output.Doc(a.ops().RuleHits(ctx))
 		}),
 	}
 }
@@ -32,7 +32,7 @@ func newRuleHitsShowCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().RuleHit(ctx, in))
+			return output.Doc(a.ops().RuleHit(ctx, in))
 		}),
 	}
 	cmd.Flags().StringVar(&in.Rule, "rule", "", "rule id (the ruleId from rule-hits list; required)")

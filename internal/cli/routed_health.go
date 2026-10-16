@@ -16,7 +16,7 @@ func newRoutedHealthCmd(a *app) *cobra.Command {
 		Short: "healthy and total tunnels per location and router",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().RoutedHealth(ctx, in))
+			return output.Doc(a.ops().RoutedHealth(ctx, in))
 		}),
 	}
 	customerFlag(cmd, &in.Customers)

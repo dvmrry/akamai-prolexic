@@ -17,7 +17,7 @@ func newRoutedSessionsCmd(a *app) *cobra.Command {
 		Short: "BGP sessions per customer name",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().RoutedSessions(ctx, ops.RoutedSessionsInput{Customers: customers}))
+			return output.Doc(a.ops().RoutedSessions(ctx, ops.RoutedSessionsInput{Customers: customers}))
 		}),
 	}
 	customerFlag(cmd, &customers)

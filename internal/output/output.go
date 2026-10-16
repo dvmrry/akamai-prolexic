@@ -178,3 +178,16 @@ func NewErrorDoc(err error, exitCode int) *ErrorDoc {
 		Upstream: apperr.UpstreamOf(err),
 	}
 }
+
+// Doc returns an operation's document as a Document: a nil *D stays a nil
+// interface, not a non-nil one holding a nil pointer. Fronts wrap every
+// operation's result with it.
+func Doc[D any, P interface {
+	*D
+	Document
+}](doc P, err error) (Document, error) {
+	if doc == nil {
+		return nil, err
+	}
+	return doc, err
+}

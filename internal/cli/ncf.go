@@ -18,7 +18,7 @@ func newValidateCmd(a *app) *cobra.Command {
 		Short: "offline checks of the desired file: no credentials, no network",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(context.Context, []string) (output.Document, error) {
-			return docOf(a.ops().Validate(in))
+			return output.Doc(a.ops().Validate(in))
 		}),
 	}
 	fileFlag(cmd, &in.File)
@@ -32,7 +32,7 @@ func newFmtCmd(a *app) *cobra.Command {
 		Short: "rewrite the desired file in canonical form, or --check it (offline)",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(context.Context, []string) (output.Document, error) {
-			return docOf(a.ops().Fmt(in))
+			return output.Doc(a.ops().Fmt(in))
 		}),
 	}
 	fileFlag(cmd, &in.File)
@@ -55,7 +55,7 @@ func newAddCmd(a *app) *cobra.Command {
 				}
 			}
 			in.Alias, in.Entries = args[0], args[1:]
-			return docOf(a.ops().Add(in))
+			return output.Doc(a.ops().Add(in))
 		}),
 	}
 	f := cmd.Flags()
@@ -79,7 +79,7 @@ func newRemoveCmd(a *app) *cobra.Command {
 		Args:    cobra.MinimumNArgs(2),
 		RunE: a.run(func(_ context.Context, args []string) (output.Document, error) {
 			in.Alias, in.Entries = args[0], args[1:]
-			return docOf(a.ops().Remove(in))
+			return output.Doc(a.ops().Remove(in))
 		}),
 	}
 	fileFlag(cmd, &in.File)
@@ -114,7 +114,7 @@ func newPlanCmd(a *app) *cobra.Command {
 			"--out also saves the plan's JSON to a file (for apply --plan and verify --plan); stdout follows --format, so --format text gives a reviewer the text from the same run.",
 		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Plan(ctx, ops.PlanInput{
+			return output.Doc(a.ops().Plan(ctx, ops.PlanInput{
 				File: p.file, MaxRemovals: p.maxRemovals, SkipLiveOwnSpace: p.noAnalytics, ChangesAreDrift: exitCode, Out: out,
 			}))
 		}),
@@ -142,7 +142,7 @@ func newApplyCmd(a *app) *cobra.Command {
 				return nil, err
 			}
 			in.File = p.file
-			return docOf(a.ops().Apply(ctx, in))
+			return output.Doc(a.ops().Apply(ctx, in))
 		}),
 	}
 	p.register(cmd)

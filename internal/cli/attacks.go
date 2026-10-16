@@ -21,7 +21,7 @@ func newAttacksListCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().Attacks(ctx, in))
+			return output.Doc(a.ops().Attacks(ctx, in))
 		}),
 	}
 	customerFlag(cmd, &in.Customers)
@@ -36,7 +36,7 @@ func newAttacksShowCmd(a *app) *cobra.Command {
 		Short: "one attack's detail report",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Attack(ctx, in))
+			return output.Doc(a.ops().Attack(ctx, in))
 		}),
 	}
 	f := cmd.Flags()

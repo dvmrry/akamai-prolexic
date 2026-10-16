@@ -14,7 +14,7 @@ func newScrubCentersCmd(a *app) *cobra.Command {
 		Short: "active scrub centers",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().ScrubCenters(ctx))
+			return output.Doc(a.ops().ScrubCenters(ctx))
 		}),
 	}
 }

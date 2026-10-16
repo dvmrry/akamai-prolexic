@@ -24,7 +24,7 @@ func newMetricsCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().Metrics(ctx, in))
+			return output.Doc(a.ops().Metrics(ctx, in))
 		}),
 	}
 	f := cmd.Flags()

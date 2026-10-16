@@ -17,7 +17,7 @@ func newAliasesListCmd(a *app) *cobra.Command {
 		Short: "every alias, without entries",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Aliases(ctx, in))
+			return output.Doc(a.ops().Aliases(ctx, in))
 		}),
 	}
 	cmd.Flags().BoolVar(&in.EditableOnly, "editable", false, "only customer-editable aliases (not Akamai-managed)")
@@ -34,7 +34,7 @@ func newAliasesShowCmd(a *app) *cobra.Command {
 			if err := requireOneAlias(in.Name, in.ID); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().Alias(ctx, in))
+			return output.Doc(a.ops().Alias(ctx, in))
 		}),
 	}
 	aliasSelector(cmd, &in.Name, &in.ID)

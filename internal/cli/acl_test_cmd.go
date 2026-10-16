@@ -42,7 +42,7 @@ func newACLTestCmd(a *app) *cobra.Command {
 			if err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().ACLTest(ctx, ops.ACLTestInput{Version: o.version, Packets: packets}))
+			return output.Doc(a.ops().ACLTest(ctx, ops.ACLTestInput{Version: o.version, Packets: packets}))
 		}),
 	}
 	f := cmd.Flags()

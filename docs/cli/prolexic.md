@@ -42,6 +42,7 @@ prolexic [flags]
 * [prolexic export](prolexic_export.md)	 - write live editable aliases to the desired file (bootstrap, or adopt drift)
 * [prolexic fmt](prolexic_fmt.md)	 - rewrite the desired file in canonical form, or --check it (offline)
 * [prolexic managed](prolexic_managed.md)	 - managed-services ACLs and rule hits
+* [prolexic mcp](prolexic_mcp.md)	 - offer the read-only operations as MCP tools to a local agent, over stdio
 * [prolexic metrics](prolexic_metrics.md)	 - traffic metrics per customer name
 * [prolexic plan](prolexic_plan.md)	 - diff the desired file against live and validate it
 * [prolexic protected](prolexic_protected.md)	 - prefixes and AS numbers treated as own space, per customer name

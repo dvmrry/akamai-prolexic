@@ -30,7 +30,7 @@ The code is in three layers, so that other fronts (an MCP server, possibly a Ter
 | --- | --- | --- |
 | **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncfanalytics`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
 | **operations** | `internal/ops` (every command but `doctor` and `version`, which describe the CLI itself) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
-| **fronts** | `internal/cli` (Cobra), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
+| **fronts** | `internal/cli` (Cobra), `internal/mcpfront` (MCP tools over stdio), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
 
 - **Dependencies point down only.** SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and only `cli` and `internal/tools` import Cobra. `internal/hygiene` tests this.
 - Everything stays under `internal/` while every consumer lives in this module. `internal/` only stops imports from other modules, so it carries no public-API promise. Move to `pkg/` only if a consumer must live elsewhere.
@@ -145,6 +145,15 @@ A check lives at the lowest layer that has the information. Higher layers may re
 - `events`: the API takes no time range, so `--since`/`--start`/`--end` filter on our side by span overlap.
 - `attacks list` and `attacks show` return different shapes, which is why they are separate subcommands.
 - A customer name containing `/` is rejected, because the path can't carry it.
+
+## MCP front
+
+`internal/mcpfront` offers the operations as MCP tools over stdio (`prolexic mcp`), using the official Go SDK with its stdio transport only. Nothing listens; a networked server would be a separate decision.
+
+- **Read-only towards the API.** `mcpfront.New` refuses a runtime with a write client, and there is no apply tool: production changes go through version control (a pull request, the reviewed plan, CI's apply). The tools that write, write local files only: the desired file, and a saved plan.
+- **One contract.** A tool returns the document the CLI prints as JSON (`TestMCPReturnsTheCLIDocument` compares them byte for byte), through `internal/output`, which escapes invisible characters. An outcome (a check not satisfied, failed names) is a note beside the document, not a tool error; an error is a tool error carrying the error document (its `code` is 0: `kind` is the contract).
+- **Arguments** are types of their own with JSON Schemas from `internal/jsonschema`. Unknown arguments are refused. A value with a default is a pointer, so a value left out (the default, from the same ops constant the CLI uses) differs from one given explicitly.
+- **Paths** are resolved against a root and confined to it, through symbolic links; a path that is itself a symbolic link is refused.
 
 ## Not built yet
 

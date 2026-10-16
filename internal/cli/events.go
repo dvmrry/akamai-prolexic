@@ -22,7 +22,7 @@ func newEventsCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().Events(ctx, in))
+			return output.Doc(a.ops().Events(ctx, in))
 		}),
 	}
 	customerFlag(cmd, &in.Customers)

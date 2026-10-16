@@ -16,7 +16,7 @@ func newManagedACLCmd(a *app) *cobra.Command {
 		Short: "a policy domain's latest managed-services ACL version",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().ManagedACL(ctx, in))
+			return output.Doc(a.ops().ManagedACL(ctx, in))
 		}),
 	}
 	cmd.Flags().StringVar(&in.PolicyDomain, "policy-domain", "", "policy domain (required)")
@@ -36,7 +36,7 @@ func newManagedRuleHitsCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().ManagedRuleHits(ctx, in))
+			return output.Doc(a.ops().ManagedRuleHits(ctx, in))
 		}),
 	}
 	f := cmd.Flags()

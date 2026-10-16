@@ -23,7 +23,11 @@ var sdk = []string{
 
 // frontOnly are imports the SDK must never use: the fronts, and the operations
 // layer above the SDK.
-var frontOnly = []string{module + "internal/cli", module + "internal/ops", module + "internal/output", module + "internal/jsonschema", "github.com/spf13/cobra"}
+var frontOnly = []string{module + "internal/cli", module + "internal/mcpfront", module + "internal/ops", module + "internal/output", module + "internal/jsonschema", "github.com/spf13/cobra", mcpSDK}
+
+// mcpSDK is the MCP SDK: only the MCP front (and the CLI, which starts it)
+// may import it.
+const mcpSDK = "github.com/modelcontextprotocol/go-sdk"
 
 // TestLayers keeps dependencies pointing down: the SDK never imports a front,
 // and only the CLI and its tools import Cobra or the CLI.
@@ -63,6 +67,12 @@ func TestLayers(t *testing.T) {
 			cliSide := dir == "internal/cli" || strings.HasPrefix(dir, "internal/tools/") || strings.HasPrefix(dir, "cmd/")
 			if (strings.HasPrefix(dep, "github.com/spf13/cobra") || dep == module+"internal/cli") && !cliSide {
 				t.Errorf("%s imports %s: only the CLI and its tools may", dir, dep)
+			}
+			if dir == "internal/ops" && (dep == module+"internal/mcpfront" || strings.HasPrefix(dep, mcpSDK)) {
+				t.Errorf("%s imports %s: operations know no front", dir, dep)
+			}
+			if strings.HasPrefix(dep, mcpSDK) && dir != "internal/mcpfront" && dir != "internal/cli" {
+				t.Errorf("%s imports %s: only the MCP front may", dir, dep)
 			}
 		}
 	}

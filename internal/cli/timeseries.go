@@ -22,7 +22,7 @@ func newTimeSeriesCmd(a *app) *cobra.Command {
 			if in.Window, err = win.window(); err != nil {
 				return nil, err
 			}
-			return docOf(a.ops().TimeSeries(ctx, in))
+			return output.Doc(a.ops().TimeSeries(ctx, in))
 		}),
 	}
 	f := cmd.Flags()

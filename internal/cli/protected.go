@@ -16,7 +16,7 @@ func newProtectedCmd(a *app) *cobra.Command {
 		Short: "prefixes and AS numbers treated as own space, per customer name",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Protected(ctx, in))
+			return output.Doc(a.ops().Protected(ctx, in))
 		}),
 	}
 	listVar(cmd.Flags(), &in.Customers, "customer", "customer name to query; repeatable or comma-separated (default: every name, in use or not)")

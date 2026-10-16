@@ -57,6 +57,19 @@ The exit codes are a contract:
 | 8 | conflict (another writer) |
 | 130 | cancelled |
 
+## Agents (MCP)
+
+`prolexic mcp` offers the operations as MCP tools to a local agent, over stdio: the agent's MCP client starts it as a child process. There is no listener and no network transport.
+
+```
+claude mcp add prolexic -- prolexic mcp --root /path/to/desired-state-repo
+```
+
+- It reads live state with the read credentials, and edits the local desired file (`add`, `remove`, `fmt`, `export`, `plan`).
+- There is no apply, and the front refuses write credentials. Changes reach the firewall through version control: a pull request, the reviewed plan, and CI's `apply`.
+- File paths are confined to `--root` (default: the working directory); a symbolic link can't lead out of it.
+- Every tool returns the document the CLI prints as JSON, with invisible characters escaped, since API text reaches the model.
+
 ## Build
 
 ```

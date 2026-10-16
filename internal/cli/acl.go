@@ -15,7 +15,7 @@ func newACLVersionsCmd(a *app) *cobra.Command {
 		Short: "every ACL version",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().ACLVersions(ctx))
+			return output.Doc(a.ops().ACLVersions(ctx))
 		}),
 	}
 }
@@ -27,7 +27,7 @@ func newACLShowCmd(a *app) *cobra.Command {
 		Short: "one ACL version's rules (default: production)",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().ACLShow(ctx, in))
+			return output.Doc(a.ops().ACLShow(ctx, in))
 		}),
 	}
 	cmd.Flags().IntVar(&in.Version, "version", 0, "ACL version number (default: the version in production)")
@@ -40,7 +40,7 @@ func newACLDeploymentCmd(a *app) *cobra.Command {
 		Short: "deployment-status rulesets and which is in production",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().ACLDeployment(ctx))
+			return output.Doc(a.ops().ACLDeployment(ctx))
 		}),
 	}
 }

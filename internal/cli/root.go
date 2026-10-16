@@ -43,18 +43,6 @@ func (a *app) ops() *ops.Runtime {
 	}
 }
 
-// docOf returns an operation's document as an output.Document: a nil
-// *D stays a nil interface, not a non-nil one holding a nil pointer.
-func docOf[D any, P interface {
-	*D
-	output.Document
-}](doc P, err error) (output.Document, error) {
-	if doc == nil {
-		return nil, err
-	}
-	return doc, err
-}
-
 // CommandTree is the command tree with no environment, for generated
 // documentation: flag defaults are the built-in ones.
 func CommandTree() *cobra.Command {
@@ -139,7 +127,7 @@ var sections = []struct {
 	{"firewall", "Firewall, read-only:", []string{"status", "aliases", "acl", "rule-hits", "managed"}},
 	{"analytics", "Prolexic Analytics, read-only:", []string{"routed", "attacks", "events", "metrics", "time-series", "scrub-centers", "protected", "customers"}},
 	{"health", "Network Health, read-only:", []string{"targets"}},
-	{"setup", "Setup:", []string{"doctor", "version"}},
+	{"setup", "Setup:", []string{"doctor", "mcp", "version"}},
 }
 
 // tree is every command of the CLI, sorted by name within each level. A new
@@ -161,6 +149,7 @@ func (a *app) tree() []*cobra.Command {
 		newFmtCmd(a),
 		group("managed", "managed-services ACLs and rule hits",
 			newManagedACLCmd(a), newManagedRuleHitsCmd(a)),
+		newMCPCmd(a),
 		newMetricsCmd(a),
 		newPlanCmd(a),
 		newProtectedCmd(a),

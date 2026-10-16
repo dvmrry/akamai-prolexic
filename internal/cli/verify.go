@@ -21,7 +21,7 @@ func newVerifyCmd(a *app) *cobra.Command {
 		Example: "  prolexic plan --file desired.json --out plan.json\n  prolexic apply --file desired.json --plan plan.json\n  prolexic verify --plan plan.json",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Verify(ctx, in))
+			return output.Doc(a.ops().Verify(ctx, in))
 		}),
 	}
 	cmd.Flags().StringVar(&in.Plan, "plan", "", "the saved plan document (JSON from prolexic plan)")

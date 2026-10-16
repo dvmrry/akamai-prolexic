@@ -76,3 +76,21 @@ func roundTrip(t *testing.T, v any) any {
 	}
 	return out
 }
+
+func TestDefaults(t *testing.T) {
+	type args struct {
+		Expect  *string `json:"expect,omitempty" default:"present"`
+		Samples *int    `json:"samples,omitempty" default:"100"`
+		Sum     bool    `json:"sum,omitempty" default:"false"`
+		Plain   string  `json:"plain,omitempty"`
+	}
+	props := For(args{}, "test.v1", "Test")["properties"].(map[string]any)
+	for name, want := range map[string]any{"expect": "present", "samples": float64(100), "sum": false} {
+		if got := props[name].(map[string]any)["default"]; got != want {
+			t.Errorf("%s: default = %#v, want %#v", name, got, want)
+		}
+	}
+	if _, ok := props["plain"].(map[string]any)["default"]; ok {
+		t.Error("plain has a default")
+	}
+}

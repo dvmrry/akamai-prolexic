@@ -18,7 +18,7 @@ func newRoutedCheckCmd(a *app) *cobra.Command {
 		Example: "  prolexic routed check --prefix 198.51.100.0/24 --wait 10m",
 		Args:    cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().RoutedCheck(ctx, in))
+			return output.Doc(a.ops().RoutedCheck(ctx, in))
 		}),
 	}
 	customerFlag(cmd, &in.Customers)

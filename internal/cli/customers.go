@@ -14,7 +14,7 @@ func newCustomersCmd(a *app) *cobra.Command {
 		Short: "the account's customer names",
 		Args:  cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return docOf(a.ops().Customers(ctx))
+			return output.Doc(a.ops().Customers(ctx))
 		}),
 	}
 }
