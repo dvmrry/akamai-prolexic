@@ -89,3 +89,59 @@ When prefixes move to being advertised through Akamai rather than announced by u
 3. `prolexic routed sessions` and `prolexic routed routes --prefix …` show Akamai's view in detail. What the rest of the internet sees needs an outside view (public BGP looking glasses). Akamai's APIs don't show it.
 
 Once Routed sessions exist, `plan` also checks deny entries against our own AS numbers. The `own_space_asn_unknown` warning disappears when that check is running.
+
+## Taking over an existing account
+
+When aliases that someone else managed (another team, a managed service, people in Control Center) move to `prolexic`:
+
+1. **Baseline.** Run `prolexic export --file desired.json`.
+   - It writes every editable alias with its live entries.
+   - It writes each alias's role as the deployed rules use it (`deny`, `allow` or `destination`).
+   - It declares protected-destination aliases as own space.
+
+   Review it as a PR. `plan` against it should show no changes.
+2. **Decide what own space covers.** Prolexic Analytics' protected prefixes count automatically. If some protected sites are only routed through Prolexic on demand (during an attack), decide whether the deny rules should apply to them then, and record that decision. A rule only applies to the destinations it names.
+3. **Turn on the drift check** (below) before the first change, so anything still changed outside `prolexic` shows up within a day.
+4. **Agree the rule:** from here, changes go through the desired file. A change made in Control Center is backfilled by whoever made it.
+
+## Drift: changes made outside prolexic
+
+`prolexic plan --exit-code` exits 0 when live matches the desired file and 7 when it doesn't, and lists what differs per alias. Run it on a schedule and on demand. An example GitHub Actions job (adapt it to your CI, and install `prolexic` however your pipeline builds it):
+
+```yaml
+name: prolexic drift
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily
+  workflow_dispatch: {}   # and on demand
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install prolexic
+        run: go install ./cmd/prolexic   # or download your release build
+      - name: plan --exit-code
+        env:   # the read-only API client; never the write one
+          AKAMAI_HOST: ${{ secrets.AKAMAI_HOST }}
+          AKAMAI_CLIENT_TOKEN: ${{ secrets.AKAMAI_CLIENT_TOKEN }}
+          AKAMAI_CLIENT_SECRET: ${{ secrets.AKAMAI_CLIENT_SECRET }}
+          AKAMAI_ACCESS_TOKEN: ${{ secrets.AKAMAI_ACCESS_TOKEN }}
+        run: prolexic plan --file desired.json --exit-code --out drift.json
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift
+          path: drift.json
+```
+
+Read the result by exit code:
+- **0:** no drift.
+- **7:** live differs. The job log shows the plan as text, and `drift.json` holds it as JSON.
+- **Anything else:** the check itself couldn't run (credentials, the API, a proxy). Use the sections above. It says nothing about drift.
+
+When it reports drift:
+- **The change was wanted** (someone backfilling their console work): run `prolexic export --file desired.json` to bring live into the file, and open a PR. The change gets reviewed after the fact, like any other.
+- **The change wasn't wanted:** the desired file is still right. Plan and apply as usual to put live back. Find out who changed it first, since they may change it again.
+
+Until drift is resolved, applies of other changes still work: `apply` re-plans and only writes what was reviewed. A console change made after someone's review makes their apply refuse (exit 7, "the plan digest moved") rather than overwrite it.
