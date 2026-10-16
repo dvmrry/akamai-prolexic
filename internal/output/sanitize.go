@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"io"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -77,4 +78,14 @@ func (s *safeWriter) flush() error {
 	}
 	_, err := s.w.Write(out)
 	return err
+}
+
+// Sanitize escapes s's control characters as Write's text path does, for
+// text that doesn't go through a Document (progress lines on stderr).
+func Sanitize(s string) string {
+	var b strings.Builder
+	sw := &safeWriter{w: &b}
+	sw.Write([]byte(s))
+	sw.flush()
+	return b.String()
 }

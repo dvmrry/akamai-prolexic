@@ -5,6 +5,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
 // exitCodes maps each error kind to the process exit code. The numbers are a
@@ -48,5 +49,5 @@ func failuresOutcome(failures []analytics.Failure, customers []string) error {
 // one line per step. stdout keeps its one document; an error document, if
 // any, follows the progress lines on stderr.
 func (a *app) progress(msg string) {
-	fmt.Fprintf(a.env.Stderr, "prolexic: %s\n", msg)
+	fmt.Fprintf(a.env.Stderr, "prolexic: %s\n", output.Sanitize(msg))
 }

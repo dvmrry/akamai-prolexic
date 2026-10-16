@@ -131,3 +131,9 @@ func TestJSONUnchangedByEscaping(t *testing.T) {
 		t.Errorf("json = %q", buf.String())
 	}
 }
+
+func TestSanitizeForProgressLines(t *testing.T) {
+	if got := Sanitize("block\x1b[2J-v4\r\tok\n"); got != `block\x1b[2J-v4\x0d`+"\tok\n" {
+		t.Errorf("Sanitize = %q", got)
+	}
+}
