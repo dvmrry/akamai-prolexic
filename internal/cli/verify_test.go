@@ -74,7 +74,7 @@ func TestPlanApplyVerifyWithOneArtifact(t *testing.T) {
 	runCLI(t, ncfEnv(Env{}), "add", "--file", desired, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
 	saved := filepath.Join(t.TempDir(), "plan.json")
 
-	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved)
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved, "--format", "text")
 	if r.code != 0 || !strings.Contains(r.stdout, "digest: sha256:") || strings.HasPrefix(strings.TrimSpace(r.stdout), "{") {
 		t.Fatalf("plan --out: exit %d, stdout should be the text plan:\n%s%s", r.code, r.stdout, r.stderr)
 	}

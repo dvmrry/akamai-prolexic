@@ -62,6 +62,7 @@ func (a *app) root() *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			f, err := output.ParseFormat(a.formatFlag)
 			a.format = f
+			a.formatChosen = cmd.Flags().Changed("format") || a.env.Getenv("PROLEXIC_FORMAT") != ""
 			return err
 		},
 	}
@@ -85,7 +86,7 @@ func (a *app) root() *cobra.Command {
 	})
 
 	pf := root.PersistentFlags()
-	pf.StringVar(&a.formatFlag, "format", "auto", "output format: auto (text on a terminal, else json), json or text")
+	pf.StringVar(&a.formatFlag, "format", envOr(a.env.Getenv, "PROLEXIC_FORMAT", "json"), "output format: json (the default), text for people, or auto (text on a terminal, else json) ($PROLEXIC_FORMAT)")
 	pf.StringVar(&a.edgerc, "edgerc", a.env.Getenv("PROLEXIC_EDGERC"), "EdgeGrid credentials file (default ~/.edgerc; $PROLEXIC_EDGERC)")
 	pf.StringVar(&a.section, "section", envOr(a.env.Getenv, "PROLEXIC_SECTION", "default"), "credentials section for reads ($PROLEXIC_SECTION)")
 	pf.StringVar(&a.writeSection, "write-section", envOr(a.env.Getenv, "PROLEXIC_WRITE_SECTION", "write"), "credentials section for writes; only apply uses it ($PROLEXIC_WRITE_SECTION)")

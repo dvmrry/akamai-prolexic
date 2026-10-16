@@ -683,9 +683,9 @@ func toProduction(a ncf.AliasApply) string {
 	return "-"
 }
 
-// saveDocument writes doc's JSON to path, atomically, and has stdout show the
-// text form unless --format json was asked for: one run gives the reviewer's
-// text and the machine's JSON, so they can't disagree.
+// saveDocument writes doc's JSON to path, atomically. stdout still follows
+// --format, so one run can give a reviewer the text (--format text) and the
+// pipeline the JSON file, and they can't disagree.
 func (a *app) saveDocument(path string, doc output.Document) error {
 	output.Stamp(doc, a.env.Now(), version.Current().Version)
 	var buf bytes.Buffer
@@ -694,9 +694,6 @@ func (a *app) saveDocument(path string, doc output.Document) error {
 	}
 	if err := writeFileAtomic(path, buf.Bytes()); err != nil {
 		return apperr.Wrap(apperr.Usage, err, "save %s", path)
-	}
-	if a.format == output.Auto {
-		a.format = output.Text
 	}
 	return nil
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
 
 // fakeAPI is an Akamai API stand-in: routes map "METHOD /path" to a handler.
@@ -346,5 +347,34 @@ func TestReadClientIsReadOnly(t *testing.T) {
 	err = c.Do(context.Background(), akamai.Request{Method: http.MethodPost, Path: "/network-cloud-firewall/v2/aliases"}, nil)
 	if apperr.KindOf(err) != apperr.Bug || len(api.calls) != 0 {
 		t.Errorf("err = %v, calls = %v", err, api.calls)
+	}
+}
+
+// Output is data by default: JSON whatever the environment, never guessed
+// from a terminal. People opt in to text with --format text or
+// PROLEXIC_FORMAT=text; errors on stderr stay one text line unless JSON was
+// asked for explicitly.
+func TestFormatIsJSONByDefault(t *testing.T) {
+	a := &app{env: Env{Getenv: func(string) string { return "" }}}
+	root := a.root()
+	root.SetArgs([]string{"version"})
+	if err := root.Execute(); err != nil || a.format != output.JSON || a.formatChosen {
+		t.Errorf("default: format %q, chosen %v, err %v", a.format, a.formatChosen, err)
+	}
+
+	env := Env{Getenv: func(k string) string {
+		if k == "PROLEXIC_FORMAT" {
+			return "text"
+		}
+		return ""
+	}}
+	if r := runCLI(t, env, "version"); strings.HasPrefix(strings.TrimSpace(r.stdout), "{") {
+		t.Errorf("PROLEXIC_FORMAT=text: stdout = %q", r.stdout)
+	}
+	if r := runCLI(t, Env{}, "bogus"); strings.HasPrefix(r.stderr, "{") {
+		t.Errorf("default error: stderr = %q, want one text line", r.stderr)
+	}
+	if r := runCLI(t, Env{}, "bogus", "--format", "json"); !strings.HasPrefix(r.stderr, "{") {
+		t.Errorf("--format json error: stderr = %q, want the JSON document", r.stderr)
 	}
 }

@@ -64,9 +64,10 @@ type app struct {
 	rootCAsN   int
 	loadedCAs  bool
 
-	formatFlag string          // --format as given; parsed into format before a command runs
-	doc        output.Document // what the command returned, printed by Run
-	ran        bool            // a command body ran (so an error is its own, not a usage error)
+	formatFlag   string          // --format as given; parsed into format before a command runs
+	formatChosen bool            // --format or PROLEXIC_FORMAT was given, not the default
+	doc          output.Document // what the command returned, printed by Run
+	ran          bool            // a command body ran (so an error is its own, not a usage error)
 }
 
 // Run executes args and returns the exit code.
@@ -98,13 +99,14 @@ func Run(ctx context.Context, args []string, env Env) int {
 }
 
 // fail reports err on stderr and returns its exit code. stderr is for people
-// (a CI log, a terminal), so the error is text unless --format json was asked
-// for explicitly; the stdout document and the exit code are the contract.
+// (a CI log, a terminal), so the error is one text line unless JSON was asked
+// for explicitly (--format json or PROLEXIC_FORMAT=json); the stdout
+// document and the exit code are the contract.
 func (a *app) fail(err error) int {
 	code := exitCode(apperr.KindOf(err))
-	format := a.format
-	if format == output.Auto {
-		format = output.Text
+	format := output.Text
+	if a.formatChosen && a.format == output.JSON {
+		format = output.JSON
 	}
 	ed := output.NewErrorDoc(err, code)
 	output.Stamp(ed, a.env.Now(), version.Current().Version)

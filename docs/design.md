@@ -9,7 +9,7 @@ checking against a real account.
 | package | owns |
 | --- | --- |
 | `internal/apperr` | the error model every layer shares: kinds (a public contract) and upstream detail |
-| `internal/output` | one Document per command; JSON off a terminal, text on one; the error document |
+| `internal/output` | one Document per command; JSON by default, text with `--format text` or `PROLEXIC_FORMAT=text` (never guessed from a terminal: agent harnesses and CI may give one); the error document |
 | `internal/jsonschema` | schemas derived from Go types; `TestSchemas` keeps `schemas/` in step |
 | `internal/edgegrid` | credentials (env, then `.edgerc`) and EG1-HMAC-SHA256 signing, pinned by Akamai's published vectors |
 | `internal/akamai` | the one HTTP transport: signing, lenient decoding, both problem shapes, retry policy, ambiguity marking |

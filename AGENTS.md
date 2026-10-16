@@ -38,7 +38,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | package | owns |
 | --- | --- |
 | `internal/apperr` | the shared error model: error kinds and upstream detail (the CLI maps kinds to exit codes in `internal/cli/exit.go`) |
-| `internal/output` | the document contract: one Document per command, JSON off a terminal, `schema` field |
+| `internal/output` | the document contract: one Document per command, JSON by default (text on request), `schema` field |
 | `internal/jsonschema` | schemas derived from Go types |
 | `internal/edgegrid` | credentials and request signing |
 | `internal/akamai` | the HTTP transport: retries for reads only, ambiguity marking for writes, error classification |

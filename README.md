@@ -27,7 +27,7 @@ Edit the desired file with `add` and `remove` (they keep it canonical and record
 
 ```
 # on the PR: the reviewer reads the text; the JSON is the artifact
-prolexic plan --file desired.json --out plan.json
+prolexic plan --file desired.json --out plan.json --format text
 
 # after merge: takes the reviewed digest from the artifact, writes, waits for production
 prolexic apply --file desired.json --plan plan.json
@@ -40,7 +40,7 @@ prolexic verify --plan plan.json
 
 ## Output and exit codes
 
-stdout carries one document. It's JSON when stdout isn't a terminal (or with `--format json`), and every document names its schema (`schemas/`) and says when and by which version it was made. stderr is text for people: progress lines, and on failure one `prolexic:` line (JSON only with `--format json`).
+stdout carries one document. It's JSON by default, everywhere: in a terminal, a pipe, CI or an agent. People opt in to text with `--format text`, or once with `PROLEXIC_FORMAT=text` in their shell config. Every document names its schema (`schemas/`) and says when and by which version it was made. stderr is text for people: progress lines, and on failure one `prolexic:` line (JSON only with `--format json`).
 
 The exit codes are a contract:
 
