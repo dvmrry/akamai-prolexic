@@ -200,6 +200,9 @@ func TestAddUsage(t *testing.T) {
 		{"add", "--file", p, "block-v4", "198.51.100.9", "--reason", "r"},  // no ticket
 		{"add", "--file", p, "block-v4", "--ticket", "T", "--reason", "r"}, // no entry
 		{"add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r", "--expires", "soon"},
+		{"add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "", "--reason", "r"},  // blank ticket
+		{"add", "--file", p, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", " "}, // blank reason
+		{"remove", "--file", p, "block-v4", "198.51.100.7", "--ticket", ""},
 	} {
 		if r := runCLI(t, ncfEnv(Env{}), args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d", args, r.code)

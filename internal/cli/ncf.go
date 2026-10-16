@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -227,36 +226,11 @@ func add(a *app, args addArgs, pos []string) (output.Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc := &ChangeDoc{File: args.file, Action: "add", Alias: pos[0], Ticket: args.ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
-	alias, err := findAlias(f, pos[0])
+	ch, err := a.checker().AddEntries(f, raw, ncf.AddRequest{Alias: pos[0], Entries: pos[1:], Ticket: args.ticket, Reason: args.reason, Expires: args.expires})
 	if err != nil {
 		return nil, err
 	}
-	have := map[string]bool{}
-	for _, e := range alias.Entries {
-		if v, err := ncf.ParseAuthored(e.CIDR); err == nil {
-			have[v.String()] = true
-		}
-	}
-	added := map[string]bool{}
-	today := a.env.Now().UTC().Format(time.DateOnly)
-	for _, s := range pos[1:] {
-		v, err := ncf.ParseAuthored(s)
-		if err != nil {
-			doc.Findings = append(doc.Findings, ncf.Finding{Severity: ncf.Error, Code: "entry", Alias: alias.Name, Entry: s, Message: err.Error()})
-			continue
-		}
-		key := v.String()
-		if have[key] || added[key] {
-			doc.Findings = append(doc.Findings, ncf.Finding{Severity: ncf.Error, Code: "already_present", Alias: alias.Name, Entry: key, Message: key + " is already in the alias"})
-			continue
-		}
-		added[key] = true
-		e := ncf.Entry{CIDR: key, Ticket: args.ticket, Reason: args.reason, Added: today, Expires: args.expires}
-		alias.Entries = append(alias.Entries, e)
-		doc.Entries = append(doc.Entries, e)
-	}
-	return a.commitChange(doc, f, raw, added)
+	return commitChange(&ChangeDoc{File: args.file, Action: "add", Ticket: args.ticket}, ch)
 }
 
 func newRemoveCmd(a *app) *cobra.Command {
@@ -282,49 +256,20 @@ func remove(a *app, file, ticket string, pos []string) (output.Document, error) 
 	if err != nil {
 		return nil, err
 	}
-	doc := &ChangeDoc{File: file, Action: "remove", Alias: pos[0], Ticket: ticket, Entries: []ncf.Entry{}, Findings: []ncf.Finding{}}
-	alias, err := findAlias(f, pos[0])
+	ch, err := a.checker().RemoveEntries(f, raw, ncf.RemoveRequest{Alias: pos[0], Entries: pos[1:], Ticket: ticket})
 	if err != nil {
 		return nil, err
 	}
-	for _, s := range pos[1:] {
-		v, err := ncf.ParseAuthored(s)
-		if err != nil {
-			doc.Findings = append(doc.Findings, ncf.Finding{Severity: ncf.Error, Code: "entry", Alias: alias.Name, Entry: s, Message: err.Error()})
-			continue
-		}
-		key := v.String()
-		i := slices.IndexFunc(alias.Entries, func(e ncf.Entry) bool {
-			w, err := ncf.ParseAuthored(e.CIDR)
-			return err == nil && w.String() == key
-		})
-		if i < 0 {
-			doc.Findings = append(doc.Findings, ncf.Finding{Severity: ncf.Error, Code: "not_present", Alias: alias.Name, Entry: key, Message: key + " is not in the alias"})
-			continue
-		}
-		doc.Entries = append(doc.Entries, alias.Entries[i])
-		alias.Entries = slices.Delete(alias.Entries, i, i+1)
-	}
-	return a.commitChange(doc, f, raw, nil)
+	return commitChange(&ChangeDoc{File: file, Action: "remove", Ticket: ticket}, ch)
 }
 
-// commitChange validates the changed file and writes it canonically, or
-// writes nothing. Any error blocks, and so does a warning about an entry
-// this change adds; warnings about untouched entries are reported only.
-func (a *app) commitChange(doc *ChangeDoc, f *ncf.File, raw []byte, added map[string]bool) (output.Document, error) {
-	if pre, _, err := ncf.Decode(bytes.NewReader(raw)); err == nil {
-		if canon, err := ncf.Canonical(pre); err == nil && !bytes.Equal(canon, raw) {
-			doc.Findings = append(doc.Findings, ncf.Finding{Severity: ncf.Error, Code: "not_canonical", Message: "the file was hand-edited (not canonical); run prolexic fmt and review before changing it"})
-		}
-	}
-	doc.Findings = append(doc.Findings, a.checker().Validate(f, nil)...)
-	blocked := slices.ContainsFunc(doc.Findings, func(x ncf.Finding) bool {
-		return x.Severity == ncf.Error || (x.Alias == doc.Alias && added[x.Entry])
-	})
-	if blocked {
+// commitChange writes the change unless its findings block it.
+func commitChange(doc *ChangeDoc, ch *ncf.Change) (output.Document, error) {
+	doc.Alias, doc.Entries, doc.Findings = ch.Alias, ch.Entries, ch.Findings
+	if ch.Blocked() {
 		return doc, nil // not written: Outcome reports it
 	}
-	canon, err := ncf.Canonical(f)
+	canon, err := ncf.Canonical(ch.File)
 	if err != nil {
 		return nil, err
 	}
@@ -613,15 +558,6 @@ func readDesired(path string) (*ncf.File, []byte, error) {
 	}
 	defer fh.Close()
 	return ncf.Decode(fh)
-}
-
-func findAlias(f *ncf.File, name string) (*ncf.Alias, error) {
-	for i := range f.Aliases {
-		if f.Aliases[i].Name == name {
-			return &f.Aliases[i], nil
-		}
-	}
-	return nil, apperr.New(apperr.Validation, "no alias %q in the desired file", name)
 }
 
 // writeFileAtomic replaces path with b via a temporary file in the same
