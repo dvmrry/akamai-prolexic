@@ -105,5 +105,8 @@ func readPlan(path string) (*ncf.Plan, error) {
 	if want := (&PlanDoc{}).SchemaID(); doc.Schema != want {
 		return nil, apperr.New(apperr.Usage, "%s: schema %q, want %s (save prolexic plan's JSON output)", path, doc.Schema, want)
 	}
+	if doc.Digest == "" || doc.FileDigest == "" {
+		return nil, apperr.New(apperr.Usage, "%s: the plan has no digest or file digest; save it with this version's plan --out", path)
+	}
 	return &doc.Plan, nil
 }

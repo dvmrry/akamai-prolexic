@@ -203,6 +203,10 @@
           "description": "sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
           "type": "string"
         },
+        "fileDigest": {
+          "description": "sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file.",
+          "type": "string"
+        },
         "findings": {
           "items": {
             "additionalProperties": false,
@@ -244,6 +248,7 @@
         "changes",
         "checks",
         "digest",
+        "fileDigest",
         "findings"
       ],
       "type": "object"

@@ -150,3 +150,47 @@ func TestPlanFailsOnABlankedVersionRead(t *testing.T) {
 		})
 	}
 }
+
+// A reviewed plan applies only with the file it was made from, for its
+// account: another file could match live and exit 0 with the change unapplied.
+func TestApplyPlanRefusesAnotherFileOrAccount(t *testing.T) {
+	api, _ := ncfAPIState(t)
+	desired := writeDesired(t, desiredFixture)
+	runCLI(t, ncfEnv(Env{}), "add", "--file", desired, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
+	saved := filepath.Join(t.TempDir(), "plan.json")
+	if r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved); r.code != 0 {
+		t.Fatalf("plan: %s", r.stderr)
+	}
+	env := ncfEnv(api.env())
+	read := env.Getenv
+	env.Getenv = func(k string) string { return read(strings.Replace(k, "AKAMAI_WRITE_", "AKAMAI_", 1)) }
+
+	other := writeDesired(t, desiredFixture) // matches live: nothing pending
+	if r := runCLI(t, env, "apply", "--file", other, "--plan", saved); r.code != exitCode(apperr.Validation) || !strings.Contains(r.stderr, "the plan was made from") {
+		t.Errorf("another file: exit %d: %s", r.code, r.stderr)
+	}
+	b, _ := os.ReadFile(saved)
+	os.WriteFile(saved, []byte(strings.Replace(string(b), `"accountId": "A-EXAMPLE"`, `"accountId": "B-OTHER"`, 1)), 0o600)
+	if r := runCLI(t, env, "apply", "--file", desired, "--plan", saved); r.code != exitCode(apperr.Validation) || !strings.Contains(r.stderr, "B-OTHER") {
+		t.Errorf("another account: exit %d: %s", r.code, r.stderr)
+	}
+}
+
+// plan --out never destroys something: the desired file, a symlink's
+// target, or a directory.
+func TestPlanOutRefusesDangerousPaths(t *testing.T) {
+	api := ncfAPI(t)
+	desired := writeDesired(t, desiredFixture)
+	dir := t.TempDir()
+	link := filepath.Join(dir, "link.json")
+	os.Symlink(desired, link)
+	for name, out := range map[string]string{"the desired file": desired, "a symlink": link, "a directory": dir} {
+		r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", out)
+		if r.code != exitCode(apperr.Usage) {
+			t.Errorf("%s: exit %d: %s", name, r.code, r.stderr)
+		}
+	}
+	if readFile(t, desired) != desiredFixture {
+		t.Error("the desired file was changed")
+	}
+}

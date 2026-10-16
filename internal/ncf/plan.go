@@ -14,11 +14,12 @@ import (
 
 // Plan is the diff of a desired file against live, with every finding.
 type Plan struct {
-	AccountID string      `json:"accountId"`
-	Digest    string      `json:"digest" doc:"sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
-	Changes   bool        `json:"changes"`
-	Aliases   []AliasPlan `json:"aliases"`
-	Findings  []Finding   `json:"findings"`
+	AccountID  string      `json:"accountId"`
+	Digest     string      `json:"digest" doc:"sha256 over each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
+	FileDigest string      `json:"fileDigest" doc:"sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file."`
+	Changes    bool        `json:"changes"`
+	Aliases    []AliasPlan `json:"aliases"`
+	Findings   []Finding   `json:"findings"`
 	// Checks says what the live checks ran against, so a clean plan reads as
 	// "checked against these sources" and not only as "no errors".
 	Checks Checks `json:"checks"`
@@ -220,6 +221,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		p.Changes = p.Changes || a.Changed()
 	}
 	p.Digest = digest(p.Aliases)
+	p.FileDigest = FileDigest(f)
 	return p, nil
 }
 
@@ -524,6 +526,17 @@ func entriesHash(entries []string) string {
 	}
 	slices.Sort(keys)
 	b, _ := json.Marshal(slices.Compact(keys)) // a string slice always marshals
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// FileDigest is sha256 over f's canonical form: the identity of the desired
+// file a plan was made from, so a reviewed plan can't be applied with another.
+func FileDigest(f *File) string {
+	b, err := Canonical(f)
+	if err != nil {
+		return ""
+	}
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }

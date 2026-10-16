@@ -436,6 +436,11 @@ func newPlanCmd(a *app) *cobra.Command {
 			"--out saves the plan's JSON to a file (for apply --plan and verify --plan) and shows the text on stdout, from the same run.",
 		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			if out != "" {
+				if err := checkOutPath(out, p.file); err != nil {
+					return nil, err
+				}
+			}
 			doc, err := plan(ctx, a, p, exitCode)
 			if err == nil && out != "" {
 				err = a.saveDocument(out, doc)
@@ -502,14 +507,15 @@ func newApplyCmd(a *app) *cobra.Command {
 			"then writes with the write credentials and waits for production to carry the new versions.",
 		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			var reviewed *ncf.Plan
 			if planFile != "" {
-				reviewed, err := readPlan(planFile)
-				if err != nil {
+				var err error
+				if reviewed, err = readPlan(planFile); err != nil {
 					return nil, err
 				}
 				expect = reviewed.Digest
 			}
-			return apply(ctx, a, p, expect, timeout, interval)
+			return apply(ctx, a, p, expect, reviewed, timeout, interval)
 		}),
 	}
 	p.register(cmd)
@@ -523,10 +529,20 @@ func newApplyCmd(a *app) *cobra.Command {
 	return cmd
 }
 
-func apply(ctx context.Context, a *app, args planArgs, expect string, timeout, interval time.Duration) (output.Document, error) {
+func apply(ctx context.Context, a *app, args planArgs, expect string, reviewed *ncf.Plan, timeout, interval time.Duration) (output.Document, error) {
 	f, raw, err := readDesired(args.file)
 	if err != nil {
 		return nil, err
+	}
+	// A reviewed plan applies only to the file it was made from: another file
+	// could match live and exit 0 with the reviewed change never applied.
+	if reviewed != nil {
+		if reviewed.AccountID != f.AccountID {
+			return nil, apperr.New(apperr.Validation, "the plan is for account %q, the desired file for %q", reviewed.AccountID, f.AccountID)
+		}
+		if reviewed.FileDigest != ncf.FileDigest(f) {
+			return nil, apperr.New(apperr.Validation, "%s isn't the desired file the plan was made from (or it changed since); re-plan and review", args.file)
+		}
 	}
 	read, err := a.ncfRead()
 	if err != nil {
@@ -615,22 +631,22 @@ func writeFileAtomic(path string, b []byte) error {
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
-		return apperr.Wrap(apperr.Bug, err, "write %s", path)
+		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(b); err != nil {
 		tmp.Close()
-		return apperr.Wrap(apperr.Bug, err, "write %s", path)
+		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
 	}
 	if err := tmp.Chmod(mode); err != nil {
 		tmp.Close()
-		return apperr.Wrap(apperr.Bug, err, "write %s", path)
+		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
 	}
 	if err := tmp.Close(); err != nil {
-		return apperr.Wrap(apperr.Bug, err, "write %s", path)
+		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
-		return apperr.Wrap(apperr.Bug, err, "write %s", path)
+		return apperr.New(apperr.Usage, "write %s: %v", path, fsErr(err))
 	}
 	return nil
 }
@@ -673,4 +689,41 @@ func (a *app) saveDocument(path string, doc output.Document) error {
 		a.format = output.Text
 	}
 	return nil
+}
+
+// checkOutPath refuses an --out that would destroy something: the desired
+// file itself, a symbolic link (the write would replace the link), or a
+// directory.
+func checkOutPath(out, desired string) error {
+	st, err := os.Lstat(out)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return apperr.New(apperr.Usage, "--out %s: %v", out, fsErr(err))
+	}
+	switch {
+	case st.Mode()&os.ModeSymlink != 0:
+		return apperr.New(apperr.Usage, "--out %s is a symbolic link; give the path of a real file", out)
+	case st.IsDir():
+		return apperr.New(apperr.Usage, "--out %s is a directory; give a file path", out)
+	}
+	if ds, err := os.Stat(desired); err == nil && os.SameFile(st, ds) {
+		return apperr.New(apperr.Usage, "--out %s is the desired file; save the plan elsewhere", out)
+	}
+	return nil
+}
+
+// fsErr drops the path an *os.PathError or *os.LinkError carries (for an
+// atomic write, a temporary file's name) and keeps the cause.
+func fsErr(err error) error {
+	var pe *os.PathError
+	var le *os.LinkError
+	switch {
+	case errors.As(err, &pe):
+		return pe.Err
+	case errors.As(err, &le):
+		return le.Err
+	}
+	return err
 }
