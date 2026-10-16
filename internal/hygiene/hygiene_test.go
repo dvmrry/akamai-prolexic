@@ -3,7 +3,7 @@
 package hygiene
 
 import (
-	"bytes"
+	"errors"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -27,7 +27,9 @@ var allowed = mustPrefixes(
 	"192.0.0.0/24", "198.18.0.0/15", "64:ff9b::/96", "::ffff:0:0/96", // IETF, benchmarking, translation
 )
 
-// skip are tracked paths exempt from the scan: vendored public specs.
+// skip are tracked paths exempt from the scans: vendored public specs. Every
+// other file is scanned as text, so a binary must be listed here: a NUL byte
+// doesn't exempt a file, it is reported as an invisible character.
 var skip = []string{"api/akamai-apis/"}
 
 var (
@@ -52,8 +54,7 @@ type trackedFile struct {
 	body []byte
 }
 
-// trackedTextFiles are the files git tracks or would add, minus skip and
-// binaries.
+// trackedTextFiles are the files git tracks or would add, minus skip.
 func trackedTextFiles(t *testing.T) []trackedFile {
 	t.Helper()
 	root := repoRoot(t)
@@ -70,8 +71,11 @@ func trackedTextFiles(t *testing.T) []trackedFile {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil || bytes.IndexByte(b, 0) >= 0 {
-			continue // deleted in the worktree, or binary
+		if errors.Is(err, os.ErrNotExist) {
+			continue // deleted in the worktree
+		}
+		if err != nil {
+			t.Fatal(err)
 		}
 		files = append(files, trackedFile{rel, b})
 	}
