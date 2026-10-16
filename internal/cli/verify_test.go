@@ -63,3 +63,44 @@ func TestVerifyNeedsAPlanDocument(t *testing.T) {
 		t.Errorf("missing file: exit = %d", r.code)
 	}
 }
+
+// The CI flow with one artifact: plan --out saves it, apply --plan takes its
+// digest, verify --plan reads it back.
+func TestPlanApplyVerifyWithOneArtifact(t *testing.T) {
+	api, _ := ncfAPIState(t)
+	desired := writeDesired(t, desiredFixture)
+	runCLI(t, ncfEnv(Env{}), "add", "--file", desired, "block-v4", "198.51.100.9", "--ticket", "T", "--reason", "r")
+	saved := filepath.Join(t.TempDir(), "plan.json")
+
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", saved)
+	if r.code != 0 || !strings.Contains(r.stdout, "digest: sha256:") || strings.HasPrefix(strings.TrimSpace(r.stdout), "{") {
+		t.Fatalf("plan --out: exit %d, stdout should be the text plan:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+	b, _ := os.ReadFile(saved)
+	planDoc := decode[PlanDoc](t, string(b), "prolexic.plan.v1")
+	if !strings.Contains(r.stdout, planDoc.Digest) {
+		t.Errorf("the text and the saved JSON disagree on the digest %s", planDoc.Digest)
+	}
+
+	env := ncfEnv(api.env())
+	read := env.Getenv
+	env.Getenv = func(k string) string { return read(strings.Replace(k, "AKAMAI_WRITE_", "AKAMAI_", 1)) }
+	if r = runCLI(t, env, "apply", "--file", desired, "--plan", saved, "--interval", "1ms", "--timeout", "5s"); r.code != 0 {
+		t.Fatalf("apply --plan: exit %d: %s", r.code, r.stderr)
+	}
+	if r = runCLI(t, ncfEnv(api.env()), "verify", "--plan", saved); r.code != 0 {
+		t.Errorf("verify after apply: exit %d: %s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestApplyTakesExactlyOneReviewedDigest(t *testing.T) {
+	desired := writeDesired(t, desiredFixture)
+	for _, args := range [][]string{
+		{"apply", "--file", desired},
+		{"apply", "--file", desired, "--plan", "p.json", "--expect-digest", "sha256:x"},
+	} {
+		if r := runCLI(t, Env{}, args...); r.code != exitCode(apperr.Usage) {
+			t.Errorf("%v: exit %d: %s", args[3:], r.code, r.stderr)
+		}
+	}
+}

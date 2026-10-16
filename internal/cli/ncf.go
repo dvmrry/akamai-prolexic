@@ -427,17 +427,24 @@ func (p *planArgs) register(cmd *cobra.Command) {
 func newPlanCmd(a *app) *cobra.Command {
 	var p planArgs
 	var exitCode bool
+	var out string
 	cmd := &cobra.Command{
 		Use:   "plan",
 		Short: "diff the desired file against live and validate it",
-		Long:  "Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. apply --expect-digest takes that digest.",
-		Args:  cobra.NoArgs,
+		Long: "Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. " +
+			"--out saves the plan's JSON to a file (for apply --plan and verify --plan) and shows the text on stdout, from the same run.",
+		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
-			return plan(ctx, a, p, exitCode)
+			doc, err := plan(ctx, a, p, exitCode)
+			if err == nil && out != "" {
+				err = a.saveDocument(out, doc)
+			}
+			return doc, err
 		}),
 	}
 	p.register(cmd)
 	cmd.Flags().BoolVar(&exitCode, "exit-code", false, "exit 7 when the plan has changes (drift)")
+	cmd.Flags().StringVar(&out, "out", "", "also save the plan's JSON to this file; stdout shows text unless --format json")
 	return cmd
 }
 
@@ -485,22 +492,33 @@ func (d *ApplyDoc) WriteText(w io.Writer) error {
 func newApplyCmd(a *app) *cobra.Command {
 	var p planArgs
 	var expect string
+	var planFile string
 	var timeout, interval time.Duration
 	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "apply a reviewed plan (the only command that writes)",
-		Long:  "Recomputes the plan, refuses unless its digest equals --expect-digest (the digest of the plan you reviewed), then writes with the write credentials and waits for production to carry the new versions.",
-		Args:  cobra.NoArgs,
+		Long: "Recomputes the plan, refuses unless its digest equals the reviewed one (--plan, the saved plan, or --expect-digest), " +
+			"then writes with the write credentials and waits for production to carry the new versions.",
+		Args: cobra.NoArgs,
 		RunE: a.run(func(ctx context.Context, _ []string) (output.Document, error) {
+			if planFile != "" {
+				reviewed, err := readPlan(planFile)
+				if err != nil {
+					return nil, err
+				}
+				expect = reviewed.Digest
+			}
 			return apply(ctx, a, p, expect, timeout, interval)
 		}),
 	}
 	p.register(cmd)
 	f := cmd.Flags()
-	f.StringVar(&expect, "expect-digest", "", "the digest of the reviewed plan (required)")
+	f.StringVar(&planFile, "plan", "", "the reviewed plan, saved by plan --out: apply takes its digest")
+	f.StringVar(&expect, "expect-digest", "", "the digest of the reviewed plan (instead of --plan)")
 	f.DurationVar(&timeout, "timeout", ncf.DefaultApplyTimeout, "how long to wait for production to carry the new versions")
 	f.DurationVar(&interval, "interval", ncf.DefaultApplyInterval, "polling period while waiting")
-	_ = cmd.MarkFlagRequired("expect-digest")
+	cmd.MarkFlagsOneRequired("plan", "expect-digest")
+	cmd.MarkFlagsMutuallyExclusive("plan", "expect-digest")
 	return cmd
 }
 
@@ -636,4 +654,21 @@ func toProduction(a ncf.AliasApply) string {
 		return d.String()
 	}
 	return "-"
+}
+
+// saveDocument writes doc's JSON to path, atomically, and has stdout show the
+// text form unless --format json was asked for: one run gives the reviewer's
+// text and the machine's JSON, so they can't disagree.
+func (a *app) saveDocument(path string, doc output.Document) error {
+	var buf bytes.Buffer
+	if err := output.Write(&buf, output.JSON, doc); err != nil {
+		return err
+	}
+	if err := writeFileAtomic(path, buf.Bytes()); err != nil {
+		return apperr.Wrap(apperr.Usage, err, "save %s", path)
+	}
+	if a.format == output.Auto {
+		a.format = output.Text
+	}
+	return nil
 }

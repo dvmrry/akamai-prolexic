@@ -142,7 +142,7 @@ func TestDispatch(t *testing.T) {
 	}{
 		{"no args", nil, apperr.Usage, "", "missing command"},
 		{"help", []string{"--help"}, apperr.OK, "Available Commands:", ""},
-		{"help command", []string{"help", "plan"}, apperr.OK, "apply --expect-digest takes that digest", ""},
+		{"help command", []string{"help", "plan"}, apperr.OK, "--out saves the plan", ""},
 		{"group without subcommand", []string{"routed"}, apperr.Usage, "", `missing subcommand for "prolexic routed"; run 'prolexic routed --help'`},
 		{"unknown subcommand", []string{"routed", "bogus"}, apperr.Usage, "", `unknown command "bogus" for "prolexic routed"`},
 		{"unknown", []string{"bogus"}, apperr.Usage, "", `unknown command "bogus"; run 'prolexic --help'`},

@@ -4,7 +4,7 @@ diff the desired file against live and validate it
 
 ### Synopsis
 
-Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. apply --expect-digest takes that digest.
+Reads live state (read credentials only), diffs it against the desired file, runs every offline and live check, and prints the plan with its digest. --out saves the plan's JSON to a file (for apply --plan and verify --plan) and shows the text on stdout, from the same run.
 
 ```
 prolexic plan [flags]
@@ -18,6 +18,7 @@ prolexic plan [flags]
   -h, --help                     help for plan
       --max-removals int         most entries one alias may lose in one apply; -1 for no limit (default 10)
       --no-analytics-own-space   skip Prolexic Analytics own space (protected prefixes, own AS numbers) in the checks; recorded in the plan
+      --out string               also save the plan's JSON to this file; stdout shows text unless --format json
 ```
 
 ### Options inherited from parent commands
