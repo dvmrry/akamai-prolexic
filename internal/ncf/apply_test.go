@@ -759,3 +759,45 @@ func TestApplyProgressOrderIsStable(t *testing.T) {
 		}
 	}
 }
+
+// A reviewed plan applies only to the file, account and settings it was made
+// from, whichever front calls apply (invariant 1). Another file can match live
+// as it is: without these checks that apply would succeed, writing nothing,
+// with the reviewed change never applied.
+func TestApplyBindsTheReviewedPlan(t *testing.T) {
+	reviewedFile := desired("192.0.2.0/25", "198.51.100.9")
+	for name, tc := range map[string]struct {
+		file   *ncf.File
+		mutate func(o *ncf.ApplyOptions, p *ncf.Plan)
+		kind   apperr.Kind
+		want   string
+	}{
+		"another file, matching live": {desired("192.0.2.0/25", "198.51.100.7"), nil, apperr.Validation, "not the desired file the plan was made from"},
+		"another account":             {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.AccountID = "B-OTHER" }, apperr.Validation, "B-OTHER"},
+		"other settings":              {reviewedFile, func(o *ncf.ApplyOptions, _ *ncf.Plan) { o.MaxRemovals = -1 }, apperr.Validation, "maxRemovals"},
+		"no digests":                  {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.FileDigest = "" }, apperr.Validation, "older prolexic"},
+		"and a separate digest":       {reviewedFile, func(o *ncf.ApplyOptions, p *ncf.Plan) { o.ExpectDigest = p.Digest }, apperr.Usage, "not both"},
+	} {
+		s := world()
+		p := plan(t, s, reviewedFile, defaults)
+		clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+		opts := ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep}
+		if tc.mutate != nil {
+			tc.mutate(&opts, p)
+		}
+		s.Calls = nil // apply must refuse before reading or writing anything
+		_, res, err := checker().Apply(context.Background(), s, s, tc.file, nil, opts)
+		if apperr.KindOf(err) != tc.kind || err == nil || !strings.Contains(err.Error(), tc.want) || res != nil || len(s.Calls) != 0 {
+			t.Errorf("%s: err = %v (kind %v), res = %+v, calls = %v", name, err, apperr.KindOf(err), res, s.Calls)
+		}
+	}
+
+	// The file it was made from applies, taking the plan's digest.
+	s := world()
+	p := plan(t, s, reviewedFile, defaults)
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, reviewedFile, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep})
+	if err != nil || res.Aliases[0].Status != ncf.StatusDeployed {
+		t.Errorf("reviewed file: res = %+v, err = %v", res, err)
+	}
+}

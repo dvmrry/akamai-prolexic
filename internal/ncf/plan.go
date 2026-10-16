@@ -233,7 +233,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 	for _, a := range p.Aliases {
 		p.Changes = p.Changes || a.Changed()
 	}
-	p.Settings = PlanSettings{MaxRemovals: opts.MaxRemovals, SkipLiveOwnSpace: opts.SkipLiveOwnSpace}
+	p.Settings = opts.settings()
 	p.Digest = digest(p.Aliases, p.Settings)
 	p.FileDigest = FileDigest(f)
 	return p, nil
@@ -585,4 +585,14 @@ func undeclaredOwnSpace(all []LiveAlias, rules map[int]ACLRule, declared []strin
 type PlanSettings struct {
 	MaxRemovals      int  `json:"maxRemovals" doc:"Most entries one alias may lose; -1 for no limit."`
 	SkipLiveOwnSpace bool `json:"skipLiveOwnSpace" doc:"Live own space (Prolexic Analytics) was skipped."`
+}
+
+// settings are the PlanSettings a plan made with o records.
+func (o PlanOptions) settings() PlanSettings {
+	return PlanSettings{MaxRemovals: o.MaxRemovals, SkipLiveOwnSpace: o.SkipLiveOwnSpace}
+}
+
+// jsonSettings names s's fields as the plan document does.
+func jsonSettings(s PlanSettings) string {
+	return fmt.Sprintf("maxRemovals %d, skipLiveOwnSpace %t", s.MaxRemovals, s.SkipLiveOwnSpace)
 }

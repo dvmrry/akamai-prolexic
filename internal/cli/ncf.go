@@ -520,7 +520,9 @@ func newApplyCmd(a *app) *cobra.Command {
 				if reviewed, err = readPlan(planFile); err != nil {
 					return nil, err
 				}
-				expect = reviewed.Digest
+				// ncf.Apply takes the digest and checks the file, account
+				// and settings; taking the settings here makes flags that
+				// weren't given match the reviewed ones.
 				if err := takeReviewedSettings(cmd, &p, reviewed.Settings); err != nil {
 					return nil, err
 				}
@@ -544,16 +546,6 @@ func apply(ctx context.Context, a *app, args planArgs, expect string, reviewed *
 	if err != nil {
 		return nil, err
 	}
-	// A reviewed plan applies only to the file it was made from: another file
-	// could match live and exit 0 with the reviewed change never applied.
-	if reviewed != nil {
-		if reviewed.AccountID != f.AccountID {
-			return nil, apperr.New(apperr.Validation, "the plan is for account %q, the desired file for %q", reviewed.AccountID, f.AccountID)
-		}
-		if reviewed.FileDigest != ncf.FileDigest(f) {
-			return nil, apperr.New(apperr.Validation, "%s isn't the desired file the plan was made from (or it changed since); re-plan and review", args.file)
-		}
-	}
 	read, err := a.ncfRead()
 	if err != nil {
 		return nil, err
@@ -563,7 +555,7 @@ func apply(ctx context.Context, a *app, args planArgs, expect string, reviewed *
 		return nil, err
 	}
 	p, res, err := a.checker().Apply(ctx, read, a.ncfStore(wc), f, raw, ncf.ApplyOptions{
-		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), ExpectDigest: expect, Timeout: timeout, Interval: interval,
+		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), Reviewed: reviewed, ExpectDigest: expect, Timeout: timeout, Interval: interval,
 		Sleep: a.env.Sleep, Now: a.env.Now, Progress: func(p ncf.Progress) { a.progress(p.Message) },
 	})
 	if p == nil && res == nil {

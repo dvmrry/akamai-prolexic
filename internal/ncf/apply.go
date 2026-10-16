@@ -16,8 +16,14 @@ import (
 // ApplyOptions tune apply.
 type ApplyOptions struct {
 	PlanOptions
-	// ExpectDigest is the digest of the reviewed plan. Apply refuses if a
-	// fresh plan's digest differs.
+	// Reviewed is the plan a person reviewed. Apply takes its digest, and
+	// first refuses unless it was made from this desired file (FileDigest),
+	// for this account, with these settings: another file could match live,
+	// and the apply would succeed with the reviewed change never applied.
+	// Give Reviewed or ExpectDigest, not both.
+	Reviewed *Plan
+	// ExpectDigest is the digest of the reviewed plan, when only the digest
+	// was kept. Apply refuses if a fresh plan's digest differs.
 	ExpectDigest string
 	// Timeout bounds the wait for production to carry the new versions.
 	Timeout time.Duration
@@ -111,6 +117,12 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
+	if opts.Reviewed != nil {
+		if err := checkReviewed(opts.Reviewed, f, opts); err != nil {
+			return nil, nil, err
+		}
+		opts.ExpectDigest = opts.Reviewed.Digest
+	}
 
 	plan, err := c.MakePlan(ctx, read, f, raw, opts.PlanOptions)
 	if err != nil {
@@ -134,6 +146,26 @@ func (c *Checker) Apply(ctx context.Context, read, write Store, f *File, raw []b
 		return plan, r.res, err
 	}
 	return plan, r.res, r.waitForProduction(ctx)
+}
+
+// checkReviewed refuses a reviewed plan that wasn't made from f, for f's
+// account, with opts' settings. It reads nothing live, so a refusal comes
+// before any request.
+func checkReviewed(p *Plan, f *File, opts ApplyOptions) error {
+	switch {
+	case opts.ExpectDigest != "":
+		return apperr.New(apperr.Usage, "give the reviewed plan or its digest, not both")
+	case p.Digest == "" || p.FileDigest == "":
+		return apperr.New(apperr.Validation, "the reviewed plan has no digests: it was saved by an older prolexic; re-plan and review")
+	case p.AccountID != f.AccountID:
+		return apperr.New(apperr.Validation, "the plan is for account %q, the desired file for %q", p.AccountID, f.AccountID)
+	case p.FileDigest != FileDigest(f):
+		return apperr.New(apperr.Validation, "this is not the desired file the plan was made from, or it changed since; re-plan and review")
+	}
+	if s := opts.settings(); s != p.Settings {
+		return apperr.New(apperr.Validation, "the plan was reviewed with settings %s, this apply runs %s; apply with the reviewed settings, or re-plan and review", jsonSettings(p.Settings), jsonSettings(s))
+	}
+	return nil
 }
 
 // applyRun is one apply's state across its phases: the plan, the result
