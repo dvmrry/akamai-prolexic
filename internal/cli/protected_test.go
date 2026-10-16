@@ -23,7 +23,10 @@ func protectedAPI(t *testing.T) *fakeAPI {
 	api.json("GET /prolexic-analytics/v2/metric-types/example-bad", 403, `{"errorCode":"FORBIDDEN","message":"no access"}`)
 	api.routes["POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions"] = func(w http.ResponseWriter, r *http.Request) {
 		var b struct{ CustomerNames []string }
-		json.NewDecoder(r.Body).Decode(&b)
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if len(b.CustomerNames) == 1 && b.CustomerNames[0] == "example-a" {
 			w.Write([]byte(`[{"dataCenter":"DC-B","asn":64501},{"dataCenter":"DC-A","asn":64500},{"dataCenter":"DC-C","asn":64500}]`))
 			return

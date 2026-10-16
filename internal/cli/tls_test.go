@@ -22,7 +22,9 @@ func tlsAPI(t *testing.T) (Env, string) {
 	}))
 	t.Cleanup(srv.Close)
 	bundle := filepath.Join(t.TempDir(), "ca.pem")
-	os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600)
+	if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	vars := map[string]string{
 		"AKAMAI_HOST":          strings.TrimPrefix(srv.URL, "https://"),
 		"AKAMAI_CLIENT_TOKEN":  "akab-client-token-xxx-xxxxxxxxxxxxxxxx",
@@ -49,7 +51,9 @@ func TestCABundleTrustsADeclaredCA(t *testing.T) {
 func TestAnUnusableCABundleIsAnError(t *testing.T) {
 	env, _ := tlsAPI(t)
 	empty := filepath.Join(t.TempDir(), "empty.pem")
-	os.WriteFile(empty, []byte("not a certificate\n"), 0o600)
+	if err := os.WriteFile(empty, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, path := range map[string]string{"no certificate": empty, "missing": filepath.Join(t.TempDir(), "nope.pem")} {
 		for _, args := range [][]string{{"aliases", "list"}, {"doctor"}} {
 			if r := runCLI(t, env, append(args, "--ca-bundle", path)...); r.code != exitCode(apperr.Usage) {

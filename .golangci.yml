@@ -1,0 +1,16 @@
+# golangci-lint v2 (make lint, and CI).
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        # Only the test fakes write responses; a failed write shows up as a
+        # short body in the client under test.
+        - (net/http.ResponseWriter).Write
+  exclusions:
+    presets:
+      # Close, os.Remove and fmt.Fprint*: text views print through
+      # output.safeWriter, whose first write error fails the command, and the
+      # write paths check Close before renaming.
+      - std-error-handling

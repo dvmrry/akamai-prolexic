@@ -8,7 +8,7 @@ LDFLAGS := -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSI
 	-X github.com/dvmrry/akamai-prolexic/internal/version.commit=$(COMMIT) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.date=$(DATE)
 
-.PHONY: build install fmt-check vet test race cross vuln actionlint fuzz schemas docs secret-scan check
+.PHONY: build install fmt-check vet test race cross vuln actionlint lint fuzz schemas docs secret-scan check
 
 build:
 	go build -ldflags '$(LDFLAGS)' -o bin/prolexic ./cmd/prolexic
@@ -47,6 +47,11 @@ vuln:
 ACTIONLINT_VERSION := v1.7.12
 actionlint:
 	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+# .golangci.yml holds the settings.
+GOLANGCI_LINT_VERSION := v2.14.0
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 
 # Fuzz each target for FUZZTIME (go test runs only one -fuzz target at a
 # time). make check replays only the seed inputs; run this now and then.

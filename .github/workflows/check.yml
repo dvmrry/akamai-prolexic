@@ -36,4 +36,5 @@ jobs:
       - run: make race
       - run: make cross
       - run: make vuln
+      - run: make lint
       - run: make actionlint

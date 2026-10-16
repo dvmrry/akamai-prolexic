@@ -58,7 +58,10 @@ func TestMetricsEmptyWindowIs404AndFailuresReported(t *testing.T) {
 	api := newFakeAPI(t)
 	api.routes["POST /prolexic-analytics/v2/metrics"] = func(w http.ResponseWriter, r *http.Request) {
 		var b struct{ Contract string }
-		json.NewDecoder(r.Body).Decode(&b)
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		switch b.Contract {
 		case "example-a":
 			w.WriteHeader(404)

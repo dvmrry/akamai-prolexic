@@ -55,7 +55,9 @@ func TestVerifyUnappliedPlanIsDrift(t *testing.T) {
 
 func TestVerifyNeedsAPlanDocument(t *testing.T) {
 	notPlan := filepath.Join(t.TempDir(), "x.json")
-	os.WriteFile(notPlan, []byte(`{"schema":"prolexic.status.v1"}`), 0o600)
+	if err := os.WriteFile(notPlan, []byte(`{"schema":"prolexic.status.v1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, args := range [][]string{{"verify"}, {"verify", "--plan", notPlan}} {
 		if r := runCLI(t, Env{}, args...); r.code != exitCode(apperr.Usage) {
 			t.Errorf("%v: exit = %d: %s", args, r.code, r.stderr)
@@ -78,7 +80,10 @@ func TestPlanApplyVerifyWithOneArtifact(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.stdout, "digest: sha256:") || strings.HasPrefix(strings.TrimSpace(r.stdout), "{") {
 		t.Fatalf("plan --out: exit %d, stdout should be the text plan:\n%s%s", r.code, r.stdout, r.stderr)
 	}
-	b, _ := os.ReadFile(saved)
+	b, err := os.ReadFile(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
 	planDoc := decode[PlanDoc](t, string(b), "prolexic.plan.v1")
 	if !strings.Contains(r.stdout, planDoc.Digest) {
 		t.Errorf("the text and the saved JSON disagree on the digest %s", planDoc.Digest)
@@ -170,7 +175,9 @@ func TestApplyPlanRefusesAnotherFileOrAccount(t *testing.T) {
 		t.Errorf("another file: exit %d: %s", r.code, r.stderr)
 	}
 	b, _ := os.ReadFile(saved)
-	os.WriteFile(saved, []byte(strings.Replace(string(b), `"accountId": "A-EXAMPLE"`, `"accountId": "B-OTHER"`, 1)), 0o600)
+	if err := os.WriteFile(saved, []byte(strings.Replace(string(b), `"accountId": "A-EXAMPLE"`, `"accountId": "B-OTHER"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if r := runCLI(t, env, "apply", "--file", desired, "--plan", saved); r.code != exitCode(apperr.Validation) || !strings.Contains(r.stderr, "B-OTHER") {
 		t.Errorf("another account: exit %d: %s", r.code, r.stderr)
 	}
@@ -183,7 +190,9 @@ func TestPlanOutRefusesDangerousPaths(t *testing.T) {
 	desired := writeDesired(t, desiredFixture)
 	dir := t.TempDir()
 	link := filepath.Join(dir, "link.json")
-	os.Symlink(desired, link)
+	if err := os.Symlink(desired, link); err != nil {
+		t.Fatal(err)
+	}
 	for name, out := range map[string]string{"the desired file": desired, "a symlink": link, "a directory": dir} {
 		r := runCLI(t, ncfEnv(api.env()), "plan", "--file", desired, "--out", out)
 		if r.code != exitCode(apperr.Usage) {
@@ -226,7 +235,9 @@ func TestPlanWithErrorsShowsNoDigest(t *testing.T) {
 // A plan saved by an older prolexic says so, rather than looking edited.
 func TestAnOlderPlanSaysToReplan(t *testing.T) {
 	old := filepath.Join(t.TempDir(), "plan.json")
-	os.WriteFile(old, []byte(`{"schema":"prolexic.plan.v1","digest":"sha256:x","fileDigest":"sha256:y","aliases":[]}`), 0o600)
+	if err := os.WriteFile(old, []byte(`{"schema":"prolexic.plan.v1","digest":"sha256:x","fileDigest":"sha256:y","aliases":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r := runCLI(t, Env{}, "verify", "--plan", old)
 	if r.code != exitCode(apperr.Usage) || !strings.Contains(r.stderr, "older prolexic") {
 		t.Errorf("exit %d: %s", r.code, r.stderr)

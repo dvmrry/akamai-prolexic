@@ -118,7 +118,7 @@ func parse(s string, strict bool) (Value, error) {
 	}
 	if tag, rest, ok := strings.Cut(s, "::"); ok && (strings.EqualFold(tag, "GEO") || strings.EqualFold(tag, "ASN")) {
 		if rest != strings.TrimSpace(rest) || rest == "" {
-			return Value{}, fmt.Errorf("%q: nothing but the value may follow %s::", s, strings.ToUpper(tag))
+			return Value{}, fmt.Errorf("%q: %s:: must be followed by the value alone", s, strings.ToUpper(tag))
 		}
 		if strings.EqualFold(tag, "GEO") {
 			code := strings.ToUpper(rest)

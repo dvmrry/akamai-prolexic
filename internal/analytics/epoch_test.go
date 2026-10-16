@@ -93,7 +93,9 @@ func TestAttackFieldsAcceptStringsOrNumbers(t *testing.T) {
 		t.Errorf("attack = %+v", a)
 	}
 	var n struct{ A, B, C, D Int }
-	json.Unmarshal([]byte(`{"A":"406042308","B":7055033,"C":"n/a","D":null}`), &n)
+	if err := json.Unmarshal([]byte(`{"A":"406042308","B":7055033,"C":"n/a","D":null}`), &n); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if n.A != 406042308 || n.B != 7055033 || n.C != 0 || n.D != 0 {
 		t.Errorf("ints = %+v", n)
 	}

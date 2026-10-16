@@ -130,8 +130,7 @@ func TestRoutedCheckWaitPollsUntilSatisfied(t *testing.T) {
 		return routesBoth
 	})
 	env := api.env()
-	var slept *[]time.Duration
-	slept = fakeClock(&env)
+	slept := fakeClock(&env)
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "5m", "--interval", "30s")
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s", r.code, r.stderr)
@@ -148,8 +147,7 @@ func TestRoutedCheckWaitPollsUntilSatisfied(t *testing.T) {
 func TestRoutedCheckWaitTimesOut(t *testing.T) {
 	api, _ := checkAPI(t, func(int) string { return routesOne })
 	env := api.env()
-	var slept *[]time.Duration
-	slept = fakeClock(&env)
+	slept := fakeClock(&env)
 	r := runCLI(t, env, "routed", "check", "--customer", "example-a", "--prefix", "203.0.113.0/24", "--wait", "70s", "--interval", "30s")
 	doc := decode[RoutedCheckDoc](t, r.stdout, "prolexic.routed-check.v1")
 	// Attempts at 0s, 30s, 60s and 70s: the last sleep is clipped to the deadline.

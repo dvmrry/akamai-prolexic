@@ -229,7 +229,10 @@ func TestRoutedSessionsResolvesNamesAndSorts(t *testing.T) {
 		{"name":"example-old","contractId":"C-1","accountName":"Example","inUse":false}]}`)
 	api.routes["POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions"] = func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ CustomerNames []string }
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if len(req.CustomerNames) == 1 && req.CustomerNames[0] == "example-a" {
 			w.Write([]byte(sessionsFixture))
 			return

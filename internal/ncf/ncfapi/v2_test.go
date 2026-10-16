@@ -132,7 +132,9 @@ func TestV2CreateVersionIsInactiveAndDerivedFromTheToken(t *testing.T) {
 	s, f := newV2(t)
 	var got map[string]any
 	f.routes["POST /aliases/101/versions"] = func(w http.ResponseWriter, r *http.Request, body []byte) {
-		json.Unmarshal(body, &got)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Errorf("request body: %v", err)
+		}
 		w.WriteHeader(201)
 		w.Write([]byte(`{"aliasId":101,"version":"V4","isActive":false,"entries":["192.0.2.0/25"]}`))
 	}

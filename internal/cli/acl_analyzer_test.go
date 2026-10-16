@@ -162,8 +162,10 @@ func TestACLTestPacketsFile(t *testing.T) {
 	api := newFakeAPI(t)
 	analyzerFixtures(api)
 	file := filepath.Join(t.TempDir(), "p.json")
-	os.WriteFile(file, []byte(`[{"protocol":"udp","srcIp":"203.0.113.7","dstIp":"198.51.100.5","dstPort":53},
-	  {"packetId":"web","protocol":"tcp","srcIp":"192.0.2.9","dstIp":"198.51.100.5","dstPort":443,"tcpFlags":["syn"]}]`), 0o600)
+	if err := os.WriteFile(file, []byte(`[{"protocol":"udp","srcIp":"203.0.113.7","dstIp":"198.51.100.5","dstPort":53},
+	  {"packetId":"web","protocol":"tcp","srcIp":"192.0.2.9","dstIp":"198.51.100.5","dstPort":443,"tcpFlags":["syn"]}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--packets", file)
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
@@ -184,7 +186,9 @@ func TestACLTestUsageErrors(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) string {
 		p := filepath.Join(dir, name)
-		os.WriteFile(p, []byte(body), 0o600)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		return p
 	}
 	one := `{"protocol":"ip","srcIp":"192.0.2.1","dstIp":"198.51.100.1"}`

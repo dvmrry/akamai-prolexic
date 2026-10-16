@@ -26,7 +26,9 @@ func TestSchemas(t *testing.T) {
 		}
 		old, _ := filepath.Glob(filepath.Join(schemaDir, "*.json"))
 		for _, p := range old {
-			os.Remove(p)
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
 		}
 		for id, b := range want {
 			if err := os.WriteFile(filepath.Join(schemaDir, id+".json"), b, 0o644); err != nil {

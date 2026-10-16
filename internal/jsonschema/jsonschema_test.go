@@ -29,7 +29,7 @@ type sample struct {
 	When     time.Time         `json:"when"`
 	Custom   custom            `json:"custom"`
 	Skipped  string            `json:"-"`
-	private  string
+	private  string            //nolint:unused // proves For skips unexported fields
 }
 
 func TestFor(t *testing.T) {

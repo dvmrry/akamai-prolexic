@@ -19,7 +19,7 @@ func TestParseAuthored(t *testing.T) {
 		{in: "geo::GB", want: "GEO::GB"},
 		{in: "ASN::64500", want: "ASN::64500"},
 		{in: "192.0.2.1/24", err: "host bits set; did you mean 192.0.2.0/24"},
-		{in: "GEO:: US", err: "nothing but the value may follow GEO::"},
+		{in: "GEO:: US", err: "GEO:: must be followed by the value alone"},
 		{in: "GEO::XX", err: "not an ISO 3166-1 alpha-2"},
 		{in: "GEO::USA", err: "not an ISO 3166-1 alpha-2"},
 		{in: "ASN::AS64500", err: "ASN must be a number"},
