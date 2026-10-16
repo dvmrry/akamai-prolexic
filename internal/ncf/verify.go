@@ -48,11 +48,25 @@ func Verify(ctx context.Context, store Store, p *Plan) (*VerifyResult, error) {
 		return nil, apperr.New(apperr.Validation, "the plan's digest %s doesn't match its aliases (%s): the file was edited or truncated", p.Digest, got)
 	}
 	res := &VerifyResult{AccountID: p.AccountID, Digest: p.Digest, Verified: true, Aliases: []AliasVerify{}, Deployment: []string{}}
+	// One alias list, then each alias's entries by version: not a full list
+	// per alias.
+	all, err := store.ListAliases(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindOf(err), err, "list aliases")
+	}
+	byID := make(map[int64]LiveAlias, len(all))
+	for _, l := range all {
+		byID[l.ID] = l
+	}
 	for _, ap := range p.Aliases {
 		if ap.DesiredHash == "" {
 			return nil, apperr.New(apperr.Validation, "alias %s has no desiredHash: not a plan this version of prolexic made", ap.Name)
 		}
-		live, err := store.GetAlias(ctx, ap.ID)
+		row, ok := byID[ap.ID]
+		if !ok {
+			return nil, apperr.New(apperr.NotFound, "alias %s (%d) is no longer listed", ap.Name, ap.ID)
+		}
+		live, err := withEntries(ctx, store, row)
 		if err != nil {
 			return nil, apperr.Wrap(apperr.KindOf(err), err, "read %s", ap.Name)
 		}

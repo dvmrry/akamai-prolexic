@@ -378,7 +378,9 @@ func (r *applyRun) timeoutError(ctx context.Context, target map[int]string, prod
 // creation (a BIG upload may); such a version that fails verification is
 // rolled back by re-activating the version it replaced.
 func (c *Checker) createVerified(ctx context.Context, read, write Store, ap AliasPlan, comment string) (string, bool, error) {
-	cur, err := read.GetAlias(ctx, ap.ID)
+	// The list row is enough to create a version: the current entries aren't
+	// needed (a BIG alias's would be thousands).
+	cur, err := listed(ctx, read, ap.ID)
 	if err != nil {
 		return "", false, apperr.Wrap(apperr.KindOf(err), err, "re-read %s", ap.Name)
 	}
@@ -505,16 +507,22 @@ func rollBack(ctx context.Context, read, write Store, plan *Plan, res *ApplyResu
 // activeVersion reads one alias's active version from the alias list (no
 // entries): the cheap token re-check before a write.
 func activeVersion(ctx context.Context, read Store, id int64) (string, error) {
+	l, err := listed(ctx, read, id)
+	return l.ActiveVersion, err
+}
+
+// listed is alias id's row in the alias list: everything but its entries.
+func listed(ctx context.Context, read Store, id int64) (LiveAlias, error) {
 	all, err := read.ListAliases(ctx)
 	if err != nil {
-		return "", err
+		return LiveAlias{}, err
 	}
 	for _, l := range all {
 		if l.ID == id {
-			return l.ActiveVersion, nil
+			return l, nil
 		}
 	}
-	return "", apperr.New(apperr.NotFound, "alias %d is no longer listed", id)
+	return LiveAlias{}, apperr.New(apperr.NotFound, "alias %d is no longer listed", id)
 }
 
 // landed decides an ambiguous create: exactly one new version means it

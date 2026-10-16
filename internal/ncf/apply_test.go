@@ -87,13 +87,17 @@ func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
 	p := plan(t, s, f, defaults)
 	// Someone activates a version between apply's own re-plan and its
 	// pre-write re-read: the digest still matches, the token doesn't.
-	calls := 0
-	read := &hookStore{Store: s, onGetAlias: func() {
-		if calls++; calls == 1 { // plans read entries by version id; this is the pre-write re-read
+	calls, fired := 0, false
+	read := &hookStore{Store: s, onListAliases: func() {
+		if calls++; calls == 2 { // the re-plan lists once; the pre-write re-read is the second list
 			s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
+			fired = true
 		}
 	}}
 	_, res, err := checker().Apply(context.Background(), read, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, ExpectDigest: p.Digest})
+	if !fired {
+		t.Fatal("the token never moved: the pre-write re-read isn't the second alias list any more; fix the hook")
+	}
 	if apperr.KindOf(err) != apperr.Conflict || s.Count("CreateVersion") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
 		t.Errorf("err = %v, res = %+v", err, res)
 	}
@@ -101,14 +105,12 @@ func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
 
 type hookStore struct {
 	*ncftest.Store
-	onGetAlias func()
+	onListAliases func()
 }
 
-func (h *hookStore) GetAlias(ctx context.Context, id int64) (ncf.LiveAlias, error) {
-	if id == 101 || id == 102 {
-		h.onGetAlias()
-	}
-	return h.Store.GetAlias(ctx, id)
+func (h *hookStore) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	h.onListAliases()
+	return h.Store.ListAliases(ctx)
 }
 
 func TestApplyAmbiguousCreateThatLanded(t *testing.T) {
@@ -391,9 +393,9 @@ func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
 	if _, err := apply(t, s, desired("192.0.2.0/25"), nil); err != nil {
 		t.Fatal(err)
 	}
-	// Plans read entries by version id and the wait polls the list, so the
-	// only GetAlias is the pre-create token re-read.
-	if n := s.Count("GetAlias"); n != 1 {
+	// Plans read entries by version id, and the pre-create token re-read and
+	// the wait both use the list: no GetAlias, so no entry download.
+	if n := s.Count("GetAlias"); n != 0 {
 		t.Errorf("GetAlias called %d times; polling must use the alias list", n)
 	}
 }

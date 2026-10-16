@@ -137,3 +137,19 @@ func TestVerifyNoticesAnAliasLeavingProduction(t *testing.T) {
 		t.Errorf("left production but verified: %+v", v.Aliases[0])
 	}
 }
+
+// Verify lists aliases once, then reads entries by version: never a full
+// alias read (list plus entries) per alias.
+func TestVerifyListsOnce(t *testing.T) {
+	s, _, p := applied(t)
+	lists, gets := s.Count("ListAliases"), s.Count("GetAlias")
+	if _, err := ncf.Verify(context.Background(), s, p); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.Count("ListAliases") - lists; n != 1 {
+		t.Errorf("ListAliases called %d times", n)
+	}
+	if n := s.Count("GetAlias") - gets; n != 0 {
+		t.Errorf("GetAlias called %d times", n)
+	}
+}
