@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,5 +118,35 @@ func TestDocumentsAreStamped(t *testing.T) {
 	doc := decode[VerifyDoc](t, r.stdout, "prolexic.verify.v1")
 	if doc.GeneratedAt != fixedNow.UTC().Format(time.RFC3339) || doc.Prolexic == "" || doc.AccountID != "A-EXAMPLE" {
 		t.Errorf("generatedAt %q, prolexic %q, accountId %q", doc.GeneratedAt, doc.Prolexic, doc.AccountID)
+	}
+}
+
+// A blanked alias-version read (an empty 200, a 204, {} or an HTML page from
+// a proxy) must fail the plan, never read as an empty alias: that would plan
+// to drop every entry in the file past the removal limit.
+func TestPlanFailsOnABlankedVersionRead(t *testing.T) {
+	for name, answer := range map[string]func(http.ResponseWriter){
+		"empty 200": func(w http.ResponseWriter) { w.WriteHeader(200) },
+		"204":       func(w http.ResponseWriter) { w.WriteHeader(204) },
+		"{}":        func(w http.ResponseWriter) { w.Header().Set("Content-Type", "application/json"); w.Write([]byte(`{}`)) },
+		"html": func(w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<html>login</html>`))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := ncfAPI(t)
+			api.intercept = func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.Contains(r.URL.Path, "/aliases/101/versions/") {
+					answer(w)
+					return true
+				}
+				return false
+			}
+			r := runCLI(t, ncfEnv(api.env()), "plan", "--file", writeDesired(t, desiredFixture))
+			if r.code != exitCode(apperr.Upstream) {
+				t.Errorf("exit = %d, want 5: %s%s", r.code, r.stdout, r.stderr)
+			}
+		})
 	}
 }
