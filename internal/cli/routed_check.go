@@ -122,7 +122,10 @@ func routedCheck(ctx context.Context, a *app, customers, sites []string, prefixF
 		if remaining <= 0 {
 			return doc, nil
 		}
-		if err := a.env.Sleep(ctx, min(interval, remaining)); err != nil {
+		next := min(interval, remaining)
+		a.progress(fmt.Sprintf("attempt %d: %d of %d sessions match --expect %s, %d failed names; checking again in %s (%s left)",
+			doc.Attempts, len(res.Sessions)-res.Off, len(res.Sessions), expect, len(doc.Failures), next, remaining.Round(time.Second)))
+		if err := a.env.Sleep(ctx, next); err != nil {
 			return nil, err
 		}
 	}

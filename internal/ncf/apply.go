@@ -22,6 +22,10 @@ type ApplyOptions struct {
 	Timeout time.Duration
 	// Interval is the polling period while waiting.
 	Interval time.Duration
+	// Progress, if set, hears each step as apply runs (created, activated,
+	// waiting, in production), so a front can show that a long wait for
+	// production isn't a hang. nil is silent.
+	Progress func(Progress)
 	// Sleep and Now are injectable for tests; nil means real time.
 	Sleep func(context.Context, time.Duration) error
 	Now   func() time.Time
@@ -196,7 +200,10 @@ func (r *applyRun) create(ctx context.Context) error {
 		if active {
 			r.res.Aliases[i].Status = StatusActive
 			r.res.Aliases[i].ActivatedAt = r.stamp()
+			r.progress("activated", i, "created and verified %s %s; a BIG upload activates on arrival", r.res.Aliases[i].Name, v)
+			continue
 		}
+		r.progress("created", i, "created and verified %s %s", r.res.Aliases[i].Name, v)
 	}
 	return nil
 }
@@ -231,6 +238,7 @@ func (r *applyRun) activate(ctx context.Context) error {
 		}
 		a.Status = StatusActive
 		a.ActivatedAt = r.stamp()
+		r.progress("activated", i, "activated %s %s", a.Name, a.Version)
 	}
 	return nil
 }
@@ -268,7 +276,11 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 	if len(target) == 0 {
 		return nil
 	}
-	deadline := r.opts.Now().Add(r.opts.Timeout)
+	start := r.opts.Now()
+	deadline := start.Add(r.opts.Timeout)
+	elapsed := func() string {
+		return r.opts.Now().Sub(start).Round(time.Second).String() + " of " + r.opts.Timeout.String()
+	}
 	for {
 		// One alias list per poll: it carries every production version and
 		// no entries, so a BIG alias isn't re-downloaded every interval.
@@ -280,7 +292,7 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 		for _, l := range all {
 			prods[l.ID] = l.ProdVersion
 		}
-		pending := 0
+		var pending []string
 		for i, want := range target {
 			prod, ok := prods[r.res.Aliases[i].ID]
 			if !ok {
@@ -295,12 +307,17 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 				continue
 			}
 			if prod != want {
-				pending++
+				pending = append(pending, fmt.Sprintf("%s at %s, want %s", r.res.Aliases[i].Name, prod, want))
 			} else if a := &r.res.Aliases[i]; r.plan.Aliases[i].Changed() && a.ProductionAt == "" {
 				a.ProductionAt = r.stamp()
+				r.progress("in_production", i, "in production: %s %s%s", a.Name, want, sinceActivation(a))
 			}
 		}
-		if pending == 0 {
+		slices.Sort(pending)
+		if len(pending) > 0 {
+			r.progress("waiting", -1, "waiting for production: %d of %d aliases (%s), %s", len(target)-len(pending), len(target), strings.Join(pending, "; "), elapsed())
+		}
+		if len(pending) == 0 {
 			d, err := r.read.Deployment(ctx)
 			if err != nil {
 				return apperr.Wrap(apperr.KindOf(err), err, "read ACL deployment status")
@@ -316,6 +333,7 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 				}
 				return nil
 			}
+			r.progress("settling", -1, "every alias is in production; the ACL deployment is still processing, %s", elapsed())
 		}
 		if !r.opts.Now().Before(deadline) {
 			return r.timeoutError(ctx, target, prods)
@@ -555,3 +573,40 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 
 // stamp is the current time as the result records it.
 func (r *applyRun) stamp() string { return r.opts.Now().UTC().Format(time.RFC3339) }
+
+// Progress is one step of an apply, for a front to show while it runs.
+type Progress struct {
+	Step    string // created, activated, waiting, in_production, settling
+	Alias   string // empty for steps about every alias
+	Message string // the step in words
+}
+
+func (r *applyRun) progress(step string, i int, format string, args ...any) {
+	if r.opts.Progress == nil {
+		return
+	}
+	p := Progress{Step: step, Message: fmt.Sprintf(format, args...)}
+	if i >= 0 {
+		p.Alias = r.res.Aliases[i].Name
+	}
+	r.opts.Progress(p)
+}
+
+// ToProduction is how long the alias took from activation to production,
+// accurate to the poll interval; false when this apply didn't time it.
+func (a AliasApply) ToProduction() (time.Duration, bool) {
+	act, err1 := time.Parse(time.RFC3339, a.ActivatedAt)
+	prod, err2 := time.Parse(time.RFC3339, a.ProductionAt)
+	if err1 != nil || err2 != nil {
+		return 0, false
+	}
+	return prod.Sub(act), true
+}
+
+// sinceActivation is " after <duration>" for an alias this apply timed.
+func sinceActivation(a *AliasApply) string {
+	if d, ok := a.ToProduction(); ok {
+		return " after " + d.String()
+	}
+	return ""
+}

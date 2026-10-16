@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 )
@@ -40,4 +42,11 @@ type outcomer interface {
 // failuresOutcome is the outcome of a document listing failed customer names.
 func failuresOutcome(failures []analytics.Failure, customers []string) error {
 	return analytics.FailuresError(failures, len(customers))
+}
+
+// progress tells whoever watches stderr what a long-running command is doing,
+// one line per step. stdout keeps its one document; an error document, if
+// any, follows the progress lines on stderr.
+func (a *app) progress(msg string) {
+	fmt.Fprintf(a.env.Stderr, "prolexic: %s\n", msg)
 }

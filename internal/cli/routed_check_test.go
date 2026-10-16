@@ -140,6 +140,9 @@ func TestRoutedCheckWaitPollsUntilSatisfied(t *testing.T) {
 	if !doc.Satisfied || doc.Attempts != 3 || attempts.Load() != 3 || len(*slept) != 2 || (*slept)[0] != 30*time.Second {
 		t.Errorf("attempts = %d (%d fetches), slept = %v, doc = %+v", doc.Attempts, attempts.Load(), *slept, doc)
 	}
+	if n := strings.Count(r.stderr, "prolexic: attempt "); n != 2 || !strings.Contains(r.stderr, "checking again in 30s") {
+		t.Errorf("progress (%d attempt lines):\n%s", n, r.stderr)
+	}
 }
 
 func TestRoutedCheckWaitTimesOut(t *testing.T) {

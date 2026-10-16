@@ -703,3 +703,31 @@ func TestApplyTimesActivationToProduction(t *testing.T) {
 		t.Errorf("an unchanged alias is timed: %+v (err %v)", again.Aliases[0], err)
 	}
 }
+
+// Apply reports each step as it goes, so a long wait for production is
+// visibly a wait, not a hang.
+func TestApplyReportsProgress(t *testing.T) {
+	s := world()
+	s.ProdLag = 3
+	var steps []string
+	var waiting string
+	_, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), func(o *ncf.ApplyOptions) {
+		o.Progress = func(p ncf.Progress) {
+			if len(steps) == 0 || steps[len(steps)-1] != p.Step {
+				steps = append(steps, p.Step)
+			}
+			if p.Step == "waiting" && waiting == "" {
+				waiting = p.Message
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(steps, []string{"created", "activated", "waiting", "in_production"}) {
+		t.Errorf("steps = %v", steps)
+	}
+	if !strings.Contains(waiting, "0 of 1 aliases (block-v4 at V1, want V2)") || !strings.Contains(waiting, " of 15m0s") {
+		t.Errorf("waiting = %q", waiting)
+	}
+}

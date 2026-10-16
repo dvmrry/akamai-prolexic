@@ -287,6 +287,11 @@ func TestApplyThroughTheCLI(t *testing.T) {
 	if doc.Result == nil || len(doc.Result.Aliases) != 1 || doc.Result.Aliases[0].Status != ncf.StatusDeployed || doc.Result.Aliases[0].Version != "V2" {
 		t.Errorf("result = %+v", doc.Result)
 	}
+	for _, line := range []string{"prolexic: created and verified block-v4 V2\n", "prolexic: activated block-v4 V2\n", "prolexic: in production: block-v4 V2"} {
+		if !strings.Contains(r.stderr, line) {
+			t.Errorf("progress lacks %q:\n%s", line, r.stderr)
+		}
+	}
 
 	ncfState.mu.Lock()
 	defer ncfState.mu.Unlock()

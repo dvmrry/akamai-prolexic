@@ -519,7 +519,7 @@ func apply(ctx context.Context, a *app, args planArgs, expect string, timeout, i
 	}
 	p, res, err := a.checker().Apply(ctx, read, a.ncfStore(wc), f, raw, ncf.ApplyOptions{
 		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), ExpectDigest: expect, Timeout: timeout, Interval: interval,
-		Sleep: a.env.Sleep, Now: a.env.Now,
+		Sleep: a.env.Sleep, Now: a.env.Now, Progress: func(p ncf.Progress) { a.progress(p.Message) },
 	})
 	if p == nil && res == nil {
 		return nil, err
@@ -632,10 +632,8 @@ func writeFindings(w io.Writer, fs []ncf.Finding) error {
 // toProduction is how long an alias took from activation to production, as
 // timed at the poll interval, or "-" when it wasn't timed.
 func toProduction(a ncf.AliasApply) string {
-	act, err1 := time.Parse(time.RFC3339, a.ActivatedAt)
-	prod, err2 := time.Parse(time.RFC3339, a.ProductionAt)
-	if err1 != nil || err2 != nil {
-		return "-"
+	if d, ok := a.ToProduction(); ok {
+		return d.String()
 	}
-	return prod.Sub(act).String()
+	return "-"
 }
