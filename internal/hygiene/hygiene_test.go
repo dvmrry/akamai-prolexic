@@ -59,6 +59,9 @@ func trackedTextFiles(t *testing.T) []trackedFile {
 	root := repoRoot(t)
 	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
+		if os.Getenv("CI") != "" { // a skipped scan must not pass a pull request
+			t.Fatalf("git ls-files: %v", err)
+		}
 		t.Skipf("git ls-files: %v", err)
 	}
 	var files []trackedFile
