@@ -157,3 +157,34 @@ func TestValidateDIPAHoldsOwnSpaceWhateverItsRole(t *testing.T) {
 		t.Errorf("findings = %v", codes(fs))
 	}
 }
+
+// A pasted string can carry characters that don't show, so a reviewer
+// approves what they can't see: every string in the file is checked, and the
+// finding says which field and which character.
+func TestValidateRefusesInvisibleCharacters(t *testing.T) {
+	zw := string(rune(0x200b))
+	for field, mut := range map[string]func(f *File){
+		"$schema":         func(f *File) { f.JSONSchema = "schemas/desired.json" + zw },
+		"accountId":       func(f *File) { f.AccountID += zw },
+		"ownSpace prefix": func(f *File) { f.OwnSpace.Prefixes[0] += zw },
+		"ownSpace alias":  func(f *File) { f.OwnSpace.Aliases = []string{"protected" + zw} },
+		"alias name":      func(f *File) { f.Aliases[0].Name = "block" + zw + "-v4" },
+		"cidr":            func(f *File) { f.Aliases[0].Entries[0].CIDR += zw },
+		"ticket":          func(f *File) { f.Aliases[0].Entries[0].Ticket = "SEC-1" + zw },
+		"reason":          func(f *File) { f.Aliases[0].Entries[0].Reason = "scan" + string(rune(0x202e)) + "ner" },
+		"expires":         func(f *File) { f.Aliases[0].Entries[0].Expires = "2027-01-01" + zw },
+	} {
+		f := testFile(Alias{Name: "block-v4", ID: 1, Type: "SOURCE", Role: RoleDeny, Entries: entries("192.0.2.0/24")})
+		mut(f)
+		fs := testChecker().Validate(f, nil)
+		i := slices.IndexFunc(fs, func(x Finding) bool { return x.Code == "invisible_character" })
+		if i < 0 || fs[i].Severity != Error || !strings.HasPrefix(fs[i].Message, field+" ") || !strings.Contains(fs[i].Message, "U+") {
+			t.Errorf("%s: findings = %+v", field, fs)
+		}
+	}
+	// Ordinary non-ASCII text in a reason is fine.
+	f := testFile(Alias{Name: "block-v4", ID: 1, Type: "SOURCE", Role: RoleDeny, Entries: []Entry{{CIDR: "192.0.2.0/24", Reason: "caf" + string(rune(0xe9)) + " scanner " + string(rune(0x2192)) + " blocked"}}})
+	if fs := testChecker().Validate(f, nil); len(fs) != 0 {
+		t.Errorf("plain non-ASCII: %v", codes(fs))
+	}
+}

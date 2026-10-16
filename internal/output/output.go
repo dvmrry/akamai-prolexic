@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/textsafe"
 )
 
 // Document is a command's result.
@@ -109,15 +110,15 @@ func writeJSON(w io.Writer, v any) error {
 	return err
 }
 
-// escapeControls escapes DEL and the invisible characters (C1 controls, Unicode
-// format characters, line separators), which encoding/json leaves raw but a
-// terminal or log viewer may act on. Such
-// bytes can only occur inside JSON strings, so a \\u escape is always valid.
+// escapeControls escapes DEL and the other invisible characters beyond ASCII
+// (textsafe.Invisible), which encoding/json leaves raw but a terminal or log
+// viewer may act on. Such bytes can only occur inside JSON strings, so a \\u
+// escape is always valid.
 func escapeControls(b []byte) []byte {
 	var out []byte
 	for len(b) > 0 {
 		r, size := utf8.DecodeRune(b)
-		if r == 0x7f || (size > 1 && invisible(r)) {
+		if r == 0x7f || (size > 1 && textsafe.Invisible(r)) {
 			out = escapeRune(out, r)
 		} else {
 			out = append(out, b[:size]...)

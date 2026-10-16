@@ -36,11 +36,32 @@ var (
 )
 
 func TestTrackedFilesUseOnlyNonRoutableAddresses(t *testing.T) {
+	for _, f := range trackedTextFiles(t) {
+		for i, line := range strings.Split(string(f.body), "\n") {
+			for _, m := range append(ipv4.FindAllString(line, -1), ipv6.FindAllString(line, -1)...) {
+				if routable(m) {
+					t.Errorf("%s:%d: %q is globally routable; fixtures must use documentation ranges", f.rel, i+1, m)
+				}
+			}
+		}
+	}
+}
+
+type trackedFile struct {
+	rel  string
+	body []byte
+}
+
+// trackedTextFiles are the files git tracks or would add, minus skip and
+// binaries.
+func trackedTextFiles(t *testing.T) []trackedFile {
+	t.Helper()
 	root := repoRoot(t)
 	out, err := exec.Command("git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
 		t.Skipf("git ls-files: %v", err)
 	}
+	var files []trackedFile
 	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
 		if rel == "" || skipped(rel) {
 			continue
@@ -49,14 +70,9 @@ func TestTrackedFilesUseOnlyNonRoutableAddresses(t *testing.T) {
 		if err != nil || bytes.IndexByte(b, 0) >= 0 {
 			continue // deleted in the worktree, or binary
 		}
-		for i, line := range strings.Split(string(b), "\n") {
-			for _, m := range append(ipv4.FindAllString(line, -1), ipv6.FindAllString(line, -1)...) {
-				if routable(m) {
-					t.Errorf("%s:%d: %q is globally routable; fixtures must use documentation ranges", rel, i+1, m)
-				}
-			}
-		}
+		files = append(files, trackedFile{rel, b})
 	}
+	return files
 }
 
 func routable(s string) bool {

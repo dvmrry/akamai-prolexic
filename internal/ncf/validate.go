@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"slices"
 	"time"
+
+	"github.com/dvmrry/akamai-prolexic/internal/textsafe"
 )
 
 // Severity of a finding: errors block, warnings print.
@@ -74,6 +76,7 @@ func (c *Checker) Validate(f *File, raw []byte) []Finding {
 	if f.AccountID == "" {
 		add(Error, "account_id", "", "", "accountId is required")
 	}
+	invisibleFindings(f, add)
 
 	var own []netip.Prefix
 	for _, s := range f.OwnSpace.Prefixes {
@@ -115,6 +118,39 @@ func (c *Checker) Validate(f *File, raw []byte) []Finding {
 		}
 	}
 	return out
+}
+
+// invisibleFindings reports every string in the file holding a character that
+// doesn't show (textsafe.Invisible): a copy-paste carries them in, and a
+// reviewer would approve what they can't see. Other checks may fail on the
+// same string, but their messages look wrong without saying why.
+func invisibleFindings(f *File, add func(sev Severity, code, alias, entry, format string, args ...any)) {
+	check := func(alias, entry, field, s string) {
+		if r, at, ok := textsafe.Find(s); ok {
+			add(Error, "invisible_character", alias, entry, "%s holds an invisible character, U+%04X at byte %d: retype it rather than paste it", field, r, at)
+		}
+	}
+	check("", "", "$schema", f.JSONSchema)
+	check("", "", "schema", f.Schema)
+	check("", "", "accountId", f.AccountID)
+	for _, s := range f.OwnSpace.Prefixes {
+		check("", s, "ownSpace prefix", s)
+	}
+	for _, s := range f.OwnSpace.Aliases {
+		check(s, "", "ownSpace alias", s)
+	}
+	for _, a := range f.Aliases {
+		check(a.Name, "", "alias name", a.Name)
+		check(a.Name, "", "alias type", a.Type)
+		check(a.Name, "", "alias role", string(a.Role))
+		for _, e := range a.Entries {
+			for _, fld := range []struct{ name, val string }{
+				{"cidr", e.CIDR}, {"ticket", e.Ticket}, {"reason", e.Reason}, {"added", e.Added}, {"expires", e.Expires},
+			} {
+				check(a.Name, e.CIDR, fld.name, fld.val)
+			}
+		}
+	}
 }
 
 func (c *Checker) validateEntries(a Alias, own []netip.Prefix) []Finding {

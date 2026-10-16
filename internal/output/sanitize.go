@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/dvmrry/akamai-prolexic/internal/textsafe"
 )
 
 // safeWriter makes control characters visible and harmless: text output
 // carries API-supplied strings, and a raw escape sequence in one would act on
 // the terminal or forge lines in a CI log. C0 controls except \n and \t, DEL
-// and C1 controls (U+0080 to U+009F) are written as escaped text. A raw
-// 0x80-0x9f byte that is not valid UTF-8 is escaped too, since an 8-bit
-// terminal reads it as a C1 control.
+// and the other invisible characters (textsafe.Invisible) are written as
+// escaped text. A raw 0x80-0x9f byte that is not valid UTF-8 is escaped too,
+// since an 8-bit terminal reads it as a C1 control.
 type safeWriter struct {
 	w       io.Writer
 	pending []byte // an incomplete UTF-8 sequence from the previous Write
@@ -50,7 +51,7 @@ func (s *safeWriter) Write(p []byte) (int, error) {
 			} else {
 				out = append(out, b)
 			}
-		case invisible(r):
+		case textsafe.Invisible(r):
 			out = escapeRune(out, r)
 		default:
 			out = append(out, in[i:i+size]...)
@@ -90,14 +91,6 @@ func Sanitize(s string) string {
 	sw.Write([]byte(s))
 	sw.flush()
 	return b.String()
-}
-
-// invisible reports a character that acts on a display instead of showing:
-// C1 controls, Unicode format characters (bidi overrides and isolates, which
-// can visually reverse or forge a line, zero-width characters, the BOM) and
-// the line and paragraph separators.
-func invisible(r rune) bool {
-	return (r >= 0x80 && r <= 0x9f) || unicode.Is(unicode.Cf, r) || r == 0x2028 || r == 0x2029
 }
 
 // escapeRune appends r as \uXXXX, a surrogate pair beyond the BMP, which is

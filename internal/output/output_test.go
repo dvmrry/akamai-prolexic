@@ -157,11 +157,12 @@ func TestJSONEscapesDELAndC1(t *testing.T) {
 	}
 }
 
-// Bidi overrides, zero-width characters, the BOM and line separators are
-// escaped in text and JSON: a right-to-left override can visually reverse or
-// forge a line. Ordinary non-ASCII text is left alone.
+// Bidi overrides, zero-width characters, the BOM, line separators, fillers
+// and variation selectors are escaped in text and JSON: a right-to-left
+// override can visually reverse or forge a line. Ordinary non-ASCII text is
+// left alone.
 func TestInvisibleCharactersAreEscaped(t *testing.T) {
-	hidden := []rune{0x202e, 0x200b, 0x2066, 0xfeff, 0x2028}
+	hidden := []rune{0x202e, 0x200b, 0x2066, 0xfeff, 0x2028, 0x3164, 0xe0100}
 	in, plain := "a", "e-acute "+string(rune(0xe9))+" cjk "+string(rune(0x4e2d))+" emoji "+string(rune(0x1f642))
 	for _, r := range hidden {
 		in += string(r) + "x"

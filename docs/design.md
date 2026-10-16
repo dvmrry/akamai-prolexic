@@ -9,6 +9,7 @@ checking against a real account.
 | package | owns |
 | --- | --- |
 | `internal/apperr` | the error model every layer shares: kinds (a public contract) and upstream detail |
+| `internal/textsafe` | which characters count as invisible; output escapes them, the desired file and the repo refuse them |
 | `internal/output` | one Document per command; JSON by default, text with `--format text` or `PROLEXIC_FORMAT=text` (never guessed from a terminal: agent harnesses and CI may give one); the error document |
 | `internal/jsonschema` | schemas derived from Go types; `TestSchemas` keeps `schemas/` in step |
 | `internal/edgegrid` | credentials (env, then `.edgerc`) and EG1-HMAC-SHA256 signing, pinned by Akamai's published vectors |
@@ -19,7 +20,7 @@ checking against a real account.
 | `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers, fetched once per plan |
 | `internal/ncf/ncftest` | an in-memory versioned `Store` with fault injection |
 | `internal/cli` | the command tree and wiring |
-| `internal/hygiene` | keeps globally routable addresses out of tracked files, and the layer rules below |
+| `internal/hygiene` | keeps globally routable addresses and invisible characters out of tracked files, non-ASCII letters out of Go identifiers, and the layer rules below |
 
 ## Layers
 

@@ -26,6 +26,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 - **No account data in the repo.**
   - Fixtures are synthetic: documentation address ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 2001:db8::/32), documentation ASNs (64496–64511), and names like `example-a` or `A-EXAMPLE`.
   - `internal/hygiene` fails on globally routable addresses in tracked files.
+- **No invisible characters.** `internal/hygiene` fails on bidi overrides, zero-width and tag characters, variation selectors, a BOM or a CR in any tracked file, and on a non-ASCII Go identifier (a look-alike letter). In Go, write such a character as an escape or a code point, never raw. Retype pasted text rather than trust it.
 - **Login-only API specs** (NCF v2) go in `spec/`, which is gitignored except its README. Never commit them, and never paste their text into tracked files, including code comments, docs and fixtures. Specs from github.com/akamai/akamai-apis (Apache-2.0) are vendored under `api/akamai-apis/` with their licence.
 - **Captured API responses** go in `/scratch/` (gitignored) until they're scrubbed into fixtures.
 - **The live API wins over the spec.** Decode responses leniently. `docs/design.md` lists the known differences.
@@ -38,6 +39,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | package | owns |
 | --- | --- |
 | `internal/apperr` | the shared error model: error kinds and upstream detail (the CLI maps kinds to exit codes in `internal/cli/exit.go`) |
+| `internal/textsafe` | which characters count as invisible (controls, bidi and other format characters, fillers, variation selectors): output escapes them, the desired file and the repo refuse them |
 | `internal/output` | the document contract: one Document per command, JSON by default (text on request), `schema` field |
 | `internal/jsonschema` | schemas derived from Go types |
 | `internal/edgegrid` | credentials and request signing |
