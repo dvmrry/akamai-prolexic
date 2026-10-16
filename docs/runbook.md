@@ -62,7 +62,7 @@ The desired file or the plan has errors. Nothing was written. The findings say w
 | `removal_threshold` | One alias would lose more entries than the limit (10). That's usually a truncated or mistaken file. If it's really intended, raise the limit with `--max-removals`. |
 | `role_mismatch` | The file's `role` disagrees with how the deployed ACL uses the alias. Fix the file's role. `export` writes the right one. |
 | `not_canonical` | The file was hand-edited. Run `prolexic fmt --file desired.json` and review the diff. |
-| `invisible_character` | A field holds a character that doesn't show (a zero-width space, a bidi override), usually from a copy-paste. The message names the field and the code point. Retype the value. |
+| `invisible_character` | A field holds a character that doesn't show (a zero-width space, a bidi override), usually from a copy-paste. The message names the field and the code point. Retype the value. Zero-width joiners count too, so a reason can't hold a joined emoji (a family or a profession emoji) or text that needs U+200C: with the zero-width space they are the alphabet of hidden-text tricks. |
 
 ## Exit 7: drift
 
