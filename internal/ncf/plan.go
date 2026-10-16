@@ -67,11 +67,13 @@ type PlanOptions struct {
 	// before the plan errors; a truncated file must not empty a blocklist.
 	// Negative means no limit.
 	MaxRemovals int
-	// OwnSpace adds own-space prefixes (Prolexic Analytics); nil adds none.
-	OwnSpace OwnSpaceSource
-	// OwnASNs supplies our own AS numbers (from the BGP sessions); a deny-side
-	// ASN:: entry naming one would block our own network. nil adds none.
-	OwnASNs OwnASNSource
+	// LiveOwnSpace adds own space as the APIs report it: protected prefixes,
+	// and our own AS numbers (a deny-side ASN:: entry naming one would block
+	// our own network). A plan needs it unless SkipLiveOwnSpace says to plan
+	// without it, so no front can leave it out by accident.
+	LiveOwnSpace LiveOwnSpace
+	// SkipLiveOwnSpace plans without LiveOwnSpace, and says so in a warning.
+	SkipLiveOwnSpace bool
 }
 
 // DefaultMaxRemovals is the removal threshold without --max-removals.
@@ -112,21 +114,31 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		byID[l.ID], byName[l.Name] = l, l
 	}
 
-	own, err := c.ownSpace(ctx, store, f, byName, opts.OwnSpace, add)
+	var live LiveOwnSpaceResult
+	switch {
+	case opts.SkipLiveOwnSpace && opts.LiveOwnSpace != nil:
+		return nil, apperr.New(apperr.Bug, "plan: LiveOwnSpace and SkipLiveOwnSpace are both set")
+	case opts.SkipLiveOwnSpace:
+		p.Findings = append(p.Findings, Finding{Severity: Warning, Code: "own_space_analytics_skipped",
+			Message: "live own space skipped: Prolexic Analytics protected prefixes and own AS numbers were not checked"})
+	case opts.LiveOwnSpace == nil:
+		return nil, apperr.New(apperr.Bug, "plan: no LiveOwnSpace; set SkipLiveOwnSpace to plan without it")
+	default:
+		if live, err = opts.LiveOwnSpace.OwnSpace(ctx); err != nil {
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "own space from Prolexic Analytics")
+		}
+		p.Findings = append(p.Findings, live.Warnings...)
+	}
+
+	own, err := c.ownSpace(ctx, store, f, byName, live.Prefixes, add)
 	if err != nil {
 		return nil, err
 	}
 	p.Checks.OwnSpace = summariseOwnSpace(staticOwnSpace(f), own)
 	ownASNs := map[uint32]string{}
-	if opts.OwnASNs != nil {
-		asns, err := opts.OwnASNs(ctx)
-		if err != nil {
-			return nil, apperr.Wrap(apperr.KindOf(err), err, "own AS numbers from Prolexic Analytics")
-		}
-		for _, a := range asns {
-			if _, seen := ownASNs[a.ASN]; !seen {
-				ownASNs[a.ASN] = a.Source // first source wins: stable messages
-			}
+	for _, a := range live.ASNs {
+		if _, seen := ownASNs[a.ASN]; !seen {
+			ownASNs[a.ASN] = a.Source // first source wins: stable messages
 		}
 	}
 	p.Checks.OwnASNs = len(ownASNs)
@@ -292,7 +304,7 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 
 // ownSpace gathers the live own-space prefixes: the own-space aliases'
 // entries and the extra source. The static list is checked offline.
-func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map[string]LiveAlias, extra OwnSpaceSource, add func(Severity, string, string, string, string, ...any)) ([]OwnSpacePrefix, error) {
+func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map[string]LiveAlias, extra []OwnSpacePrefix, add func(Severity, string, string, string, string, ...any)) ([]OwnSpacePrefix, error) {
 	var out []OwnSpacePrefix
 	for _, name := range f.OwnSpace.Aliases {
 		l, ok := byName[name]
@@ -324,14 +336,7 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 			out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name})
 		}
 	}
-	if extra != nil {
-		more, err := extra(ctx)
-		if err != nil {
-			return nil, apperr.Wrap(apperr.KindOf(err), err, "own space from Prolexic Analytics")
-		}
-		out = append(out, more...)
-	}
-	return out, nil
+	return append(out, extra...), nil
 }
 
 // withEntries reads a listed alias's entries from its active version by id:

@@ -122,10 +122,24 @@ type OwnASN struct {
 	Source string // "analytics <customer>/<data center>"
 }
 
-// OwnASNSource supplies our own AS numbers.
-type OwnASNSource func(ctx context.Context) ([]OwnASN, error)
+// LiveOwnSpace is the port for the account's own space as the APIs report
+// it, beyond the desired file's static prefixes and own-space aliases: the
+// protected prefixes and our own AS numbers (Prolexic Analytics). A plan calls
+// it once. ncfanalytics implements it.
+type LiveOwnSpace interface {
+	OwnSpace(ctx context.Context) (LiveOwnSpaceResult, error)
+}
 
-// OwnSpaceSource supplies own-space prefixes beyond the desired file's
-// static list and own-space aliases: the per-site protected prefixes from
-// Prolexic Analytics.
-type OwnSpaceSource func(ctx context.Context) ([]OwnSpacePrefix, error)
+// LiveOwnSpaceResult is what a LiveOwnSpace reports. Warnings say where the
+// view is incomplete (a customer name with no protected prefixes, or no BGP
+// sessions); the plan reports them.
+type LiveOwnSpaceResult struct {
+	Prefixes []OwnSpacePrefix
+	ASNs     []OwnASN
+	Warnings []Finding
+}
+
+// LiveOwnSpaceFunc adapts a function to LiveOwnSpace.
+type LiveOwnSpaceFunc func(ctx context.Context) (LiveOwnSpaceResult, error)
+
+func (f LiveOwnSpaceFunc) OwnSpace(ctx context.Context) (LiveOwnSpaceResult, error) { return f(ctx) }

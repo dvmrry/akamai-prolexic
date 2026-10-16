@@ -45,6 +45,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 | `internal/networkhealth` | Network Health client |
 | `internal/ncf` | the desired-state core: entries, desired file, checks, role derivation, plan, apply, the `Store` port |
 | `internal/ncf/ncfapi` | `Store` and reads over NCF v2 |
+| `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers for the own-space checks |
 | `internal/ncf/ncftest` | in-memory versioned `Store` with fault injection |
 | `internal/cli` | commands and wiring; one file per command family |
 
@@ -63,6 +64,7 @@ New read commands follow `internal/cli/routed.go` and `internal/cli/status.go`: 
 5. **Own space is never blocked.**
    - A deny-side source entry must not cover own space: static prefixes, own-space DIPA aliases, Analytics protected prefixes, and our own ASNs.
    - The side comes from the deployed ACL rules. Only a verified derivation can relax the checks; an unrecognised form or action is checked as deny.
+   - A plan needs a live own-space source (`LiveOwnSpace`, from `ncfanalytics`) or an explicit `SkipLiveOwnSpace`, which it reports. No front can leave it out by accident.
 6. **The production wait is accurate.** Every targeted alias must reach production with a healthy, settled deployment. Otherwise apply exits 5 with a message that says what is actually lagging.
 
 ## Working practice

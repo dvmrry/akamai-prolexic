@@ -67,7 +67,22 @@ func findingCodes(fs []ncf.Finding) []string {
 	return out
 }
 
-var defaults = ncf.PlanOptions{MaxRemovals: ncf.DefaultMaxRemovals}
+var defaults = ncf.PlanOptions{MaxRemovals: ncf.DefaultMaxRemovals, LiveOwnSpace: noLive}
+
+// live is a LiveOwnSpace reporting prefixes and asns.
+func live(prefixes []ncf.OwnSpacePrefix, asns []ncf.OwnASN) ncf.LiveOwnSpace {
+	return ncf.LiveOwnSpaceFunc(func(context.Context) (ncf.LiveOwnSpaceResult, error) {
+		return ncf.LiveOwnSpaceResult{Prefixes: prefixes, ASNs: asns}, nil
+	})
+}
+
+// noLive is a live source that reports nothing.
+var noLive = live(nil, nil)
+
+// failingLive is a live source that fails.
+var failingLive = ncf.LiveOwnSpaceFunc(func(context.Context) (ncf.LiveOwnSpaceResult, error) {
+	return ncf.LiveOwnSpaceResult{}, apperr.New(apperr.Upstream, "analytics down")
+})
 
 func TestPlanNoChanges(t *testing.T) {
 	// Spelling differences (bare IP, host-bit-free forms) are not changes.
@@ -144,20 +159,18 @@ func TestPlanLiveFindings(t *testing.T) {
 			f.Aliases[0].Entries = entries("192.0.2.0/25", "198.51.100.7", "203.0.113.0/24")
 		}, defaults, []string{"error own_space block-v4 203.0.113.0/24"}},
 		{"own space analytics", func(f *ncf.File, _ *ncftest.Store) {},
-			ncf.PlanOptions{MaxRemovals: 10, OwnSpace: func(context.Context) ([]ncf.OwnSpacePrefix, error) {
-				return []ncf.OwnSpacePrefix{{Prefix: netip.MustParsePrefix("198.51.100.0/24"), Source: "analytics example-a/DC-A"}}, nil
-			}}, []string{"error own_space block-v4 198.51.100.7/32"}},
+			ncf.PlanOptions{MaxRemovals: 10, LiveOwnSpace: live([]ncf.OwnSpacePrefix{{Prefix: netip.MustParsePrefix("198.51.100.0/24"), Source: "analytics example-a/DC-A"}}, nil)}, []string{"error own_space block-v4 198.51.100.7/32"}},
 		{"removal threshold", func(f *ncf.File, _ *ncftest.Store) { f.Aliases[0].Entries = nil },
-			ncf.PlanOptions{MaxRemovals: 1}, []string{"error removal_threshold block-v4"}},
+			ncf.PlanOptions{MaxRemovals: 1, LiveOwnSpace: noLive}, []string{"error removal_threshold block-v4"}},
 		{"removal threshold lifted", func(f *ncf.File, _ *ncftest.Store) { f.Aliases[0].Entries = nil },
-			ncf.PlanOptions{MaxRemovals: -1}, nil},
+			ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}, nil},
 		{"count limit", func(f *ncf.File, _ *ncftest.Store) {
 			var es []string
 			for i := range 51 {
 				es = append(es, fmt.Sprintf("192.0.2.%d", i))
 			}
 			f.Aliases[0].Entries = entries(es...)
-		}, ncf.PlanOptions{MaxRemovals: -1}, []string{"error count_limit block-v4"}},
+		}, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive}, []string{"error count_limit block-v4"}},
 		{"missing own-space alias", func(f *ncf.File, _ *ncftest.Store) { f.OwnSpace.Aliases = []string{"nope"} }, defaults,
 			[]string{"error own_space_alias nope"}},
 	}
@@ -194,11 +207,7 @@ func TestPlanUnversionedAPI(t *testing.T) {
 }
 
 func TestPlanOwnSpaceSourceFailureFailsThePlan(t *testing.T) {
-	_, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, ncf.PlanOptions{
-		OwnSpace: func(context.Context) ([]ncf.OwnSpacePrefix, error) {
-			return nil, apperr.New(apperr.Upstream, "analytics down")
-		},
-	})
+	_, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, ncf.PlanOptions{LiveOwnSpace: failingLive})
 	if apperr.KindOf(err) != apperr.Upstream || !errors.Is(err, err) {
 		t.Errorf("err = %v; a plan must not pass without its own-space sources", err)
 	}
@@ -249,7 +258,7 @@ func TestPlanDerivesTheRoleFromDeployedRules(t *testing.T) {
 			}
 			f := desired(tt.entries...)
 			f.Aliases[0].Role = tt.fileRole
-			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1})
+			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive})
 			if got := findingCodes(p.Findings); !slices.Equal(got, tt.want) {
 				t.Errorf("findings = %q, want %q", got, tt.want)
 			}
@@ -267,7 +276,7 @@ func TestPlanUnrecognisedRuleFormIsCheckedAsDeny(t *testing.T) {
 	s := world()
 	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "protected-dst"}}
 	s.UseInRule(101, 1)
-	p := plan(t, s, desired("192.0.2.0/25", "203.0.113.0/26"), ncf.PlanOptions{MaxRemovals: -1})
+	p := plan(t, s, desired("192.0.2.0/25", "203.0.113.0/26"), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive})
 	got := findingCodes(p.Findings)
 	want := []string{"warning role_unverified block-v4", "error own_space block-v4 203.0.113.0/26"}
 	slices.Sort(got)
@@ -291,7 +300,7 @@ func TestPlanCannotRelaxChecksWithoutAVerifiedSide(t *testing.T) {
 			f := desired("192.0.2.0/25", "203.0.113.0/26")
 			f.OwnSpace.Prefixes = []string{"203.0.113.0/26"}
 			f.Aliases[0].Role = ncf.RoleAllow // the file tries to relax the checks
-			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1})
+			p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive})
 			got := findingCodes(p.Findings)
 			if !slices.Contains(got, "error own_space block-v4 203.0.113.0/26") || p.Aliases[0].RoleSource != "unverified" {
 				t.Errorf("findings = %q, roleSource = %q; only a verified side may relax own-space checks", got, p.Aliases[0].RoleSource)
@@ -311,9 +320,7 @@ func TestPlanOwnSpaceAliasEntryItCannotReadIsAnError(t *testing.T) {
 }
 
 func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
-	ours := ncf.PlanOptions{MaxRemovals: -1, OwnASNs: func(context.Context) ([]ncf.OwnASN, error) {
-		return []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a/DC-A"}}, nil
-	}}
+	ours := ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: live(nil, []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a/DC-A"}})}
 	f := desired("192.0.2.0/25", "ASN::64500", "ASN::64501")
 	got := findingCodes(plan(t, world(), f, ours).Findings)
 	if !slices.Equal(got, []string{"error own_space block-v4 ASN::64500"}) {
@@ -325,7 +332,7 @@ func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
 		t.Errorf("allow side: findings = %q", got)
 	}
 
-	failing := ncf.PlanOptions{OwnASNs: func(context.Context) ([]ncf.OwnASN, error) { return nil, apperr.New(apperr.Upstream, "down") }}
+	failing := ncf.PlanOptions{LiveOwnSpace: failingLive}
 	if _, err := checker().MakePlan(context.Background(), world(), desired("192.0.2.0/25"), nil, failing); apperr.KindOf(err) != apperr.Upstream {
 		t.Errorf("err = %v; the plan must not pass without its own-ASN source", err)
 	}
@@ -346,17 +353,37 @@ func TestPlanSaysWhatItCheckedAgainst(t *testing.T) {
 	s.UseInRule(101, 1)
 	f := desired("192.0.2.0/25", "198.51.100.7")
 	f.OwnSpace.Prefixes = []string{"203.0.113.128/25"}
-	p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1,
-		OwnSpace: func(context.Context) ([]ncf.OwnSpacePrefix, error) {
-			return []ncf.OwnSpacePrefix{{Prefix: netip.MustParsePrefix("198.51.100.128/25"), Source: "analytics example-a/site"}}, nil
-		},
-		OwnASNs: func(context.Context) ([]ncf.OwnASN, error) {
-			return []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a"}, {ASN: 64500, Source: "analytics example-b"}}, nil
-		},
-	})
+	p := plan(t, s, f, ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: live([]ncf.OwnSpacePrefix{{Prefix: netip.MustParsePrefix("198.51.100.128/25"), Source: "analytics example-a/site"}}, []ncf.OwnASN{{ASN: 64500, Source: "analytics example-a"}, {ASN: 64500, Source: "analytics example-b"}})})
 	got := fmt.Sprintf("%+v", p.Checks)
 	want := "{LiveChecksRan:true OwnSpace:[{Source:alias protected-dst Prefixes:1} {Source:analytics Prefixes:1} {Source:static Prefixes:1}] OwnASNs:1 DeployedRules:1}"
 	if got != want {
 		t.Errorf("checks = %s\nwant     %s", got, want)
+	}
+}
+
+// Live own space can't be left out by accident: a plan needs a source, or an
+// explicit skip that the plan reports.
+func TestPlanNeedsLiveOwnSpaceOrAnExplicitSkip(t *testing.T) {
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	if _, err := checker().MakePlan(context.Background(), world(), f, nil, ncf.PlanOptions{MaxRemovals: -1}); apperr.KindOf(err) != apperr.Bug {
+		t.Errorf("no source: err = %v, want a refusal", err)
+	}
+	both := ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: noLive, SkipLiveOwnSpace: true}
+	if _, err := checker().MakePlan(context.Background(), world(), f, nil, both); apperr.KindOf(err) != apperr.Bug {
+		t.Errorf("both: err = %v, want a refusal", err)
+	}
+	skipped := plan(t, world(), f, ncf.PlanOptions{MaxRemovals: -1, SkipLiveOwnSpace: true})
+	if got := findingCodes(skipped.Findings); !slices.Equal(got, []string{"warning own_space_analytics_skipped"}) {
+		t.Errorf("skip: findings = %q", got)
+	}
+}
+
+func TestPlanReportsLiveOwnSpaceWarnings(t *testing.T) {
+	warn := ncf.LiveOwnSpaceFunc(func(context.Context) (ncf.LiveOwnSpaceResult, error) {
+		return ncf.LiveOwnSpaceResult{Warnings: []ncf.Finding{{Severity: ncf.Warning, Code: "own_space_asn_unknown", Message: "x"}}}, nil
+	})
+	p := plan(t, world(), desired("192.0.2.0/25", "198.51.100.7"), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: warn})
+	if got := findingCodes(p.Findings); !slices.Equal(got, []string{"warning own_space_asn_unknown"}) {
+		t.Errorf("findings = %q", got)
 	}
 }

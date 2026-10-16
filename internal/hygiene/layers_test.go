@@ -16,7 +16,7 @@ const module = "github.com/dvmrry/akamai-prolexic/"
 // sdk are the packages other fronts may build on (docs/design.md, Layers).
 var sdk = []string{
 	"internal/akamai", "internal/edgegrid", "internal/analytics", "internal/networkhealth",
-	"internal/ncf", "internal/ncf/ncfapi", "internal/ncf/ncftest", "internal/apperr", "internal/version",
+	"internal/ncf", "internal/ncf/ncfapi", "internal/ncf/ncfanalytics", "internal/ncf/ncftest", "internal/apperr", "internal/version",
 }
 
 // frontOnly are imports the SDK must never use.

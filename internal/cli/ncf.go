@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
-	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfanalytics"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -450,12 +450,10 @@ func plan(ctx context.Context, a *app, args planArgs, exitCode bool) (output.Doc
 	if err != nil {
 		return nil, err
 	}
-	opts, warnings := a.planOptions(args.maxRemovals, args.noAnalytics)
-	p, err := a.checker().MakePlan(ctx, store, f, raw, opts)
+	p, err := a.checker().MakePlan(ctx, store, f, raw, a.planOptions(args.maxRemovals, args.noAnalytics))
 	if err != nil {
 		return nil, err
 	}
-	p.Findings = append(p.Findings, *warnings...)
 	return &PlanDoc{File: args.file, Plan: *p, OwnSpaceAnalytics: !args.noAnalytics, changesAreDrift: exitCode}, nil
 }
 
@@ -519,95 +517,23 @@ func apply(ctx context.Context, a *app, args planArgs, expect string, timeout, i
 	if err != nil {
 		return nil, err
 	}
-	opts, warnings := a.planOptions(args.maxRemovals, args.noAnalytics)
 	p, res, err := a.checker().Apply(ctx, read, a.ncfStore(wc), f, raw, ncf.ApplyOptions{
-		PlanOptions: opts, ExpectDigest: expect, Timeout: timeout, Interval: interval,
+		PlanOptions: a.planOptions(args.maxRemovals, args.noAnalytics), ExpectDigest: expect, Timeout: timeout, Interval: interval,
 		Sleep: a.env.Sleep, Now: a.env.Now,
 	})
-	if p != nil {
-		p.Findings = append(p.Findings, *warnings...)
-	}
 	if p == nil && res == nil {
 		return nil, err
 	}
 	return &ApplyDoc{File: args.file, Plan: p, Result: res}, err
 }
 
-// planOptions builds the plan options; the returned findings collect
-// warnings from the Analytics own-space source once the plan has run.
-func (a *app) planOptions(maxRemovals int, noAnalytics bool) (ncf.PlanOptions, *[]ncf.Finding) {
-	warnings := &[]ncf.Finding{}
-	opts := ncf.PlanOptions{MaxRemovals: maxRemovals}
+// planOptions builds the plan options: live own space from Prolexic Analytics
+// (ncfanalytics), unless --no-analytics-own-space skips it.
+func (a *app) planOptions(maxRemovals int, noAnalytics bool) ncf.PlanOptions {
 	if noAnalytics {
-		*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_skipped",
-			Message: "--no-analytics-own-space: Prolexic Analytics protected prefixes and own AS numbers were not checked"})
-		return opts, warnings
+		return ncf.PlanOptions{MaxRemovals: maxRemovals, SkipLiveOwnSpace: true}
 	}
-	// Own space comes from analytics.ProtectedFor, the same data `prolexic
-	// protected` shows, fetched once per plan for every customer name (in use
-	// or not: an inactive name's space is still ours). A failed name fails the
-	// plan: the own-space check can't be partial.
-	var cached []analytics.Protected
-	protected := func(ctx context.Context) ([]analytics.Protected, error) {
-		if cached != nil {
-			return cached, nil
-		}
-		api, err := a.analytics()
-		if err != nil {
-			return nil, err
-		}
-		names, err := analytics.AllCustomers(ctx, api, nil)
-		if err != nil {
-			return nil, err
-		}
-		rows, _, err := analytics.FanOut(ctx, names, func(ctx context.Context, name string) ([]analytics.Protected, error) {
-			p, err := api.ProtectedFor(ctx, name)
-			return []analytics.Protected{p}, err
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, p := range rows {
-			// Empty means unknown, not "nothing protected": say so.
-			if len(p.Prefixes) == 0 {
-				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_empty",
-					Message: fmt.Sprintf("Prolexic Analytics reports no protected prefixes for customer name %s", p.Customer)})
-			}
-			if p.NoRouted {
-				*warnings = append(*warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
-					Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", p.Customer)})
-			}
-		}
-		cached = rows
-		return rows, nil
-	}
-	opts.OwnSpace = func(ctx context.Context) ([]ncf.OwnSpacePrefix, error) {
-		rows, err := protected(ctx)
-		if err != nil {
-			return nil, err
-		}
-		var out []ncf.OwnSpacePrefix
-		for _, p := range rows {
-			for _, prefix := range p.Prefixes {
-				out = append(out, ncf.OwnSpacePrefix{Prefix: prefix, Source: "analytics " + p.Customer + "/" + p.Site})
-			}
-		}
-		return out, nil
-	}
-	opts.OwnASNs = func(ctx context.Context) ([]ncf.OwnASN, error) {
-		rows, err := protected(ctx)
-		if err != nil {
-			return nil, err
-		}
-		var out []ncf.OwnASN
-		for _, p := range rows {
-			for _, asn := range p.ASNs {
-				out = append(out, ncf.OwnASN{ASN: uint32(asn), Source: "analytics " + p.Customer})
-			}
-		}
-		return out, nil
-	}
-	return opts, warnings
+	return ncf.PlanOptions{MaxRemovals: maxRemovals, LiveOwnSpace: ncfanalytics.Source(a.analytics)}
 }
 
 func (a *app) checker() *ncf.Checker {

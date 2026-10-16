@@ -16,6 +16,7 @@ checking against a real account.
 | `internal/analytics` | Prolexic Analytics v2 client, fan-out over customer names, the propagation-check join |
 | `internal/ncf` | the desired-state model: entries, desired file, checks, plan, apply, and the `Store` port |
 | `internal/ncf/ncfapi` | `Store` over HTTP (NCF v2: versioned aliases, activation, BIG multipart upload) |
+| `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers, fetched once per plan |
 | `internal/ncf/ncftest` | an in-memory versioned `Store` with fault injection |
 | `internal/cli` | the command tree and wiring |
 | `internal/hygiene` | keeps globally routable addresses out of tracked files, and the layer rules below |
@@ -26,7 +27,7 @@ The code is in three layers, so that other fronts (an MCP server, possibly a Ter
 
 | layer | packages | does |
 | --- | --- | --- |
-| **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
+| **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncfanalytics`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
 | **operations** | the command bodies in `internal/cli` (for now) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
 | **fronts** | `internal/cli` (Cobra), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
 
