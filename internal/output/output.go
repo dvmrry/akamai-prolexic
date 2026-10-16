@@ -86,7 +86,11 @@ func IsTerminal(w io.Writer) bool {
 func Write(w io.Writer, f Format, doc Document) error {
 	doc.setSchema(doc.SchemaID())
 	if f.Resolve(w) == Text {
-		return doc.WriteText(w)
+		sw := &safeWriter{w: w}
+		if err := doc.WriteText(sw); err != nil {
+			return err
+		}
+		return sw.flush()
 	}
 	return writeJSON(w, doc)
 }
