@@ -15,7 +15,7 @@ checking against a real account.
 | `internal/edgegrid` | credentials (env, then `.edgerc`) and EG1-HMAC-SHA256 signing, pinned by Akamai's published vectors |
 | `internal/akamai` | the one HTTP transport: signing, lenient decoding, both problem shapes, retry policy, ambiguity marking |
 | `internal/analytics` | Prolexic Analytics v2 client, fan-out over customer names, the propagation-check join |
-| `internal/ncf` | the desired-state model: entries, desired file, checks, changes to the file (add and remove, and when one may be written), plan, apply, and the `Store` port |
+| `internal/ncf` | the desired-state model: entries, desired file, checks, changes to the file (add and remove, and when one may be written; export from live), plan, apply, and the `Store` port |
 | `internal/ncf/ncfapi` | `Store` over HTTP (NCF v2: versioned aliases, activation, BIG multipart upload) |
 | `internal/ncf/ncfanalytics` | `LiveOwnSpace` over Prolexic Analytics: protected prefixes and own AS numbers, fetched once per plan |
 | `internal/ncf/ncftest` | an in-memory versioned `Store` with fault injection |
