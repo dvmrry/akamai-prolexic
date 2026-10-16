@@ -220,13 +220,22 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			continue
 		}
 		ap.RoleSource = roleSource
+		// The side the own-space checks run on. Only a verified derivation
+		// relaxes them (invariant 5): an alias no deployed rule uses is
+		// checked as deny whatever role the file gives it, so an edit to
+		// the file can't switch the checks off. A DIPA alias lists
+		// destinations and is never checked.
+		side := a
+		if roleSource == RoleFromFile {
+			side.Role = RoleDeny
+		}
 		checked := own
-		if a.DenySide() && !fileDenySide {
+		if side.DenySide() && !fileDenySide {
 			// Validate checked the static list against the file's role, which
-			// said allow; the live side is deny, so check it here too.
+			// said allow; the side checked is deny, so check it here too.
 			checked = append(staticOwnSpace(f), own...)
 		}
-		c.liveChecks(a, full, &ap, checked, ownASNs, opts, add)
+		c.liveChecks(side, full, &ap, checked, ownASNs, opts, add)
 		p.Aliases = append(p.Aliases, ap)
 	}
 	crossAliasMoves(p.Aliases, add)

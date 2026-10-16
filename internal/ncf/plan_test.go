@@ -328,9 +328,17 @@ func TestPlanRejectsOurOwnASNOnTheDenySide(t *testing.T) {
 		t.Errorf("findings = %q", got)
 	}
 
-	f.Aliases[0].Role = ncf.RoleAllow // a permit-side alias may name our AS
-	if got := findingCodes(plan(t, world(), f, ours).Findings); len(got) != 0 {
-		t.Errorf("allow side: findings = %q", got)
+	// A permit-side alias may name our AS, once a deployed permit rule
+	// verifies the side; the file's word alone isn't enough.
+	f.Aliases[0].Role = ncf.RoleAllow
+	permitted := world()
+	permitted.Rules = []ncf.ACLRule{{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	permitted.UseInRule(101, 1)
+	if got := findingCodes(plan(t, permitted, f, ours).Findings); len(got) != 0 {
+		t.Errorf("verified allow side: findings = %q", got)
+	}
+	if got := findingCodes(plan(t, world(), f, ours).Findings); !slices.Equal(got, []string{"error own_space block-v4 ASN::64500"}) {
+		t.Errorf("unverified allow side: findings = %q", got)
 	}
 
 	failing := ncf.PlanOptions{LiveOwnSpace: failingLive}
@@ -471,6 +479,25 @@ func TestMakePlanRefusesABadRemovalLimit(t *testing.T) {
 		opts.MaxRemovals = n
 		if _, err := checker().MakePlan(context.Background(), s, desired("192.0.2.0/25"), nil, opts); apperr.KindOf(err) != apperr.Usage {
 			t.Errorf("MaxRemovals %d: err = %v", n, err)
+		}
+	}
+}
+
+// A role no deployed rule verifies can't relax the own-space checks
+// (invariant 5): an alias no rule uses is checked as deny, whatever role the
+// file gives it. Allow or destination in the file would otherwise let an
+// edit switch the checks off.
+func TestUnverifiedFileRoleIsCheckedAsDeny(t *testing.T) {
+	for _, role := range []ncf.Role{ncf.RoleAllow, ncf.RoleDestination} {
+		s := world()                                   // no deployed rules: block-v4's role comes from the file
+		f := desired("192.0.2.0/25", "203.0.113.0/26") // 203.0.113.0/26 is protected-dst: own space
+		f.Aliases[0].Role = role
+		p := plan(t, s, f, defaults)
+		if !slices.Contains(findingCodes(p.Findings), "error own_space block-v4 203.0.113.0/26") {
+			t.Errorf("file role %s: findings = %v", role, findingCodes(p.Findings))
+		}
+		if a := p.Aliases[0]; a.RoleSource != ncf.RoleFromFile || a.Role != role {
+			t.Errorf("file role %s: reported %s from %s", role, a.Role, a.RoleSource)
 		}
 	}
 }

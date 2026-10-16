@@ -174,7 +174,7 @@ func (f *front) result(doc output.Document, err error) *mcp.CallToolResult {
 	res := &mcp.CallToolResult{Content: []mcp.Content{}}
 	if doc != nil {
 		res.Content = append(res.Content, &mcp.TextContent{Text: f.render(doc)})
-		if o, ok := doc.(interface{ Outcome() error }); ok && err == nil {
+		if o, ok := doc.(interface{ Outcome() error }); ok {
 			if oerr := o.Outcome(); oerr != nil {
 				res.Content = append(res.Content, &mcp.TextContent{Text: "outcome: " + string(apperr.KindOf(oerr)) + ": " + output.Sanitize(oerr.Error())})
 			}

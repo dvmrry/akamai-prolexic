@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
@@ -149,4 +150,22 @@ func writeFindings(w io.Writer, fs []ncf.Finding) error {
 		}
 	}
 	return nil
+}
+
+// fileLocks serialise each file's read, change and write within this
+// process: concurrent calls (the MCP front runs tool calls in parallel)
+// would otherwise each read the old file, and the last write would drop the
+// other's change. Keyed by the cleaned absolute path.
+var fileLocks sync.Map
+
+// lockFile locks path's read-modify-write and returns the unlock.
+func lockFile(path string) (unlock func()) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	m, _ := fileLocks.LoadOrStore(filepath.Clean(abs), &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }

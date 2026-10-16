@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -378,5 +379,43 @@ func TestDocumentsShowRelativePaths(t *testing.T) {
 	real, _ := filepath.EvalSymlinks(root)
 	if isErr || !strings.Contains(texts[0], `"file": "sub/desired.json"`) || strings.Contains(texts[0], root) || strings.Contains(texts[0], real) {
 		t.Errorf("%v %q", isErr, texts)
+	}
+}
+
+// Tool calls run concurrently: two changes to one file must both land, not
+// the last write over the first.
+func TestConcurrentChangesToOneFileBothLand(t *testing.T) {
+	for i := range 10 {
+		root := t.TempDir()
+		writeDesired(t, root, desired(ncf.Entry{CIDR: "192.0.2.0/25"}))
+		cs := connect(t, Options{Runtime: offline(), Root: root})
+		var wg sync.WaitGroup
+		for _, e := range []string{"198.51.100.10", "198.51.100.11"} {
+			wg.Go(func() {
+				if texts, isErr := call(t, cs, "add", map[string]any{"file": "desired.json", "alias": "block-v4", "entries": []string{e}, "ticket": "SEC-1", "reason": "r"}); isErr {
+					t.Errorf("add %s: %q", e, texts)
+				}
+			})
+		}
+		wg.Wait()
+		b, _ := os.ReadFile(filepath.Join(root, "desired.json"))
+		if !strings.Contains(string(b), "198.51.100.10/32") || !strings.Contains(string(b), "198.51.100.11/32") {
+			t.Fatalf("run %d: an entry was lost:\n%s", i, b)
+		}
+	}
+}
+
+// A document returned with an error (a plan whose save failed) keeps its
+// outcome note: the error must not hide the document's own verdict.
+func TestOutcomeSurvivesAnError(t *testing.T) {
+	f := &front{rt: offline()}
+	doc := &ops.ValidateDoc{File: "desired.json", Findings: []ncf.Finding{{Severity: ncf.Error, Code: "entry", Message: "bad"}}}
+	res := f.result(doc, apperr.New(apperr.Usage, "save plan.json: permission denied"))
+	var texts []string
+	for _, c := range res.Content {
+		texts = append(texts, c.(*mcp.TextContent).Text)
+	}
+	if !res.IsError || len(texts) != 3 || !strings.HasPrefix(texts[1], "outcome: validation:") || !strings.Contains(texts[2], "permission denied") {
+		t.Errorf("%v %q", res.IsError, texts)
 	}
 }

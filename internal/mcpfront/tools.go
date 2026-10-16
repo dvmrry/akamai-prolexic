@@ -152,7 +152,7 @@ type planArgs struct {
 
 var planTool = tool[planArgs]{
 	name: "plan", title: "Plan the desired file against live",
-	description: "Diffs the desired file against live state and runs every offline and live check, giving the changes, the findings and the plan's digest. Reads only; with out it also saves the plan. Applying a plan is not available here: it goes through a reviewed pull request and CI.",
+	description: "Diffs the desired file against live state and runs every offline and live check, giving the changes, the findings and the plan's digest. Reads live state; with out it also writes the plan to that file. Applying a plan is not available here: it goes through a reviewed pull request and CI.",
 	writes:      true,
 	run: func(ctx context.Context, f *front, a planArgs) (output.Document, error) {
 		p, err := f.path(a.File)
