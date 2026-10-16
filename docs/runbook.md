@@ -36,6 +36,7 @@ The credentials don't resolve, or the API refused them (401/403). Run `prolexic 
 | `the ACL deployment is still processing … re-run apply to keep waiting` | Production carries your versions; Akamai is still settling the ACL. | Re-run `apply`, then `verify`. |
 | `the ACL deployment is unhealthy` | Akamai reports failed rules, or a FAILED ACL version at or after production. **This may not be your change.** Any recent ACL problem on the account fails this check. | Run `prolexic acl deployment` to see what failed. If your aliases look right (`prolexic status`), raise it with Akamai support and give them the incident id from the `upstream:` line. Don't keep retrying. |
 | `activated outside this apply` | An alias you didn't change is lagging in production: someone else activated it. | Not yours. `prolexic status` shows which alias, and the team that changed it should know. |
+| `the activation of … was accepted, but … is still active: it didn't take effect` | Akamai accepted the activation but the alias stayed on its old version. Nothing changed for traffic. | Check `prolexic aliases versions --name X`, then re-run `apply`. It re-uses the version it already created. If it repeats, raise it with Akamai support. |
 | `create a version of X: it did not land; safe to re-run` | A request failed, and `prolexic` proved nothing was created. | Re-run `apply`. |
 | `create a version of X: unknown whether it landed … check status before re-running` | A request failed, and `prolexic` couldn't prove the outcome. | Run `prolexic aliases versions --name X`. Re-run `apply`: it re-uses its own earlier version if there is one, and never creates a second. |
 | `doesn't hold the desired entries; it was left inactive` | Akamai stored a version with different entries from the ones sent. Nothing was activated. | Re-run `apply` once. If it repeats, raise it with Akamai support. |
@@ -66,7 +67,7 @@ The desired file or the plan has errors. Nothing was written. The findings say w
 
 ## Exit 8: conflict
 
-Someone else is writing to the same alias. `prolexic` stopped rather than overwrite their change. **Find out who before doing anything else.** Then re-run `plan`, review, and apply.
+Someone else is writing to the same alias. That includes `… is active, not this apply's …: someone else activated it`: another version went live while `apply` was waiting. `prolexic` stopped rather than overwrite their change. **Find out who before doing anything else.** Then re-run `plan`, review, and apply.
 
 ## Routed cutover
 

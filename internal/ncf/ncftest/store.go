@@ -132,6 +132,7 @@ func (s *Store) ActivateNow(id int64, entries ...string) {
 	a.versions = append(a.versions, slices.Clone(entries))
 	a.live.ActiveVersion = versionID(len(a.versions))
 	a.live.ProdVersion = versionID(len(a.versions))
+	a.pending, a.lag = "", 0 // an immediate activation supersedes one still on its way to production
 }
 
 // Lag pins an alias's production version behind its active one, with no

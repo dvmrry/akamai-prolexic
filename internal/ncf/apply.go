@@ -290,9 +290,9 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 		if err != nil {
 			return apperr.Wrap(apperr.KindOf(err), err, "poll aliases")
 		}
-		prods := make(map[int64]string, len(all))
+		prods, actives := make(map[int64]string, len(all)), make(map[int64]string, len(all))
 		for _, l := range all {
-			prods[l.ID] = l.ProdVersion
+			prods[l.ID], actives[l.ID] = l.ProdVersion, l.ActiveVersion
 		}
 		var pending []string
 		for _, i := range slices.Sorted(maps.Keys(target)) { // in plan order: stable progress
@@ -339,7 +339,7 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 			r.progress("settling", -1, "every alias is in production; the ACL deployment is still processing, %s", elapsed())
 		}
 		if !r.opts.Now().Before(deadline) {
-			return r.timeoutError(ctx, target, prods)
+			return r.timeoutError(ctx, target, prods, actives)
 		}
 		if err := r.opts.Sleep(ctx, r.opts.Interval); err != nil {
 			return err
@@ -349,8 +349,22 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 
 // timeoutError says what is actually lagging when the production wait gives
 // up: what this apply wrote, what it only waited on, or the deployment itself.
-func (r *applyRun) timeoutError(ctx context.Context, target map[int]string, prods map[int64]string) error {
+func (r *applyRun) timeoutError(ctx context.Context, target map[int]string, prods, actives map[int64]string) error {
 	timeout := r.opts.Timeout
+	// First, an alias this apply activated that isn't active: the activation
+	// was accepted but didn't take effect, or someone else activated another
+	// version since. Saying "active, production should follow" would be false.
+	for _, i := range slices.Sorted(maps.Keys(target)) {
+		a := &r.res.Aliases[i]
+		if !r.plan.Aliases[i].Changed() || a.Status != StatusActive || actives[a.ID] == a.Version {
+			continue
+		}
+		if cur := actives[a.ID]; cur != a.FromVersion {
+			return r.fail(i, apperr.New(apperr.Conflict, "%s: %s is active, not this apply's %s: someone else activated it; find out who, then re-plan", a.Name, cur, a.Version))
+		}
+		a.Status = StatusCreated
+		return apperr.New(apperr.Upstream, "%s: the activation of %s was accepted, but after %s %s is still active: it didn't take effect. Check the alias's versions, then re-run apply (it re-uses %s)", a.Name, a.Version, timeout, a.FromVersion, a.Version)
+	}
 	written, outside := lagging(r.plan, target, prods, r.res)
 	if len(written)+len(outside) > 0 {
 		if d, err := r.read.Deployment(ctx); err == nil {
