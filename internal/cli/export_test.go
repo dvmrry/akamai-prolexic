@@ -66,7 +66,7 @@ func TestExportBootstrap(t *testing.T) {
 	// rule 1 denies block-v4 as a source, so --role allow can't override it.
 	p2 := filepath.Join(t.TempDir(), "allow.json")
 	runCLI(t, ncfEnv(api.env()), "export", "--file", p2, "--role", "allow")
-	if !strings.Contains(readFile(t, p2), "\"name\": \"block-v4\",\n      \"role\": \"deny\"") {
+	if !strings.Contains(readFile(t, p2), "\"name\": \"block-v4\",\n      \"id\": 101,\n      \"type\": \"SOURCE\",\n      \"role\": \"deny\"") {
 		t.Errorf("--role allow:\n%s", readFile(t, p2))
 	}
 	r = runCLI(t, ncfEnv(api.env()), "export", "--file", p)

@@ -75,24 +75,24 @@ A check lives at the lowest layer that has the information. Higher layers may re
 ```json
 {
   "$schema": "optional editor reference",
+  "schema": "prolexic.desired.v1",
   "accountId": "…",
+  "ownSpace": {"prefixes": ["…"], "aliases": ["protected-dst"]},
   "aliases": [
     {
-      "entries": ["192.0.2.0/24", {"cidr": "198.51.100.7/32", "ticket": "…", "reason": "…", "added": "YYYY-MM-DD", "expires": "YYYY-MM-DD"}],
-      "id": 101,
       "name": "block-v4",
+      "id": 101,
+      "type": "SOURCE",
       "role": "deny",
-      "type": "SOURCE"
+      "entries": ["192.0.2.0/24", {"cidr": "198.51.100.7/32", "ticket": "…", "reason": "…", "added": "YYYY-MM-DD", "expires": "YYYY-MM-DD"}]
     }
-  ],
-  "ownSpace": {"aliases": ["protected-dst"], "prefixes": ["…"]},
-  "schema": "prolexic.desired.v1"
+  ]
 }
 ```
 
 - **Extension: `role` (`deny` or `allow`)** per alias. Plan derives the side from the deployed rules: an alias is deny-side when a deployed `deny` rule uses it as its source (live names a source alias `SRC::<account>::<name>`, a destination alias bare; matching the name or a `::<name>` suffix covers both). The derived role wins, the plan reports `roleSource: rules`, and a file whose `role` disagrees fails with `role_mismatch`. An alias no deployed rule references keeps the file's role (`roleSource: file`), with deny the default, so checks stay on. `export` writes the derived role. A DIPA alias is never own-space checked: it lists destinations. A rule only counts when it names the alias (case-insensitively), and only `deny` or a known permit word (`permit`, `accept`, `allow`) is understood. If deployed rules reference an alias but its side can't be read (unknown address form, unknown action, a rule without parsed details), the side is `unverified`: plan warns `role_unverified` and applies own-space checks whatever the file says. Only a verified derivation can relax them.
 - **Extension: `ownSpace`** holds the static list and names the protected-destination alias(es), which must be DIPA aliases. Plan reads those aliases' live entries; an entry it can't read is an error.
-- The canonical form is: keys sorted at every level, aliases sorted by name, entries sorted v4 → v6 → GEO → ASN, `[]` never `null`, two-space indent and a trailing newline. `validate` fails a file that isn't byte-identical to it.
+- The canonical form is: keys in a fixed order that reads top-down in a diff (each alias's name, id, type and role before its entries; each entry's cidr first), aliases sorted by name, entries sorted v4 → v6 → GEO → ASN, `[]` never `null`, two-space indent and a trailing newline. `validate` fails a file that isn't byte-identical to it.
 - Entries are normalised on both sides. An authored host-bits typo is rejected, while the same thing from live is masked.
 
 ## Checks

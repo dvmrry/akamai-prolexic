@@ -9,32 +9,32 @@ import (
 
 const canonicalFile = `{
   "$schema": "../schemas/prolexic.desired.v1.json",
+  "schema": "prolexic.desired.v1",
   "accountId": "A-EXAMPLE",
+  "ownSpace": {
+    "prefixes": [
+      "203.0.113.0/24"
+    ],
+    "aliases": []
+  },
   "aliases": [
     {
+      "name": "block-v4",
+      "id": 101,
+      "type": "SOURCE",
+      "role": "deny",
       "entries": [
         "192.0.2.0/25",
         {
           "cidr": "198.51.100.7/32",
-          "expires": "2027-01-01",
+          "ticket": "SEC-1",
           "reason": "scanner",
-          "ticket": "SEC-1"
+          "expires": "2027-01-01"
         },
         "GEO::US"
-      ],
-      "id": 101,
-      "name": "block-v4",
-      "role": "deny",
-      "type": "SOURCE"
+      ]
     }
-  ],
-  "ownSpace": {
-    "aliases": [],
-    "prefixes": [
-      "203.0.113.0/24"
-    ]
-  },
-  "schema": "prolexic.desired.v1"
+  ]
 }
 `
 

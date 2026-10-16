@@ -172,23 +172,14 @@ func Canonical(f *File) ([]byte, error) {
 		c.Aliases = []Alias{}
 	}
 
-	// Round-trip through a generic value: encoding/json sorts map keys,
-	// which gives sorted keys at every level without hand-ordering fields.
-	b, err := json.Marshal(c)
-	if err != nil {
-		return nil, err
-	}
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	var generic any
-	if err := dec.Decode(&generic); err != nil {
-		return nil, err
-	}
+	// Keys come in the structs' field order, which reads top-down in a diff:
+	// each alias's name, id, type and role before its entries, and each
+	// entry's cidr first.
 	var out bytes.Buffer
 	enc := json.NewEncoder(&out)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(generic); err != nil {
+	if err := enc.Encode(c); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil

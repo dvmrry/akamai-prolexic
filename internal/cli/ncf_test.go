@@ -24,26 +24,26 @@ func ncfEnv(env Env) Env {
 }
 
 const desiredFixture = `{
+  "schema": "prolexic.desired.v1",
   "accountId": "A-EXAMPLE",
+  "ownSpace": {
+    "prefixes": [
+      "203.0.113.0/24"
+    ],
+    "aliases": []
+  },
   "aliases": [
     {
+      "name": "block-v4",
+      "id": 101,
+      "type": "SOURCE",
+      "role": "deny",
       "entries": [
         "192.0.2.0/25",
         "198.51.100.7/32"
-      ],
-      "id": 101,
-      "name": "block-v4",
-      "role": "deny",
-      "type": "SOURCE"
+      ]
     }
-  ],
-  "ownSpace": {
-    "aliases": [],
-    "prefixes": [
-      "203.0.113.0/24"
-    ]
-  },
-  "schema": "prolexic.desired.v1"
+  ]
 }
 `
 
@@ -129,18 +129,18 @@ func TestAddWritesOneCanonicalEntry(t *testing.T) {
 	want := strings.Replace(desiredFixture, `        "198.51.100.7/32"
 `, `        "198.51.100.7/32",
         {
-          "added": "2026-10-14",
           "cidr": "198.51.100.64/26",
-          "expires": "2027-01-31",
+          "ticket": "SEC-9",
           "reason": "scanning",
-          "ticket": "SEC-9"
+          "added": "2026-10-14",
+          "expires": "2027-01-31"
         },
         {
-          "added": "2026-10-14",
           "cidr": "GEO::DE",
-          "expires": "2027-01-31",
+          "ticket": "SEC-9",
           "reason": "scanning",
-          "ticket": "SEC-9"
+          "added": "2026-10-14",
+          "expires": "2027-01-31"
         }
 `, 1)
 	if got := readFile(t, p); got != want {
