@@ -656,3 +656,29 @@ func TestApplyTimeoutReportsAnUnhealthyDeployment(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// Splitting a block and leaving part out is one change: one new version
+// holding the complete final set, then one activation. There is never a
+// state with the block gone and its parts not yet there, or both at once,
+// because the API is never sent entry-level adds or removes.
+func TestApplySplitIsOneVersionOneActivation(t *testing.T) {
+	s := world()
+	s.ActivateNow(101, "192.0.2.0/24", "198.51.100.7")
+	writes := len(s.Calls)
+	final := []string{"192.0.2.0/26", "192.0.2.64/26", "192.0.2.192/26", "198.51.100.7"} // 192.0.2.128/26 left out
+	if _, err := apply(t, s, desired(final...), nil); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	for _, c := range s.Calls[writes:] {
+		if c == "CreateVersion" || c == "Activate" {
+			calls = append(calls, c)
+		}
+	}
+	if !slices.Equal(calls, []string{"CreateVersion", "Activate"}) {
+		t.Errorf("writes = %v, want one CreateVersion then one Activate", calls)
+	}
+	if live := s.Live(101); !ncf.SameEntries(live.Entries, []string{"192.0.2.0/26", "192.0.2.64/26", "192.0.2.192/26", "198.51.100.7/32"}) {
+		t.Errorf("live = %v", live.Entries)
+	}
+}
