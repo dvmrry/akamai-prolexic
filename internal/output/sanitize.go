@@ -16,12 +16,20 @@ import (
 // and the other invisible characters (textsafe.Invisible) are written as
 // escaped text. A raw 0x80-0x9f byte that is not valid UTF-8 is escaped too,
 // since an 8-bit terminal reads it as a C1 control.
+//
+// The first write error sticks: later writes fail with it and flush returns
+// it, so a view that prints line by line without checking each write still
+// fails the command when its output didn't arrive.
 type safeWriter struct {
 	w       io.Writer
 	pending []byte // an incomplete UTF-8 sequence from the previous Write
+	err     error
 }
 
 func (s *safeWriter) Write(p []byte) (int, error) {
+	if s.err != nil {
+		return 0, s.err
+	}
 	in := p
 	if len(s.pending) > 0 {
 		in = append(s.pending, p...)
@@ -59,15 +67,17 @@ func (s *safeWriter) Write(p []byte) (int, error) {
 		i += size
 	}
 	if _, err := s.w.Write(out); err != nil {
+		s.err = err
 		return 0, err
 	}
 	return len(p), nil
 }
 
-// flush writes out a sequence left incomplete at the end of the document.
+// flush writes out a sequence left incomplete at the end of the document,
+// and returns the first write error.
 func (s *safeWriter) flush() error {
-	if len(s.pending) == 0 {
-		return nil
+	if s.err != nil || len(s.pending) == 0 {
+		return s.err
 	}
 	rest := s.pending
 	s.pending = nil
@@ -79,8 +89,10 @@ func (s *safeWriter) flush() error {
 			out = append(out, b)
 		}
 	}
-	_, err := s.w.Write(out)
-	return err
+	if _, err := s.w.Write(out); err != nil {
+		s.err = err
+	}
+	return s.err
 }
 
 // Sanitize escapes s's control characters as Write's text path does, for
@@ -88,8 +100,8 @@ func (s *safeWriter) flush() error {
 func Sanitize(s string) string {
 	var b strings.Builder
 	sw := &safeWriter{w: &b}
-	sw.Write([]byte(s))
-	sw.flush()
+	_, _ = sw.Write([]byte(s)) // a strings.Builder never fails
+	_ = sw.flush()
 	return b.String()
 }
 

@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -189,5 +190,40 @@ func TestInvisibleCharactersAreEscaped(t *testing.T) {
 	var back struct{ Name string }
 	if err := json.Unmarshal(buf.Bytes(), &back); err != nil || back.Name != in || !strings.Contains(buf.String(), plain) {
 		t.Errorf("json round trip: %q, %v", back.Name, err)
+	}
+}
+
+// failAfter accepts n writes, then fails every one: a full disk or a closed
+// pipe part-way through.
+type failAfter struct{ n int }
+
+func (f *failAfter) Write(p []byte) (int, error) {
+	if f.n == 0 {
+		return 0, errors.New("no space left on device")
+	}
+	f.n--
+	return len(p), nil
+}
+
+// lineDoc ignores its write errors, as text views printing line by line do.
+type lineDoc struct{ nameDoc }
+
+func (d *lineDoc) WriteText(w io.Writer) error {
+	fmt.Fprintln(w, "one")
+	fmt.Fprintln(w, "two")
+	fmt.Fprintln(w, "three")
+	return nil
+}
+
+// A write that fails part-way is the command's error, even when the view
+// doesn't check each write: output that didn't arrive must not exit 0.
+func TestFailedTextWriteIsAnError(t *testing.T) {
+	for _, n := range []int{0, 1, 2} {
+		if err := Write(&failAfter{n: n}, Text, &lineDoc{}); err == nil || !strings.Contains(err.Error(), "no space") {
+			t.Errorf("failing after %d writes: err = %v", n, err)
+		}
+	}
+	if err := Write(&failAfter{n: 3}, Text, &lineDoc{}); err != nil {
+		t.Errorf("no failure: err = %v", err)
 	}
 }
