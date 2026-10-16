@@ -413,3 +413,40 @@ func TestPlanWarnsWhenSpaceMovesBetweenDenyAliases(t *testing.T) {
 		t.Errorf("split within one alias: findings = %q", got)
 	}
 }
+
+// A protected-destination alias a deployed rule uses as its destination
+// belongs in own space: plan warns until the file declares it.
+func TestPlanWarnsAboutAnUndeclaredDestination(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	s.UseInRule(101, 1)
+	s.UseInRule(102, 1)
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.OwnSpace.Aliases = nil
+	if got := findingCodes(plan(t, s, f, defaults).Findings); !slices.Equal(got, []string{"warning own_space_undeclared protected-dst"}) {
+		t.Errorf("undeclared: findings = %q", got)
+	}
+	f.OwnSpace.Aliases = []string{"protected-dst"}
+	if got := findingCodes(plan(t, s, f, defaults).Findings); len(got) != 0 {
+		t.Errorf("declared: findings = %q", got)
+	}
+}
+
+// A destination alias in the file has role destination; calling it allow (or
+// deny) is a role_mismatch, like any other disagreement with the rules.
+func TestPlanDestinationRole(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	s.UseInRule(101, 1)
+	s.UseInRule(102, 1)
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "protected-dst", ID: 102, Type: "DIPA", Role: ncf.RoleDestination, Entries: entries("203.0.113.0/26")})
+	p := plan(t, s, f, defaults)
+	if got := findingCodes(p.Findings); len(got) != 0 || p.Aliases[1].Role != ncf.RoleDestination || p.Aliases[1].RoleSource != ncf.RoleFromRules {
+		t.Errorf("findings = %q, alias = %+v", got, p.Aliases[1])
+	}
+	f.Aliases[1].Role = ncf.RoleAllow
+	if got := findingCodes(plan(t, s, f, defaults).Findings); !slices.Equal(got, []string{"error role_mismatch protected-dst"}) {
+		t.Errorf("file says allow: findings = %q", got)
+	}
+}

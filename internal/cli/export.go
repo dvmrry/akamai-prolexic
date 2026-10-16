@@ -28,10 +28,11 @@ type ExportAlias struct {
 // ExportDoc is the result of export.
 type ExportDoc struct {
 	output.Header
-	File    string        `json:"file"`
-	Created bool          `json:"created" doc:"The file did not exist: bootstrapped from every editable alias."`
-	Written bool          `json:"written" doc:"False when the file already held exactly the exported bytes."`
-	Aliases []ExportAlias `json:"aliases" doc:"The aliases in the written file, sorted by name, with their delta to the file's previous entries."`
+	File          string        `json:"file"`
+	Created       bool          `json:"created" doc:"The file did not exist: bootstrapped from every editable alias."`
+	Written       bool          `json:"written" doc:"False when the file already held exactly the exported bytes."`
+	Aliases       []ExportAlias `json:"aliases" doc:"The aliases in the written file, sorted by name, with their delta to the file's previous entries."`
+	OwnSpaceAdded []string      `json:"ownSpaceAdded" doc:"Protected-destination aliases this export declared in ownSpace.aliases: a deployed rule uses them as its destination."`
 }
 
 func (*ExportDoc) SchemaID() string { return "prolexic.export.v1" }
@@ -54,8 +55,15 @@ func (d *ExportDoc) WriteText(w io.Writer) error {
 	case d.Written:
 		verb = "written"
 	}
-	_, err := fmt.Fprintf(w, "%s: %s, %d aliases, +%d -%d\n", d.File, verb, len(d.Aliases), added, removed)
-	return err
+	if _, err := fmt.Fprintf(w, "%s: %s, %d aliases, +%d -%d\n", d.File, verb, len(d.Aliases), added, removed); err != nil {
+		return err
+	}
+	for _, name := range d.OwnSpaceAdded {
+		if _, err := fmt.Fprintf(w, "own space: declared %s (a deployed rule's destination: addresses you protect)\n", name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newExportCmd(a *app) *cobra.Command {
@@ -78,7 +86,7 @@ func newExportCmd(a *app) *cobra.Command {
 
 func export(ctx context.Context, a *app, file string, all bool, roleFlag string) (output.Document, error) {
 	role := ncf.Role(roleFlag)
-	if !role.Valid() {
+	if role != ncf.RoleDeny && role != ncf.RoleAllow { // the fallback for aliases no rule uses
 		return nil, apperr.New(apperr.Usage, "--role must be deny or allow, not %q", roleFlag)
 	}
 
@@ -253,6 +261,17 @@ func export(ctx context.Context, a *app, file string, all bool, roleFlag string)
 		}
 	}
 	slices.SortStableFunc(doc.Aliases, func(x, y ExportAlias) int { return cmp.Compare(x.Name, y.Name) })
+
+	// A protected-destination alias a deployed rule uses as its destination
+	// is own space: declare it, so deny entries are checked against it. The
+	// file is reviewed, so this is a proposal like every other export change.
+	doc.OwnSpaceAdded = []string{}
+	for _, al := range aliases {
+		if al.Role == ncf.RoleDestination && al.Type == "DIPA" && !slices.Contains(f.OwnSpace.Aliases, al.Name) {
+			f.OwnSpace.Aliases = append(f.OwnSpace.Aliases, al.Name)
+			doc.OwnSpaceAdded = append(doc.OwnSpaceAdded, al.Name)
+		}
+	}
 
 	f.Aliases = aliases
 	canon, err := ncf.Canonical(f)

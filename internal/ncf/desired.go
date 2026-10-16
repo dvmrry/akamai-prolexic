@@ -43,19 +43,23 @@ type OwnSpace struct {
 type Role string
 
 const (
-	RoleDeny  Role = "deny"
-	RoleAllow Role = "allow"
+	RoleDeny  Role = "deny"  // a source of a deny rule: who is blocked (own-space checked)
+	RoleAllow Role = "allow" // a source of a permit rule: who is let through
+	// RoleDestination is a destination of a rule: where it applies, the
+	// addresses being protected. Never checked as a blocklist; it belongs in
+	// ownSpace.aliases.
+	RoleDestination Role = "destination"
 )
 
 // Valid reports whether r is a role an alias can have.
-func (r Role) Valid() bool { return r == RoleDeny || r == RoleAllow }
+func (r Role) Valid() bool { return r == RoleDeny || r == RoleAllow || r == RoleDestination }
 
 // Alias is one managed alias: keyed by name, pinned by id, type asserted.
 type Alias struct {
 	Name    string  `json:"name"`
 	ID      int64   `json:"id"`
 	Type    string  `json:"type" enum:"SOURCE,BIG,DIPA"`
-	Role    Role    `json:"role" enum:"deny,allow"`
+	Role    Role    `json:"role" enum:"deny,allow,destination"`
 	Entries []Entry `json:"entries"`
 }
 

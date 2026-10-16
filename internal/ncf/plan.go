@@ -46,7 +46,7 @@ type AliasPlan struct {
 	ID            int64   `json:"id"`
 	Type          string  `json:"type"`
 	IPVersion     string  `json:"ipVersion"`
-	Role          Role    `json:"role" doc:"The effective role: derived from the deployed rules when one references the alias, else the file's."`
+	Role          Role    `json:"role" enum:"deny,allow,destination" doc:"The effective role: derived from the deployed rules when one references the alias, else the file's."`
 	RoleSource    string  `json:"roleSource" enum:"rules,file,unverified"`
 	ActiveVersion string  `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
 	ProdVersion   string  `json:"prodVersion"`
@@ -218,6 +218,9 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		p.Aliases = append(p.Aliases, ap)
 	}
 	crossAliasMoves(p.Aliases, add)
+	if rules != nil {
+		undeclaredOwnSpace(all, rules, f.OwnSpace.Aliases, add)
+	}
 
 	slices.SortFunc(p.Aliases, func(x, y AliasPlan) int { return cmpString(x.Name, y.Name) })
 	for _, a := range p.Aliases {
@@ -542,4 +545,21 @@ func FileDigest(f *File) string {
 	}
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// undeclaredOwnSpace warns about an editable protected-destination (DIPA)
+// alias that a deployed rule uses as its destination but ownSpace.aliases
+// doesn't list. Its entries are addresses being protected; undeclared, a
+// deny-side alias isn't checked against them. Discovery only warns: own space
+// comes from the reviewed file, so a rule changed in the console can't
+// silently shrink it.
+func undeclaredOwnSpace(all []LiveAlias, rules map[int]ACLRule, declared []string, add func(Severity, string, string, string, string, ...any)) {
+	for _, l := range all {
+		if l.Type != "DIPA" || !l.Editable || len(l.ProdRules) == 0 || slices.Contains(declared, l.Name) {
+			continue
+		}
+		if role, ok := DerivedRole(l.Name, l.ProdRules, rules); ok && role == RoleDestination {
+			add(Warning, "own_space_undeclared", l.Name, "", "a deployed rule uses %s as its destination, so its entries are addresses you protect, but ownSpace.aliases doesn't list it; add it so deny entries are checked against them", l.Name)
+		}
+	}
 }

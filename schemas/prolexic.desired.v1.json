@@ -61,7 +61,8 @@
           "role": {
             "enum": [
               "deny",
-              "allow"
+              "allow",
+              "destination"
             ],
             "type": "string"
           },

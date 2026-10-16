@@ -11,14 +11,15 @@ const (
 	RoleUnverified = "unverified"
 )
 
-// DerivedRole says which side of the firewall the deployed rules put an
-// alias on. It is deny when any deployed deny rule names the alias as its
-// source, and allow when rules name it only otherwise (a permit rule's
-// source, or a destination). It is unknown (ok false) unless some rule at
+// DerivedRole says what the deployed rules use an alias for. It is deny when
+// any deployed deny rule names the alias as its source (who is blocked),
+// allow when a permit rule names it as its source (who is let through), and
+// destination when rules name it only as a destination (where a rule applies:
+// addresses being protected). It is unknown (ok false) unless some rule at
 // one of the alias's indexes actually names it: a rule in an address form
 // this code doesn't recognise must not turn own-space checks off.
 func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, bool) {
-	named, unknownAction := false, false
+	named, unknownAction, permitSource := false, false, false
 	for _, idx := range prodRules {
 		r, ok := rules[idx]
 		if !ok {
@@ -44,12 +45,17 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 			// An action word we don't know (drop? block?) on a source use
 			// might deny: it must not derive allow.
 			unknownAction = true
+		case src:
+			permitSource = true
 		}
 	}
 	if unknownAction || !named {
 		return "", false
 	}
-	return RoleAllow, true
+	if permitSource {
+		return RoleAllow, true
+	}
+	return RoleDestination, true
 }
 
 // permitActions are the action words that let traffic through. Only these
@@ -101,8 +107,11 @@ func RulesByIndex(rules []ACLRule) map[int]ACLRule {
 
 // sideOf describes a role for messages.
 func sideOf(r Role) string {
-	if r == RoleDeny {
+	switch r {
+	case RoleDeny:
 		return "as the source of a deny rule (own-space checked)"
+	case RoleDestination:
+		return "only as a destination: the addresses a rule protects (not own-space checked)"
 	}
-	return "only as a destination or a permit-side source (not own-space checked)"
+	return "as the source of a permit rule (not own-space checked)"
 }

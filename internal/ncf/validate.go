@@ -104,7 +104,7 @@ func (c *Checker) Validate(f *File, raw []byte) []Finding {
 			add(Error, "alias_type", a.Name, "", "type must be SOURCE, BIG or DIPA, not %q", a.Type)
 		}
 		if !a.Role.Valid() {
-			add(Error, "alias_role", a.Name, "", "role must be deny or allow, not %q", a.Role)
+			add(Error, "alias_role", a.Name, "", "role must be deny, allow or destination, not %q", a.Role)
 		}
 		out = append(out, c.validateEntries(a, own)...)
 	}

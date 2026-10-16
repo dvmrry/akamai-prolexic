@@ -68,7 +68,7 @@ func (a *fakeAlias) listItem() map[string]any {
 // ruleIndex is the deployed rule that uses the alias: rule 1 denies block-v4,
 // rule 2 permits allow-v6, and any other alias sits in rule 2 unnamed.
 func (a *fakeAlias) ruleIndex() int {
-	if a.Name == "block-v4" {
+	if a.Name == "block-v4" || a.Name == "protected-dst" { // rule 1 denies block-v4 towards protected-dst
 		return 1
 	}
 	return 2

@@ -50,6 +50,13 @@
       "description": "When the document was made (RFC 3339, UTC).",
       "type": "string"
     },
+    "ownSpaceAdded": {
+      "description": "Protected-destination aliases this export declared in ownSpace.aliases: a deployed rule uses them as its destination.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "prolexic": {
       "description": "The prolexic version that made it.",
       "type": "string"
@@ -66,6 +73,7 @@
     "aliases",
     "created",
     "file",
+    "ownSpaceAdded",
     "schema",
     "written"
   ],

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -259,5 +260,34 @@ func TestExportIntoAnEmptyFileBootstraps(t *testing.T) {
 	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
 	if r.code != 0 || !doc.Created || !doc.Written {
 		t.Errorf("exit = %d, doc = %+v, stderr = %s", r.code, doc, r.stderr)
+	}
+}
+
+// A protected-destination alias a deployed rule uses as its destination is
+// exported with role destination and declared as own space.
+func TestExportDeclaresADestinationAsOwnSpace(t *testing.T) {
+	api := newFakeAPI(t)
+	api.ncfV2(
+		editableAlias(101, "block-v4", "V4", "198.51.100.7", "192.0.2.0/25"),
+		&fakeAlias{ID: 103, Name: "protected-dst", Type: "DIPA", IPVer: "V4", Editable: true, Versions: [][]string{{"203.0.113.0/26"}}, Active: 1, Prod: 1},
+	)
+	p := filepath.Join(t.TempDir(), "desired.json")
+	r := runCLI(t, ncfEnv(api.env()), "export", "--file", p)
+	doc := decode[ExportDoc](t, r.stdout, "prolexic.export.v1")
+	if r.code != 0 || !slices.Equal(doc.OwnSpaceAdded, []string{"protected-dst"}) {
+		t.Fatalf("exit %d, ownSpaceAdded %v: %s", r.code, doc.OwnSpaceAdded, r.stderr)
+	}
+	file := readFile(t, p)
+	if !strings.Contains(file, `"aliases": [`+"\n      \"protected-dst\"") || !strings.Contains(file, `"role": "destination"`) || !strings.Contains(file, `"role": "deny"`) {
+		t.Errorf("file:\n%s", file)
+	}
+	// The exported file plans clean: the declaration and the role agree with
+	// the rules, so no warning and no mismatch.
+	r = runCLI(t, ncfEnv(api.env()), "plan", "--file", p, "--no-analytics-own-space", "--format", "json")
+	plan := decode[PlanDoc](t, r.stdout, "prolexic.plan.v1")
+	for _, f := range plan.Findings {
+		if f.Code != "own_space_analytics_skipped" {
+			t.Errorf("finding %s: %s", f.Code, f.Message)
+		}
 	}
 }
