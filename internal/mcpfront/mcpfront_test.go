@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
@@ -154,7 +155,7 @@ func TestSchemaDefaultsMatchTheConstants(t *testing.T) {
 		}
 	}
 	for key, want := range map[string]any{
-		"routed_check.expect":   "present",
+		"routed_check.expect":   string(analytics.ExpectPresent),
 		"routed_check.interval": ops.DefaultCheckInterval.String(),
 		"plan.maxRemovals":      float64(ncf.DefaultMaxRemovals),
 		"metrics.samples":       float64(ops.MetricsDefaultSamples),

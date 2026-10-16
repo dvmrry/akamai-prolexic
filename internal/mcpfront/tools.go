@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/dvmrry/akamai-prolexic/internal/analytics"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
@@ -72,7 +73,7 @@ var routedCheckTool = tool[routedCheckArgs]{
 	description: "Checks, per BGP session, that a prefix is announced to Akamai (expect present) or withdrawn (expect absent). With wait, it keeps checking until satisfied or the time runs out.",
 	run: func(ctx context.Context, f *front, a routedCheckArgs) (output.Document, error) {
 		in := ops.RoutedCheckInput{Customers: a.Customers, Sites: a.Sites, Prefix: a.Prefix,
-			Expect: orDefault(a.Expect, "present")}
+			Expect: orDefault(a.Expect, string(analytics.ExpectPresent))}
 		var err error
 		if a.Wait != "" {
 			if in.Wait, err = duration("wait", a.Wait); err != nil {
