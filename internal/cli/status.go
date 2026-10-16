@@ -64,8 +64,11 @@ func (d *StatusDoc) WriteText(w io.Writer) error {
 	fmt.Fprintln(tw, "\nNAME\tID\tTYPE\tIP\tEDITABLE\tENTRIES\tACTIVE\tPROD\t")
 	for _, al := range d.Aliases {
 		mark := ""
-		if al.ActiveVersion != al.ProdVersion {
-			mark += "ACTIVATION PENDING"
+		switch {
+		case al.ProdVersion == "":
+			mark = "not in production: no deployed rule uses it" // nothing is pending
+		case al.ActiveVersion != al.ProdVersion:
+			mark = "ACTIVATION PENDING"
 		}
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%t\t%d\t%s\t%s\t%s\n", al.Name, al.ID, al.Type, al.IPVersion, al.Editable,
 			al.EntriesCount, dash(al.ActiveVersion), dash(al.ProdVersion), mark)
