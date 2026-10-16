@@ -1,10 +1,10 @@
 ## prolexic doctor
 
-show which credentials resolve (offline)
+show which credentials resolve (offline unless --live)
 
 ### Synopsis
 
-Shows which credentials resolve for the read and write sections, and whether a proxy is configured. It never contacts the network and never prints a credential value or the API host.
+Shows which credentials resolve for the read and write sections, and whether a proxy is configured. It never prints a credential value or the API host. It is offline unless --live is set; --live also makes one read per API (NCF, Analytics, Network Health) with the read credentials and reports which APIs they can use.
 
 ```
 prolexic doctor [flags]
@@ -14,6 +14,7 @@ prolexic doctor [flags]
 
 ```
   -h, --help   help for doctor
+      --live   make one read per API with the read credentials and report which APIs they can use
 ```
 
 ### Options inherited from parent commands

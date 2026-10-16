@@ -3,6 +3,38 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "apis": {
+      "description": "With --live: one read per API, in the order ncf, analytics, networkHealth.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "enum": [
+              "ncf",
+              "analytics",
+              "networkHealth"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "The apperr kind of the failure; empty when ok.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "api",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "clients": {
       "items": {
         "additionalProperties": false,

@@ -25,7 +25,7 @@ prolexic [flags]
 * [prolexic apply](prolexic_apply.md)	 - apply a reviewed plan (the only command that writes)
 * [prolexic attacks](prolexic_attacks.md)	 - attack reports (read-only)
 * [prolexic customers](prolexic_customers.md)	 - the account's customer names (read-only)
-* [prolexic doctor](prolexic_doctor.md)	 - show which credentials resolve (offline)
+* [prolexic doctor](prolexic_doctor.md)	 - show which credentials resolve (offline unless --live)
 * [prolexic events](prolexic_events.md)	 - critical events and events per customer name
 * [prolexic export](prolexic_export.md)	 - write live editable aliases to the desired file (bootstrap, or adopt drift)
 * [prolexic fmt](prolexic_fmt.md)	 - rewrite the desired file in canonical form, or --check it (offline)
