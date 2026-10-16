@@ -2,6 +2,7 @@ package akamai
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -244,5 +245,79 @@ func TestReadOnlyClientRefusesWritesBeforeSending(t *testing.T) {
 		if err := c.Do(context.Background(), req, nil); err != nil {
 			t.Errorf("%s %s: a read was refused: %v", req.Method, req.Path, err)
 		}
+	}
+}
+
+// A 2xx that isn't the API's answer never passes as one.
+func TestNonAnswersAreErrors(t *testing.T) {
+	for name, tt := range map[string]struct {
+		ctype, body string
+		method      string
+		allowEmpty  bool
+		wantErr     bool
+		ambiguous   bool
+	}{
+		"html page on a read":   {"text/html", "<html>login</html>", http.MethodGet, false, true, false},
+		"html without the type": {"", "<!doctype html>", http.MethodGet, false, true, false},
+		"html page on a write":  {"text/html", "<html>login</html>", http.MethodPatch, false, true, true},
+		"empty body on a read":  {"application/json", "", http.MethodGet, false, true, false},
+		"null on a read":        {"application/json", "null", http.MethodGet, false, true, false},
+		"empty, allowed":        {"application/json", "", http.MethodGet, true, false, false},
+		"a real answer":         {"application/json", `{"x":1}`, http.MethodGet, false, false, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if tt.ctype != "" {
+					w.Header().Set("Content-Type", tt.ctype)
+				}
+				w.Write([]byte(tt.body))
+			})
+			var out map[string]any
+			err := c.Do(context.Background(), Request{Method: tt.method, Path: "/x", AllowEmpty: tt.allowEmpty}, &out)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, want error %v", err, tt.wantErr)
+			}
+			if u := apperr.UpstreamOf(err); err != nil && (u == nil || u.Ambiguous != tt.ambiguous) {
+				t.Errorf("upstream = %+v, want ambiguous %v", u, tt.ambiguous)
+			}
+		})
+	}
+}
+
+// A stalled body is cut off by the attempt deadline instead of hanging.
+func TestAStalledResponseTimesOut(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"x":`))
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	c.AttemptTimeout, c.MaxAttempts = 50*time.Millisecond, 1
+	start := time.Now()
+	err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, &map[string]any{})
+	if err == nil || time.Since(start) > 5*time.Second {
+		t.Errorf("err = %v after %v", err, time.Since(start))
+	}
+}
+
+// A transport error never prints the URL: the host embeds a token, and the
+// query carries the account switch key.
+func TestTransportErrorsHideTheURL(t *testing.T) {
+	c := New(edgegrid.Credentials{Host: "akab-host-token.example.invalid", ClientToken: "ct", ClientSecret: "cs", AccessToken: "at", AccountKey: "SWITCH-KEY"}, Options{Scheme: "http"})
+	c.MaxAttempts = 1
+	err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "/x"}, nil)
+	if err == nil || strings.Contains(err.Error(), "akab-host-token") || strings.Contains(err.Error(), "SWITCH-KEY") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestProxyAuthIsNotRetried(t *testing.T) {
+	if !proxyAuth(errors.New("Proxy Authentication Required")) || proxyAuth(errors.New("connection refused")) {
+		t.Error("a 407 from the proxy must not be retried; other transport errors may be")
 	}
 }

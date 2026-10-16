@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand/v2"
@@ -43,8 +44,11 @@ type Client struct {
 	MaxAttempts int           // for GETs; 1 disables retries
 	BaseDelay   time.Duration // first backoff step
 	MaxDelay    time.Duration // cap on any single wait, Retry-After included
-	sleep       func(context.Context, time.Duration) error
-	readOnly    bool
+	// AttemptTimeout bounds each attempt, the response body included, so a
+	// stalled proxy or API can't hang a command.
+	AttemptTimeout time.Duration
+	sleep          func(context.Context, time.Duration) error
+	readOnly       bool
 }
 
 // Options tune a Client. The zero value is production behaviour.
@@ -72,15 +76,16 @@ func New(creds edgegrid.Credentials, opts Options) *Client {
 		scheme = "https"
 	}
 	return &Client{
-		base:        url.URL{Scheme: scheme, Host: creds.Host},
-		accountKey:  creds.AccountKey,
-		http:        &http.Client{Transport: &edgegrid.Transport{Signer: edgegrid.NewSigner(creds), Base: base}},
-		readOnly:    opts.ReadOnly,
-		userAgent:   "prolexic/" + version.Current().Version,
-		MaxAttempts: 4,
-		BaseDelay:   500 * time.Millisecond,
-		MaxDelay:    30 * time.Second,
-		sleep:       sleepCtx,
+		base:           url.URL{Scheme: scheme, Host: creds.Host},
+		accountKey:     creds.AccountKey,
+		http:           &http.Client{Transport: &edgegrid.Transport{Signer: edgegrid.NewSigner(creds), Base: base}},
+		readOnly:       opts.ReadOnly,
+		userAgent:      "prolexic/" + version.Current().Version,
+		MaxAttempts:    4,
+		BaseDelay:      500 * time.Millisecond,
+		MaxDelay:       30 * time.Second,
+		AttemptTimeout: 2 * time.Minute,
+		sleep:          sleepCtx,
 	}
 }
 
@@ -99,6 +104,9 @@ type Request struct {
 	// ReadOnly marks a non-GET that only queries (the Analytics routed
 	// endpoints are POSTs): it is retried like a GET and never ambiguous.
 	ReadOnly bool
+	// AllowEmpty accepts an empty (or 204) answer where out expects data. Off
+	// by default: read as empty, a blanked answer would hide live state.
+	AllowEmpty bool
 }
 
 // safe reports whether req may be retried: it changes nothing upstream.
@@ -141,14 +149,23 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 		attempts = max(c.MaxAttempts, 1)
 	}
 	for attempt := 1; ; attempt++ {
-		resp, err := c.send(ctx, req.Method, u.String(), body, contentType)
+		actx, cancel := context.WithTimeout(ctx, c.attemptTimeout())
+		resp, err := c.send(actx, req.Method, u.String(), body, contentType)
 		if err != nil {
+			cancel()
+			// The url.Error wrapper prints the full URL: the API host (which
+			// embeds a token) and the account switch key. Keep only the cause.
+			var ue *url.Error
+			if errors.As(err, &ue) {
+				err = ue.Err
+			}
+			err = c.redact(err) // a DNS error names the host itself
 			// A cancelled GET is just cancelled; a cancelled write may already
 			// have landed, so it falls through and is marked ambiguous.
 			if ctx.Err() != nil && safe {
-				return ctx.Err()
+				return fmt.Errorf("%s %s: %w", req.Method, req.Path, ctx.Err())
 			}
-			if ctx.Err() == nil && attempt < attempts {
+			if ctx.Err() == nil && attempt < attempts && !proxyAuth(err) {
 				if err := c.sleep(ctx, c.backoff(attempt, "")); err != nil {
 					return err
 				}
@@ -162,14 +179,27 @@ func (c *Client) Do(ctx context.Context, req Request, out any) error {
 		if retryable(resp.StatusCode) && attempt < attempts {
 			wait := c.backoff(attempt, resp.Header.Get("Retry-After"))
 			drain(resp)
+			cancel()
 			if err := c.sleep(ctx, wait); err != nil {
 				return err
 			}
 			continue
 		}
-		return c.finish(req, resp, out)
+		err = c.finish(req, resp, out)
+		cancel()
+		return err
 	}
 }
+
+func (c *Client) attemptTimeout() time.Duration {
+	if c.AttemptTimeout > 0 {
+		return c.AttemptTimeout
+	}
+	return 2 * time.Minute
+}
+
+// proxyAuth reports a proxy that wants credentials (407): retrying can't help.
+func proxyAuth(err error) bool { return strings.Contains(err.Error(), "Proxy Authentication Required") }
 
 func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, contentType string) (*http.Response, error) {
 	var r io.Reader
@@ -206,8 +236,28 @@ func (c *Client) finish(req Request, resp *http.Response, out any) error {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return statusError(req, resp.StatusCode, b)
 	}
-	if out == nil || len(bytes.TrimSpace(b)) == 0 {
+	// A 2xx that isn't the API's answer must not pass as one: an intercepting
+	// proxy's page, or an empty body where data was expected. Read as empty,
+	// either would hide live state. On a write it's ambiguous: the request may
+	// never have reached the API.
+	trimmed := bytes.TrimSpace(b)
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") || bytes.HasPrefix(trimmed, []byte("<")) {
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: got an HTML page (HTTP %d), not the API's answer: an intercepting proxy?", req.Method, req.Path, resp.StatusCode),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	if out == nil {
 		return nil
+	}
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		if req.AllowEmpty {
+			return nil
+		}
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: an empty answer (HTTP %d) where data was expected", req.Method, req.Path, resp.StatusCode),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
 	}
 	if err := json.Unmarshal(b, out); err != nil {
 		// A write that got a 2xx took effect even if its body is unreadable:
@@ -357,3 +407,26 @@ func IsAmbiguous(err error) bool {
 	d := apperr.UpstreamOf(err)
 	return d != nil && d.Ambiguous
 }
+
+// redact keeps the API host (which embeds a token) and the account switch key
+// out of an error's text. errors.Is and errors.As still see the cause.
+func (c *Client) redact(err error) error {
+	msg := err.Error()
+	for _, secret := range []string{c.base.Host, c.accountKey} {
+		if secret != "" {
+			msg = strings.ReplaceAll(msg, secret, "<redacted>")
+		}
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return &redacted{msg: msg, err: err}
+}
+
+type redacted struct {
+	msg string
+	err error
+}
+
+func (r *redacted) Error() string { return r.msg }
+func (r *redacted) Unwrap() error { return r.err }
