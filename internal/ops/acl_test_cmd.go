@@ -123,14 +123,14 @@ func (r *Runtime) ACLTest(ctx context.Context, in ACLTestInput) (*ACLTestDoc, er
 	slices.SortStableFunc(details, func(x, y ncfapi.ACLRuleDetail) int { return cmp.Compare(x.Index, y.Index) })
 	var rules []ncfapi.AnalyzerRule
 	original := map[int]ncfapi.ACLRuleDetail{}
-	for _, r := range details {
-		row := ruleRow(r)
+	for _, rule := range details {
+		row := ruleRow(rule)
 		rv := strings.ToUpper(row.IPVersion)
-		if (rv != "" && rv != ipVersion) || r.ACLText == "" {
+		if (rv != "" && rv != ipVersion) || rule.ACLText == "" {
 			continue
 		}
-		rules = append(rules, ncfapi.AnalyzerRule{Index: len(rules) + 1, ACLText: r.ACLText, IPVersion: ipVersion, Comment: r.Comment})
-		original[len(rules)] = r
+		rules = append(rules, ncfapi.AnalyzerRule{Index: len(rules) + 1, ACLText: rule.ACLText, IPVersion: ipVersion, Comment: rule.Comment})
+		original[len(rules)] = rule
 	}
 	if len(rules) == 0 {
 		return nil, apperr.New(apperr.NotFound, "ACL version %d has no %s rules to test", v, ipVersion)
@@ -146,11 +146,11 @@ func (r *Runtime) ACLTest(ctx context.Context, in ACLTestInput) (*ACLTestDoc, er
 	// Join results to packets on packetId, never on position: a verdict on the
 	// wrong packet would answer "is this flow denied?" wrongly and silently.
 	byID := make(map[string]ncfapi.AnalyzerResult, len(resp.Results))
-	for _, r := range resp.Results {
-		if _, dup := byID[r.PacketID]; dup {
-			return nil, apperr.New(apperr.Upstream, "the analyzer returned two results for packet %q", r.PacketID)
+	for _, ar := range resp.Results {
+		if _, dup := byID[ar.PacketID]; dup {
+			return nil, apperr.New(apperr.Upstream, "the analyzer returned two results for packet %q", ar.PacketID)
 		}
-		byID[r.PacketID] = r
+		byID[ar.PacketID] = ar
 	}
 	for _, p := range packets {
 		if _, ok := byID[p.PacketID]; !ok {
@@ -163,14 +163,14 @@ func (r *Runtime) ACLTest(ctx context.Context, in ACLTestInput) (*ACLTestDoc, er
 	doc := &ACLTestDoc{Version: cmp.Or(got.Version, v), Production: perr == nil && v == prod, IPVersion: ipVersion,
 		RulesTested: len(rules), Results: make([]ACLTestResult, 0, len(packets)), Summary: resp.Summary}
 	for _, p := range packets {
-		r := byID[p.PacketID]
-		res := ACLTestResult{Packet: p, Decision: r.Decision, ImplicitPermit: r.ImplicitPermit}
-		if r.MatchedRule != nil {
-			orig, ok := original[r.MatchedRule.Index]
+		ar := byID[p.PacketID]
+		res := ACLTestResult{Packet: p, Decision: ar.Decision, ImplicitPermit: ar.ImplicitPermit}
+		if ar.MatchedRule != nil {
+			orig, ok := original[ar.MatchedRule.Index]
 			if !ok {
-				return nil, apperr.New(apperr.Upstream, "the analyzer matched rule %d, which was not sent", r.MatchedRule.Index)
+				return nil, apperr.New(apperr.Upstream, "the analyzer matched rule %d, which was not sent", ar.MatchedRule.Index)
 			}
-			res.Rule = &ACLTestRule{Index: orig.Index, ACLText: cmp.Or(orig.ACLText, r.MatchedRule.ACLText)}
+			res.Rule = &ACLTestRule{Index: orig.Index, ACLText: cmp.Or(orig.ACLText, ar.MatchedRule.ACLText)}
 		}
 		doc.Results = append(doc.Results, res)
 	}

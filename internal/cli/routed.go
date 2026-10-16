@@ -37,19 +37,3 @@ func (a *app) analytics() (*analytics.Client, error) {
 	}
 	return analytics.New(c), nil
 }
-
-// nonNil keeps empty lists as [] rather than null in JSON: the schemas
-// declare arrays.
-func nonNil[T any](s []T) []T {
-	if s == nil {
-		return []T{}
-	}
-	return s
-}
-
-func dash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
-}

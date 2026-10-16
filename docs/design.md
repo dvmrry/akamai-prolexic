@@ -29,7 +29,7 @@ The code is in three layers, so that other fronts (an MCP server, possibly a Ter
 | layer | packages | does |
 | --- | --- | --- |
 | **SDK** | `akamai`, `edgegrid`, `analytics`, `networkhealth`, `ncf`, `ncf/ncfapi`, `ncf/ncfanalytics`, `ncf/ncftest`, plus `apperr` and `version` | API access and domain logic. Returns Go values and errors; never prints, never picks exit codes. |
-| **operations** | `internal/ops` (the read commands not yet moved are still bodies in `internal/cli`) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
+| **operations** | `internal/ops` (every command but `doctor` and `version`, which describe the CLI itself) | One operation per command: input → Document. Resolves customer names, reports failed names, sorts, validates. |
 | **fronts** | `internal/cli` (Cobra), `internal/output` (rendering) | Parse their own input format, call an operation, render, map errors to exit codes. |
 
 - **Dependencies point down only.** SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and only `cli` and `internal/tools` import Cobra. `internal/hygiene` tests this.

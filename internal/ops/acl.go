@@ -172,8 +172,8 @@ func (r *Runtime) ACLShow(ctx context.Context, in ACLShowInput) (*ACLDoc, error)
 	}
 	doc := &ACLDoc{Version: cmp.Or(got.Version, v), State: got.State, Production: perr == nil && v == prod,
 		Description: got.Description, UpdatedBy: got.UpdatedBy, Updated: got.Updated, Rules: []ACLRuleRow{}}
-	for _, r := range got.Rules {
-		doc.Rules = append(doc.Rules, ruleRow(r))
+	for _, rule := range got.Rules {
+		doc.Rules = append(doc.Rules, ruleRow(rule))
 	}
 	slices.SortStableFunc(doc.Rules, func(x, y ACLRuleRow) int { return cmp.Compare(x.Index, y.Index) })
 	return doc, nil

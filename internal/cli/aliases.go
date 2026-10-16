@@ -6,20 +6,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
-	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
-
-// ncfV2 is the concrete NCF v2 client over the read credentials, for the
-// read-only commands that go beyond ncf.Store.
-func (a *app) ncfV2() (*ncfapi.V2, error) {
-	c, err := a.readClient()
-	if err != nil {
-		return nil, err
-	}
-	return ncfapi.NewV2(c), nil
-}
 
 func newAliasesListCmd(a *app) *cobra.Command {
 	var in ops.AliasesInput

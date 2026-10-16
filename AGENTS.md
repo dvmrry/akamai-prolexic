@@ -56,7 +56,7 @@ This file is for every coding agent (Claude Code reads it through `CLAUDE.md`).
 
 The packages form three layers (SDK, operations, fronts); `docs/design.md` (Layers) has the rules for errors and input validation. Dependencies point down only: SDK packages never import `cli`, `output`, `jsonschema` or Cobra, and `internal/hygiene` tests it. Reusable logic goes in the SDK packages, not in `internal/cli`.
 
-New read commands follow `internal/cli/routed.go` and `internal/cli/status.go`: a document embeds `output.Header`, has a constant `SchemaID()` (`prolexic.<name>.v1`), is registered in `documents()`, and renders sorted, stable output.
+New read commands follow `internal/ops/targets.go` with `internal/cli/targets.go` (and `attacks.go` for customer names and a time window). The operation and its document go in `internal/ops`: a `Runtime` method taking a typed input (zero values mean the defaults), whose messages name fields, never flags. The document embeds `output.Header`, has a constant `SchemaID()` (`prolexic.<name>.v1`), is registered in `documents()`, and renders sorted, stable output. The Cobra command in `internal/cli` binds flags to the input and calls `docOf(a.ops().Name(ctx, in))`.
 
 ## Write-path invariants
 
