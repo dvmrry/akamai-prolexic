@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncfapi"
 	"github.com/dvmrry/akamai-prolexic/internal/ops"
 	"github.com/dvmrry/akamai-prolexic/internal/output"
 )
@@ -19,6 +20,33 @@ func tools() []registrar {
 		validateTool,
 		addTool,
 		planTool,
+		aliasesListTool,
+		aliasShowTool,
+		aliasVersionsTool,
+		aclVersionsTool,
+		aclShowTool,
+		aclDeploymentTool,
+		aclTestTool,
+		managedACLTool,
+		managedRuleHitsTool,
+		ruleHitsListTool,
+		ruleHitShowTool,
+		attackShowTool,
+		eventsTool,
+		metricsTool,
+		timeSeriesTool,
+		protectedTool,
+		customersTool,
+		scrubCentersTool,
+		routedSessionsTool,
+		routedRoutesTool,
+		routedHealthTool,
+		targetsListTool,
+		targetShowTool,
+		fmtTool,
+		removeTool,
+		exportTool,
+		verifyTool,
 	}
 }
 
@@ -135,6 +163,360 @@ var planTool = tool[planArgs]{
 			return nil, err
 		}
 		return output.Doc(f.rt.Plan(ctx, ops.PlanInput{File: p, MaxRemovals: orDefault(a.MaxRemovals, ncf.DefaultMaxRemovals), SkipLiveOwnSpace: a.SkipLiveOwnSpace, Out: out}))
+	},
+}
+
+type aliasesListArgs struct {
+	EditableOnly bool `json:"editableOnly,omitempty" doc:"Only customer-editable aliases, leaving out the Akamai-managed ones."`
+}
+
+var aliasesListTool = tool[aliasesListArgs]{
+	name: "aliases_list", title: "Aliases",
+	description: "Every alias of the account, without entries.",
+	run: func(ctx context.Context, f *front, a aliasesListArgs) (output.Document, error) {
+		return output.Doc(f.rt.Aliases(ctx, ops.AliasesInput{EditableOnly: a.EditableOnly}))
+	},
+}
+
+// aliasRefArg names one alias: exactly one of name and id, which the
+// operation checks.
+type aliasRefArg struct {
+	Name string `json:"name,omitempty" doc:"The alias name; give exactly one of name and id."`
+	ID   int64  `json:"id,omitempty" doc:"The alias id; give exactly one of name and id."`
+}
+
+type aliasShowArgs struct {
+	aliasRefArg
+	Version string `json:"version,omitempty" doc:"The version id, e.g. V3; default the alias's active version."`
+}
+
+var aliasShowTool = tool[aliasShowArgs]{
+	name: "alias_show", title: "Alias entries",
+	description: "One alias's entries at a version (default the active version).",
+	run: func(ctx context.Context, f *front, a aliasShowArgs) (output.Document, error) {
+		return output.Doc(f.rt.Alias(ctx, ops.AliasInput{Name: a.Name, ID: a.ID, Version: a.Version}))
+	},
+}
+
+var aliasVersionsTool = tool[aliasRefArg]{
+	name: "alias_versions", title: "Alias version history",
+	description: "One alias's version history.",
+	run: func(ctx context.Context, f *front, a aliasRefArg) (output.Document, error) {
+		return output.Doc(f.rt.AliasVersions(ctx, ops.AliasVersionsInput{Name: a.Name, ID: a.ID}))
+	},
+}
+
+var aclVersionsTool = tool[struct{}]{
+	name: "acl_versions", title: "ACL versions",
+	description: "Every version of the Network Cloud Firewall ACL.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.ACLVersions(ctx))
+	},
+}
+
+type aclVersionArg struct {
+	Version int `json:"version,omitempty" doc:"The ACL version number; 0 or absent: the version in production."`
+}
+
+var aclShowTool = tool[aclVersionArg]{
+	name: "acl_show", title: "ACL rules",
+	description: "One ACL version with its rules (default the version in production).",
+	run: func(ctx context.Context, f *front, a aclVersionArg) (output.Document, error) {
+		return output.Doc(f.rt.ACLShow(ctx, ops.ACLShowInput{Version: a.Version}))
+	},
+}
+
+var aclDeploymentTool = tool[struct{}]{
+	name: "acl_deployment", title: "ACL deployment",
+	description: "The ACL's deployment state.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.ACLDeployment(ctx))
+	},
+}
+
+type aclTestArgs struct {
+	aclVersionArg
+	Packets []ncfapi.PacketTest `json:"packets" doc:"1 to 5 simulated packets, all of one IP family."`
+}
+
+var aclTestTool = tool[aclTestArgs]{
+	name: "acl_test", title: "Test packets against the ACL",
+	description: "Tests simulated packets against an ACL version (default the one in production) and returns, per packet, the decision and the first rule that matched. Nothing is changed.",
+	run: func(ctx context.Context, f *front, a aclTestArgs) (output.Document, error) {
+		return output.Doc(f.rt.ACLTest(ctx, ops.ACLTestInput{Version: a.Version, Packets: a.Packets}))
+	},
+}
+
+type managedACLArgs struct {
+	PolicyDomain string `json:"policyDomain" doc:"The policy domain."`
+}
+
+var managedACLTool = tool[managedACLArgs]{
+	name: "managed_acl", title: "Managed ACL",
+	description: "A policy domain's latest managed-services ACL version.",
+	run: func(ctx context.Context, f *front, a managedACLArgs) (output.Document, error) {
+		return output.Doc(f.rt.ManagedACL(ctx, ops.ManagedACLInput{PolicyDomain: a.PolicyDomain}))
+	},
+}
+
+type managedRuleHitsArgs struct {
+	windowArg
+	PolicyDomain string `json:"policyDomain" doc:"The policy domain."`
+	Rule         string `json:"rule,omitempty" doc:"One rule's id (its uuid); default every rule, with no time series."`
+}
+
+var managedRuleHitsTool = tool[managedRuleHitsArgs]{
+	name: "managed_rule_hits", title: "Managed rule hits",
+	description: "A policy domain's rule match statistics. With rule it also returns that rule's time series (default the last " + short(ops.ManagedRuleHitsDefaultSince) + "); a window needs a rule.",
+	run: func(ctx context.Context, f *front, a managedRuleHitsArgs) (output.Document, error) {
+		win, err := a.window()
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.ManagedRuleHits(ctx, ops.ManagedRuleHitsInput{PolicyDomain: a.PolicyDomain, Rule: a.Rule, Window: win}))
+	},
+}
+
+var ruleHitsListTool = tool[struct{}]{
+	name: "rule_hits_list", title: "ACL rule hits",
+	description: "Match statistics for every rule of the deployed ACL.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.RuleHits(ctx))
+	},
+}
+
+type ruleHitShowArgs struct {
+	windowArg
+	Rule string `json:"rule" doc:"The rule id (the ruleId that rule_hits_list returns)."`
+}
+
+var ruleHitShowTool = tool[ruleHitShowArgs]{
+	name: "rule_hit_show", title: "ACL rule hit",
+	description: "One rule's match statistics. With a window (since, or start and end) it also returns the rule's time series; without one, there is none.",
+	run: func(ctx context.Context, f *front, a ruleHitShowArgs) (output.Document, error) {
+		win, err := a.window()
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.RuleHit(ctx, ops.RuleHitInput{Rule: a.Rule, Window: win}))
+	},
+}
+
+type attackShowArgs struct {
+	Customer string `json:"customer" doc:"The customer name the attack belongs to."`
+	ID       int64  `json:"id" doc:"The attack id."`
+}
+
+var attackShowTool = tool[attackShowArgs]{
+	name: "attack_show", title: "Attack detail",
+	description: "One attack's detail report: a row per location and target.",
+	run: func(ctx context.Context, f *front, a attackShowArgs) (output.Document, error) {
+		return output.Doc(f.rt.Attack(ctx, ops.AttackInput{Customer: a.Customer, ID: a.ID}))
+	},
+}
+
+type eventsArgs struct {
+	customersArg
+	windowArg
+	CriticalOnly bool `json:"criticalOnly,omitempty" doc:"Only critical events."`
+}
+
+var eventsTool = tool[eventsArgs]{
+	name: "events", title: "Events",
+	description: "Critical events and events per customer name. With a window it keeps the events whose span overlaps it; without one it returns every event.",
+	run: func(ctx context.Context, f *front, a eventsArgs) (output.Document, error) {
+		win, err := a.window()
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Events(ctx, ops.EventsInput{Customers: a.Customers, CriticalOnly: a.CriticalOnly, Window: win}))
+	},
+}
+
+type metricsArgs struct {
+	customersArg
+	windowArg
+	Types   []string `json:"types" doc:"SERVICE:METRIC, or fbm:METRIC:PROTOCOL."`
+	Subnet  string   `json:"subnet,omitempty" doc:"The subnet fbm types report on; fbm types need a subnet or an ip."`
+	IP      string   `json:"ip,omitempty" doc:"The IP address fbm types report on."`
+	Samples *int     `json:"samples,omitempty" default:"100" doc:"Data points to return, at least 1."`
+}
+
+var metricsTool = tool[metricsArgs]{
+	name: "metrics", title: "Traffic metrics",
+	description: "Traffic metrics per customer name in a time window (default the last " + short(ops.MetricsDefaultSince) + ").",
+	run: func(ctx context.Context, f *front, a metricsArgs) (output.Document, error) {
+		win, err := a.window()
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Metrics(ctx, ops.MetricsInput{Customers: a.Customers, Types: a.Types, Subnet: a.Subnet, IP: a.IP,
+			Samples: orDefault(a.Samples, ops.MetricsDefaultSamples), Window: win}))
+	},
+}
+
+type timeSeriesArgs struct {
+	windowArg
+	Destinations []string `json:"destinations" doc:"Addresses or CIDR blocks."`
+	Locations    []string `json:"locations,omitempty" doc:"Data centers such as mia4, or agr for all aggregated; default agr."`
+	Source       *string  `json:"source,omitempty" enum:"both,access_flow,border_flow" default:"both" doc:"both, access_flow (Akamai router) or border_flow (customer router)."`
+	Sum          bool     `json:"sum,omitempty" doc:"Also return the aggregated data."`
+	Samples      int      `json:"samples,omitempty" doc:"Timestamps to return; 0 or absent: all in the window."`
+}
+
+var timeSeriesTool = tool[timeSeriesArgs]{
+	name: "time_series", title: "Flow time series",
+	description: "Flow-based usage and attack traffic for destinations in a time window (default the last " + short(ops.TimeSeriesDefaultSince) + ").",
+	run: func(ctx context.Context, f *front, a timeSeriesArgs) (output.Document, error) {
+		win, err := a.window()
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.TimeSeries(ctx, ops.TimeSeriesInput{Destinations: a.Destinations, Locations: a.Locations,
+			Source: orDefault(a.Source, ops.TimeSeriesDefaultSource), Sum: a.Sum, Samples: a.Samples, Window: win}))
+	},
+}
+
+var protectedTool = tool[customersArg]{
+	name: "protected", title: "Protected space",
+	description: "The prefixes and AS numbers treated as own space, per customer name: FBM subnets and BGP-session AS numbers.",
+	run: func(ctx context.Context, f *front, a customersArg) (output.Document, error) {
+		return output.Doc(f.rt.Protected(ctx, ops.ProtectedInput{Customers: a.Customers}))
+	},
+}
+
+var customersTool = tool[struct{}]{
+	name: "customers", title: "Customer names",
+	description: "The customer names of the account, and which are in use.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.Customers(ctx))
+	},
+}
+
+var scrubCentersTool = tool[struct{}]{
+	name: "scrub_centers", title: "Scrubbing centers",
+	description: "The Prolexic scrubbing centers.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.ScrubCenters(ctx))
+	},
+}
+
+var routedSessionsTool = tool[customersArg]{
+	name: "routed_sessions", title: "BGP sessions",
+	description: "The BGP sessions of each customer name.",
+	run: func(ctx context.Context, f *front, a customersArg) (output.Document, error) {
+		return output.Doc(f.rt.RoutedSessions(ctx, ops.RoutedSessionsInput{Customers: a.Customers}))
+	},
+}
+
+type routedRoutesArgs struct {
+	customersArg
+	Prefix string `json:"prefix,omitempty" doc:"Only routes for exactly this prefix; a bare address means /32 or /128. Default all."`
+}
+
+var routedRoutesTool = tool[routedRoutesArgs]{
+	name: "routed_routes", title: "Announced routes",
+	description: "The routes announced to Akamai per customer name, optionally only for one prefix.",
+	run: func(ctx context.Context, f *front, a routedRoutesArgs) (output.Document, error) {
+		return output.Doc(f.rt.RoutedRoutes(ctx, ops.RoutedRoutesInput{Customers: a.Customers, Prefix: a.Prefix}))
+	},
+}
+
+var routedHealthTool = tool[customersArg]{
+	name: "routed_health", title: "Tunnel health",
+	description: "Healthy and total tunnels per location and router, per customer name.",
+	run: func(ctx context.Context, f *front, a customersArg) (output.Document, error) {
+		return output.Doc(f.rt.RoutedHealth(ctx, ops.RoutedHealthInput{Customers: a.Customers}))
+	},
+}
+
+var targetsListTool = tool[struct{}]{
+	name: "targets_list", title: "Network Health targets",
+	description: "Every Network Health target of the account.",
+	run: func(ctx context.Context, f *front, _ struct{}) (output.Document, error) {
+		return output.Doc(f.rt.Targets(ctx))
+	},
+}
+
+type targetShowArgs struct {
+	ID string `json:"id" doc:"The target id."`
+}
+
+var targetShowTool = tool[targetShowArgs]{
+	name: "target_show", title: "Network Health target",
+	description: "One Network Health target.",
+	run: func(ctx context.Context, f *front, a targetShowArgs) (output.Document, error) {
+		return output.Doc(f.rt.Target(ctx, ops.TargetInput{ID: a.ID}))
+	},
+}
+
+type fmtArgs struct {
+	fileArg
+	Check bool `json:"check,omitempty" doc:"Write nothing; a file that isn't in canonical form is reported as an outcome."`
+}
+
+var fmtTool = tool[fmtArgs]{
+	name: "fmt", title: "Format the desired file", writes: true, local: true,
+	description: "Rewrites the local desired file in canonical form, or with check only reports whether it is. No API calls. This changes only the file: a change reaches the firewall through a reviewed pull request and CI's apply.",
+	run: func(_ context.Context, f *front, a fmtArgs) (output.Document, error) {
+		p, err := f.path(a.File)
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Fmt(ops.FmtInput{File: p, Check: a.Check}))
+	},
+}
+
+type removeArgs struct {
+	fileArg
+	Alias   string   `json:"alias" doc:"The alias to remove from, by name."`
+	Entries []string `json:"entries" doc:"The entries to remove: prefixes, addresses, GEO::<country> or ASN::<number>."`
+	Ticket  string   `json:"ticket" doc:"The ticket authorising the change."`
+}
+
+var removeTool = tool[removeArgs]{
+	name: "remove", title: "Remove entries from the desired file", writes: true, local: true,
+	description: "Removes entries from one alias of the local desired file and rewrites it in canonical form. Nothing is written on any error or blocking finding. This changes only the file: the change reaches the firewall through a reviewed pull request and CI's apply.",
+	run: func(_ context.Context, f *front, a removeArgs) (output.Document, error) {
+		p, err := f.path(a.File)
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Remove(ops.RemoveInput{File: p, RemoveRequest: ncf.RemoveRequest{Alias: a.Alias, Entries: a.Entries, Ticket: a.Ticket}}))
+	},
+}
+
+type exportArgs struct {
+	fileArg
+	All  bool    `json:"all,omitempty" doc:"Also add the editable live aliases the file doesn't name."`
+	Role *string `json:"role,omitempty" enum:"deny,allow" default:"deny" doc:"The role of an alias no deployed rule references; deployed rules decide the rest."`
+}
+
+var exportTool = tool[exportArgs]{
+	name: "export", title: "Export live aliases to the desired file", writes: true,
+	description: "Reads live state and writes the editable aliases to the local desired file in canonical form: a missing or empty file is bootstrapped, an existing one is updated to the live entries of the aliases it names. This changes only the file: the change reaches the firewall through a reviewed pull request and CI's apply.",
+	run: func(ctx context.Context, f *front, a exportArgs) (output.Document, error) {
+		p, err := f.path(a.File)
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Export(ctx, ops.ExportInput{File: p, All: a.All, Role: ncf.Role(orDefault(a.Role, string(ncf.RoleDeny)))}))
+	},
+}
+
+type verifyArgs struct {
+	Plan string `json:"plan" doc:"A saved plan's file, relative to the working directory."`
+}
+
+var verifyTool = tool[verifyArgs]{
+	name: "verify", title: "Verify a saved plan",
+	description: "Reads every alias in a saved plan fresh and checks the plan's end state. Reads only.",
+	run: func(ctx context.Context, f *front, a verifyArgs) (output.Document, error) {
+		p, err := f.path(a.Plan)
+		if err != nil {
+			return nil, err
+		}
+		return output.Doc(f.rt.Verify(ctx, ops.VerifyInput{Plan: p}))
 	},
 }
 
