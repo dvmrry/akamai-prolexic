@@ -78,6 +78,41 @@ func TestCanonicalSortsAndNormalises(t *testing.T) {
 	}
 }
 
+func TestDecodeRefusesDuplicateKeys(t *testing.T) {
+	tests := map[string]struct{ in, want string }{
+		"name twice": {`{"aliases":[{"name":"a","id":1,"name":"b"}]}`, `duplicate key "name" in aliases[0]`},
+		"entries twice": {`{"aliases":[{"name":"a","entries":["192.0.2.0/24"],"entries":[]}]}`,
+			`duplicate key "entries" in aliases[0]`},
+		"case-variant role": {`{"aliases":[{"role":"deny","Role":"allow"}]}`, `duplicate key "Role" in aliases[0] (also written as "role"`},
+		"in an entry":       {`{"aliases":[{"entries":["x",{"cidr":"192.0.2.0/24","cidr":"192.0.2.1/32"}]}]}`, `duplicate key "cidr" in aliases[0].entries[1]`},
+		"in ownSpace":       {`{"ownSpace":{"prefixes":[],"prefixes":["192.0.2.0/24"]}}`, `duplicate key "prefixes" in ownSpace`},
+		"top level":         {`{"accountId":"a","accountid":"b"}`, `in the file`},
+		"second alias":      {`{"aliases":[{"name":"a"},{"id":1,"id":2}]}`, `in aliases[1]`},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := Decode(strings.NewReader(tc.in))
+			if apperr.KindOf(err) != apperr.Validation || err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want a validation error containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestDecodeRefusesABOM(t *testing.T) {
+	_, _, err := Decode(strings.NewReader("\xEF\xBB\xBF" + canonicalFile))
+	if apperr.KindOf(err) != apperr.Validation || err == nil || !strings.Contains(err.Error(), "byte-order mark; save it without one") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestDecodeAcceptsSameKeysInSiblingObjects(t *testing.T) {
+	in := `{"aliases":[{"name":"a","entries":[{"cidr":"192.0.2.0/24","ticket":"T"}]},{"name":"b","entries":[{"cidr":"192.0.2.1/32","ticket":"T"}]}]}`
+	if _, _, err := Decode(strings.NewReader(in)); err != nil {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestDecodeIsStrict(t *testing.T) {
 	tests := map[string]string{
 		"unknown field":       `{"schema":"prolexic.desired.v1","bogus":1}`,

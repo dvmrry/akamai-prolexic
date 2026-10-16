@@ -136,6 +136,9 @@ func Decode(r io.Reader) (*File, []byte, error) {
 	if len(raw) > MaxFileSize {
 		return nil, raw, apperr.New(apperr.Validation, "desired file is larger than %d bytes", MaxFileSize)
 	}
+	if err := checkEncoding(raw); err != nil {
+		return nil, raw, err
+	}
 	var f File
 	if err := strictUnmarshal(raw, &f); err != nil {
 		return nil, raw, apperr.Wrap(apperr.Validation, err, "decode desired file")
@@ -239,4 +242,111 @@ func sortStrings(in []string, prefixes bool) []string {
 // ParseDate parses a metadata date (YYYY-MM-DD).
 func ParseDate(s string) (time.Time, error) {
 	return time.Parse(time.DateOnly, s)
+}
+
+var utf8BOM = []byte("\xEF\xBB\xBF")
+
+// checkEncoding refuses what encoding/json would quietly accept or reject
+// cryptically: a UTF-8 byte-order mark, and an object that repeats a key
+// (compared case-insensitively, as encoding/json matches field names). With
+// either, the decoded value silently depends on which spelling came last.
+// A syntax error is left for the decoder to report.
+func checkEncoding(raw []byte) error {
+	if bytes.HasPrefix(raw, utf8BOM) {
+		return apperr.New(apperr.Validation, "the file starts with a UTF-8 byte-order mark; save it without one")
+	}
+	return checkDuplicateKeys(raw)
+}
+
+type jsonFrame struct {
+	path      string
+	isObject  bool
+	keys      map[string]string // lowercased key -> spelling first seen
+	wantKey   bool
+	lastKey   string
+	nextIndex int
+}
+
+func checkDuplicateKeys(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	var stack []*jsonFrame
+
+	// childPath is the path of the value starting now inside the top frame.
+	childPath := func() string {
+		if len(stack) == 0 {
+			return ""
+		}
+		top := stack[len(stack)-1]
+		if top.isObject {
+			if top.path == "" {
+				return top.lastKey
+			}
+			return top.path + "." + top.lastKey
+		}
+		return fmt.Sprintf("%s[%d]", top.path, top.nextIndex)
+	}
+	// valueStarts is called for every value, scalar or container.
+	valueStarts := func() {
+		if len(stack) == 0 {
+			return
+		}
+		top := stack[len(stack)-1]
+		if top.isObject {
+			top.wantKey = true
+		} else {
+			top.nextIndex++
+		}
+	}
+
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil // EOF or a syntax error; the decoder reports it
+		}
+		if len(stack) > 0 {
+			top := stack[len(stack)-1]
+			if top.isObject && top.wantKey {
+				key, ok := tok.(string)
+				if !ok { // the closing '}'
+					stack = stack[:len(stack)-1]
+					if len(stack) == 0 {
+						return nil
+					}
+					continue
+				}
+				folded := strings.ToLower(key)
+				if first, dup := top.keys[folded]; dup {
+					where := "the file"
+					if top.path != "" {
+						where = top.path
+					}
+					if first != key {
+						return apperr.New(apperr.Validation, "duplicate key %q in %s (also written as %q; keys match case-insensitively)", key, where, first)
+					}
+					return apperr.New(apperr.Validation, "duplicate key %q in %s", key, where)
+				}
+				top.keys[folded] = key
+				top.lastKey = key
+				top.wantKey = false
+				continue
+			}
+		}
+		d, isDelim := tok.(json.Delim)
+		switch {
+		case isDelim && (d == '{' || d == '['):
+			p := childPath()
+			valueStarts()
+			stack = append(stack, &jsonFrame{path: p, isObject: d == '{', keys: map[string]string{}, wantKey: d == '{'})
+		case isDelim: // the closing ']'
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return nil
+			}
+		default:
+			valueStarts()
+			if len(stack) == 0 {
+				return nil
+			}
+		}
+	}
 }

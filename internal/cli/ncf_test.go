@@ -116,6 +116,31 @@ func TestFmt(t *testing.T) {
 	}
 }
 
+func TestFmtAndValidateRefuseDuplicateKeysAndBOM(t *testing.T) {
+	dupName := strings.Replace(desiredFixture, `"name": "block-v4",`, `"name": "block-v4", "name": "other",`, 1)
+	dupEntries := strings.Replace(desiredFixture, `"role": "deny",`, `"role": "deny", "entries": [],`, 1)
+	cases := map[string]string{
+		"duplicate name":    dupName,
+		"duplicate entries": dupEntries,
+		"case-variant role": strings.Replace(desiredFixture, `"role": "deny",`, `"role": "deny", "Role": "allow",`, 1),
+		"bom":               "\xEF\xBB\xBF" + desiredFixture,
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := writeDesired(t, content)
+			for _, args := range [][]string{{"fmt", "--check"}, {"fmt"}, {"validate"}} {
+				r := runCLI(t, ncfEnv(Env{}), append(args, "--file", p)...)
+				if r.code != exitCode(apperr.Validation) {
+					t.Errorf("%v: exit = %d, want validation", args, r.code)
+				}
+				if readFile(t, p) != content {
+					t.Fatalf("%v rewrote the file", args)
+				}
+			}
+		})
+	}
+}
+
 func TestAddWritesOneCanonicalEntry(t *testing.T) {
 	p := writeDesired(t, desiredFixture)
 	r := runCLI(t, ncfEnv(Env{}), "add", "--file", p, "block-v4", "198.51.100.64/26", "geo::de", "--ticket", "SEC-9", "--reason", "scanning", "--expires", "2027-01-31")
