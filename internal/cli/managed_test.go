@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const managedBase = "/network-cloud-firewall/v2/policy-domains/example-domain/managed-services-acls"
@@ -34,7 +35,7 @@ func TestManagedACL(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ManagedACLDoc](t, r.stdout, "prolexic.managed-acl.v1")
+	doc := decode[ops.ManagedACLDoc](t, r.stdout, "prolexic.managed-acl.v1")
 	if doc.PolicyDomain != "example-domain" || doc.Version != 3 || len(doc.Rules) != 2 || doc.Rules[0].Index != 0 || !doc.Rules[0].AnyDestination ||
 		doc.Rules[0].Locations == nil || len(doc.Rules[1].Locations) != 2 {
 		t.Errorf("doc = %+v", doc)
@@ -48,13 +49,13 @@ func TestManagedRuleHits(t *testing.T) {
 	api := newFakeAPI(t)
 	managedFixtures(t, api)
 	r := runCLI(t, ncfEnv(api.env()), "managed", "rule-hits", "--policy-domain", "example-domain")
-	doc := decode[ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
+	doc := decode[ops.ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
 	if r.code != 0 || len(doc.Rules) != 2 || doc.Rules[0].RuleID != ruleA || doc.Rules[0].Matches != 8 || doc.Series != nil {
 		t.Fatalf("exit %d, doc = %+v", r.code, doc)
 	}
 	// One rule: the series defaults to the last 24 hours.
 	r = runCLI(t, ncfEnv(api.env()), "managed", "rule-hits", "--policy-domain", "example-domain", "--rule", ruleA)
-	doc = decode[ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
+	doc = decode[ops.ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
 	if r.code != 0 || len(doc.Rules) != 1 || doc.Series == nil || doc.Series.Resolution != "1d" || len(doc.Series.Points) != 1 {
 		t.Errorf("exit %d, doc = %+v", r.code, doc)
 	}
@@ -85,7 +86,7 @@ func TestManagedRuleHitsSeries404IsAnEmptyWindow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
+	doc := decode[ops.ManagedRuleHitsDoc](t, r.stdout, "prolexic.managed-rule-hits.v1")
 	if doc.Series == nil || doc.Series.TotalMatches != 0 || doc.Series.Points == nil || len(doc.Series.Points) != 0 {
 		t.Errorf("series = %+v", doc.Series)
 	}

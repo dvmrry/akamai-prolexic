@@ -15,7 +15,7 @@
       "type": "string"
     },
     "rules": {
-      "description": "Sorted by ruleId. With --rule, only that rule.",
+      "description": "Sorted by ruleId. With a rule given, only that rule.",
       "items": {
         "additionalProperties": false,
         "properties": {
@@ -56,7 +56,7 @@
     },
     "series": {
       "additionalProperties": false,
-      "description": "Present only with --rule: that rule's time series over the window (default the last 24h).",
+      "description": "Present only when a rule was given: that rule's time series over the window (default the last 24h).",
       "properties": {
         "averageMatches": {
           "type": "number"

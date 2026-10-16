@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const aclBase = "/network-cloud-firewall/v2/acls/versions"
@@ -55,7 +56,7 @@ func TestACLVersions(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLVersionsDoc](t, r.stdout, "prolexic.acl-versions.v1")
+	doc := decode[ops.ACLVersionsDoc](t, r.stdout, "prolexic.acl-versions.v1")
 	if len(doc.Versions) != 3 || doc.Versions[0].Version != 8 || doc.Versions[1].Version != 7 || doc.Versions[2].Version != 6 ||
 		doc.Versions[0].Description != "staged" || doc.Versions[1].State != "DEPLOYED" {
 		t.Errorf("versions = %+v", doc.Versions)
@@ -69,7 +70,7 @@ func TestACLShowDefaultsToProduction(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLDoc](t, r.stdout, "prolexic.acl.v1")
+	doc := decode[ops.ACLDoc](t, r.stdout, "prolexic.acl.v1")
 	if doc.Version != 7 || !doc.Production || len(doc.Rules) != 4 {
 		t.Fatalf("doc = %+v", doc)
 	}
@@ -97,7 +98,7 @@ func TestACLShowVersionAndText(t *testing.T) {
 	api := newFakeAPI(t)
 	aclFixtures(api)
 	r := runCLI(t, ncfEnv(api.env()), "acl", "show", "--version", "8")
-	doc := decode[ACLDoc](t, r.stdout, "prolexic.acl.v1")
+	doc := decode[ops.ACLDoc](t, r.stdout, "prolexic.acl.v1")
 	if r.code != 0 || doc.Version != 8 || doc.Production || doc.Rules == nil || len(doc.Rules) != 0 {
 		t.Errorf("exit %d, doc = %+v", r.code, doc)
 	}
@@ -122,7 +123,7 @@ func TestACLDeployment(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLDeploymentDoc](t, r.stdout, "prolexic.acl-deployment.v1")
+	doc := decode[ops.ACLDeploymentDoc](t, r.stdout, "prolexic.acl-deployment.v1")
 	// Newest version first: processing 8, then production 7.
 	if doc.Production != 7 || len(doc.RuleSets) != 2 || doc.RuleSets[1].Stats.Failed != 1 ||
 		doc.RuleSets[1].Rules[0].InstallStatus != "FAILED" || doc.RuleSets[0].Status != "PROCESSING" || doc.RuleSets[0].Rules == nil {

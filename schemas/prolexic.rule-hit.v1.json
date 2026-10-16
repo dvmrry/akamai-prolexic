@@ -49,7 +49,7 @@
     },
     "series": {
       "additionalProperties": false,
-      "description": "Present only when --since or --start was given.",
+      "description": "Present only when a window was given.",
       "properties": {
         "averageMatches": {
           "type": "number"

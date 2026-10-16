@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const (
@@ -38,7 +39,7 @@ func TestRuleHitsList(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[RuleHitsDoc](t, r.stdout, "prolexic.rule-hits.v1")
+	doc := decode[ops.RuleHitsDoc](t, r.stdout, "prolexic.rule-hits.v1")
 	if doc.RulesetName != "example-ruleset" || len(doc.Rules) != 2 || doc.Rules[0].RuleID != ruleA || doc.Rules[0].Matches != 12 || doc.Rules[1].Bytes != 500 {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -54,7 +55,7 @@ func TestRuleHitsShow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
+	doc := decode[ops.RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
 	if doc.Rule.RuleID != ruleA || doc.Rule.Matches != 12 || doc.Series != nil {
 		t.Errorf("no window: doc = %+v", doc)
 	}
@@ -65,7 +66,7 @@ func TestRuleHitsShow(t *testing.T) {
 	}
 
 	r = runCLI(t, ncfEnv(api.env()), "rule-hits", "show", "--rule", ruleA, "--since", "24h")
-	doc = decode[RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
+	doc = decode[ops.RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
 	if r.code != 0 || doc.Series == nil || doc.Series.Resolution != "1h" || doc.Series.TotalMatches != 12 || doc.Series.PeakMatches != 9 ||
 		len(doc.Series.Points) != 2 || doc.Series.Points[0].Matches != 3 {
 		t.Errorf("with window: exit %d, doc = %+v", r.code, doc)
@@ -111,7 +112,7 @@ func TestRuleHitsShowSeries404IsAnEmptyWindow(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
+	doc := decode[ops.RuleHitDoc](t, r.stdout, "prolexic.rule-hit.v1")
 	if doc.Series == nil || doc.Series.TotalMatches != 0 || doc.Series.Points == nil || len(doc.Series.Points) != 0 {
 		t.Errorf("series = %+v", doc.Series)
 	}

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ops"
 )
 
 const analyzerRoute = "POST /network-cloud-firewall/v2/acls/analyzer/test"
@@ -93,7 +94,7 @@ func TestACLTestProductionRenumbersAndMapsBack(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
+	doc := decode[ops.ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
 	if doc.Version != 7 || !doc.Production || doc.IPVersion != "V4" || doc.RulesTested != 4 || len(doc.Results) != 1 {
 		t.Fatalf("doc = %+v", doc)
 	}
@@ -123,7 +124,7 @@ func TestACLTestIPv6SelectsV6Rules(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
+	doc := decode[ops.ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
 	if doc.IPVersion != "V6" || doc.RulesTested != 2 || doc.Results[0].Rule == nil || doc.Results[0].Rule.Index != 4 {
 		t.Errorf("doc = %+v", doc)
 	}
@@ -136,7 +137,7 @@ func TestACLTestVersionFlagAndText(t *testing.T) {
 	api := newFakeAPI(t)
 	analyzerFixtures(api)
 	r := runCLI(t, ncfEnv(api.env()), "acl", "test", "--version", "8", "--src", "192.0.2.9", "--dst", "198.51.100.5")
-	doc := decode[ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
+	doc := decode[ops.ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
 	if r.code != 0 || doc.Version != 8 || doc.Production || doc.Results[0].Rule == nil || doc.Results[0].Rule.Index != 1 {
 		t.Errorf("exit %d doc = %+v", r.code, doc)
 	}
@@ -170,7 +171,7 @@ func TestACLTestPacketsFile(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit = %d: %s%s", r.code, r.stdout, r.stderr)
 	}
-	doc := decode[ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
+	doc := decode[ops.ACLTestDoc](t, r.stdout, "prolexic.acl-test.v1")
 	if len(doc.Results) != 2 || doc.Results[0].Packet.PacketID != "p1" || doc.Results[1].Packet.PacketID != "web" ||
 		doc.Results[0].Rule.Index != 9 || doc.Results[1].Rule.Index != 7 || doc.Summary.Denied != 1 || doc.Summary.Allowed != 1 {
 		t.Errorf("doc = %+v", doc)
