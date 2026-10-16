@@ -63,7 +63,7 @@ var aliasTypes = []string{"SOURCE", "BIG", "DIPA"}
 // non-nil, is the file as read; it must be byte-identical to the canonical
 // form.
 func (c *Checker) Validate(f *File, raw []byte) []Finding {
-	var out []Finding
+	out := []Finding{} // [] in JSON, never null
 	add := func(sev Severity, code, alias, entry, format string, args ...any) {
 		out = append(out, Finding{sev, code, alias, entry, fmt.Sprintf(format, args...)})
 	}

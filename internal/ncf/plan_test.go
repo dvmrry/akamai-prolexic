@@ -2,6 +2,7 @@ package ncf_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -448,5 +449,14 @@ func TestPlanDestinationRole(t *testing.T) {
 	f.Aliases[1].Role = ncf.RoleAllow
 	if got := findingCodes(plan(t, s, f, defaults).Findings); !slices.Equal(got, []string{"error role_mismatch protected-dst"}) {
 		t.Errorf("file says allow: findings = %q", got)
+	}
+}
+
+// Lists in documents are [] when empty, never null: a clean plan included.
+func TestCleanPlanFindingsAreAnEmptyList(t *testing.T) {
+	p := plan(t, world(), desired("192.0.2.0/25", "198.51.100.7"), defaults)
+	b, _ := json.Marshal(p)
+	if !strings.Contains(string(b), `"findings":[]`) {
+		t.Errorf("plan JSON: %s", b)
 	}
 }

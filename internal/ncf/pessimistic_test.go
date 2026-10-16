@@ -180,3 +180,32 @@ func TestApplyRefusesWeakerChecksThanReviewed(t *testing.T) {
 		t.Errorf("err = %v, creates = %d", err, s.Count("CreateVersion"))
 	}
 }
+
+// dupName answers the alias list with a second alias named protected-dst.
+type dupName struct{ *ncftest.Store }
+
+func (d dupName) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	all, err := d.Store.ListAliases(ctx)
+	if err != nil {
+		return all, err
+	}
+	for _, l := range all {
+		if l.Name == "protected-dst" {
+			l.ID = 999
+			return append(all, l), nil
+		}
+	}
+	return all, nil
+}
+
+// Own space is named, so an own-space name that more than one live alias
+// carries is an error, not a guess at which one protects what.
+func TestPlanRefusesAnAmbiguousOwnSpaceName(t *testing.T) {
+	p, err := checker().MakePlan(context.Background(), dupName{world()}, desired("192.0.2.0/25", "198.51.100.7"), nil, defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := findingCodes(p.Findings); !slices.Contains(got, "error own_space_alias protected-dst") {
+		t.Errorf("findings = %q", got)
+	}
+}

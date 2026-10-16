@@ -127,7 +127,7 @@ func TestJSONUnchangedByEscaping(t *testing.T) {
 	if err := Write(&buf, JSON, &nameDoc{Name: "a\x1b\u0085"}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), `"name": "a\u001b`+"\u0085"+`"`) {
+	if !strings.Contains(buf.String(), `"name": "a\u001b\u0085"`) { // both escaped: still valid JSON, same value
 		t.Errorf("json = %q", buf.String())
 	}
 }
@@ -135,5 +135,24 @@ func TestJSONUnchangedByEscaping(t *testing.T) {
 func TestSanitizeForProgressLines(t *testing.T) {
 	if got := Sanitize("block\x1b[2J-v4\r\tok\n"); got != `block\x1b[2J-v4\x0d`+"\tok\n" {
 		t.Errorf("Sanitize = %q", got)
+	}
+}
+
+// JSON escapes DEL and C1 controls too: encoding/json leaves them raw.
+func TestJSONEscapesDELAndC1(t *testing.T) {
+	var buf bytes.Buffer
+	err := apperr.New(apperr.Upstream, "bad\x1b[2J del\x7f c1\u009b31m nel\u0085 é end")
+	if werr := Write(&buf, JSON, NewErrorDoc(err, 5)); werr != nil {
+		t.Fatal(werr)
+	}
+	out := buf.String()
+	for _, raw := range []string{"\x7f", "\u009b", "\u0085", "\x1b"} {
+		if strings.Contains(out, raw) {
+			t.Errorf("raw %q in %s", raw, out)
+		}
+	}
+	var doc struct{ Message string }
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil || doc.Message != "bad\x1b[2J del\x7f c1\u009b31m nel\u0085 é end" {
+		t.Errorf("round trip: %q, %v", doc.Message, err)
 	}
 }

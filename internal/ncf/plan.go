@@ -115,9 +115,13 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		return nil, apperr.Wrap(apperr.KindOf(err), err, "list aliases")
 	}
 	byID, byName := map[int64]LiveAlias{}, map[string]LiveAlias{}
+	dupNames := map[string]bool{} // names more than one live alias carries
 	for _, l := range all {
 		if prev, dup := byID[l.ID]; dup {
 			return nil, apperr.New(apperr.Upstream, "the alias list has alias %d twice (%+q and %+q): refusing to plan on an inconsistent answer", l.ID, prev.Name, l.Name)
+		}
+		if _, seen := byName[l.Name]; seen {
+			dupNames[l.Name] = true
 		}
 		byID[l.ID], byName[l.Name] = l, l
 	}
@@ -138,7 +142,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		p.Findings = append(p.Findings, live.Warnings...)
 	}
 
-	own, err := c.ownSpace(ctx, store, f, byName, live.Prefixes, add)
+	own, err := c.ownSpace(ctx, store, f, byName, dupNames, live.Prefixes, add)
 	if err != nil {
 		return nil, err
 	}
@@ -319,9 +323,15 @@ func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpace
 
 // ownSpace gathers the live own-space prefixes: the own-space aliases'
 // entries and the extra source. The static list is checked offline.
-func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map[string]LiveAlias, extra []OwnSpacePrefix, add func(Severity, string, string, string, string, ...any)) ([]OwnSpacePrefix, error) {
+func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map[string]LiveAlias, dupNames map[string]bool, extra []OwnSpacePrefix, add func(Severity, string, string, string, string, ...any)) ([]OwnSpacePrefix, error) {
 	var out []OwnSpacePrefix
 	for _, name := range f.OwnSpace.Aliases {
+		if dupNames[name] {
+			// Own space is named, so it must name one alias: picking one could
+			// check the deny side against the wrong addresses.
+			add(Error, "own_space_alias", name, "", "own-space alias %+q names more than one live alias; own space can't tell which", name)
+			continue
+		}
 		l, ok := byName[name]
 		if !ok {
 			add(Error, "own_space_alias", name, "", "own-space alias %q doesn't exist", name)
