@@ -113,7 +113,7 @@ func (a *app) fail(err error) int {
 	ed := output.NewErrorDoc(err, code)
 	output.Stamp(ed, a.env.Now(), version.Current().Version)
 	if werr := output.Write(a.env.Stderr, format, ed); werr != nil {
-		fmt.Fprintf(a.env.Stderr, "prolexic: %v\n", err)
+		fmt.Fprintf(a.env.Stderr, "prolexic: %s\n", output.Sanitize(err.Error()))
 	}
 	return code
 }
