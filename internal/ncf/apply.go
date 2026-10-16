@@ -70,6 +70,10 @@ type AliasApply struct {
 	// lagged its active version (activated earlier or by someone else), which
 	// apply waited on without writing it.
 	WaitedForProduction bool `json:"waitedForProduction,omitempty" doc:"Unchanged, but production lagged its active version (activated earlier or by someone else), so apply waited on it without writing it."`
+	// ActivatedAt and ProductionAt time the change: when this apply activated
+	// the version, and the first poll that saw production carry it.
+	ActivatedAt  string `json:"activatedAt,omitempty" doc:"When this apply activated the version (RFC 3339; a BIG upload activates on arrival)."`
+	ProductionAt string `json:"productionAt,omitempty" doc:"The first poll that saw production carry the version (RFC 3339): accurate to the poll interval."`
 }
 
 // Apply re-plans f, refuses if the digest moved, then writes each changed
@@ -191,6 +195,7 @@ func (r *applyRun) create(ctx context.Context) error {
 		r.res.Aliases[i].Status = StatusCreated
 		if active {
 			r.res.Aliases[i].Status = StatusActive
+			r.res.Aliases[i].ActivatedAt = r.stamp()
 		}
 	}
 	return nil
@@ -225,6 +230,7 @@ func (r *applyRun) activate(ctx context.Context) error {
 			}
 		}
 		a.Status = StatusActive
+		a.ActivatedAt = r.stamp()
 	}
 	return nil
 }
@@ -290,6 +296,8 @@ func (r *applyRun) waitForProduction(ctx context.Context) error {
 			}
 			if prod != want {
 				pending++
+			} else if a := &r.res.Aliases[i]; r.plan.Aliases[i].Changed() && a.ProductionAt == "" {
+				a.ProductionAt = r.stamp()
 			}
 		}
 		if pending == 0 {
@@ -544,3 +552,6 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// stamp is the current time as the result records it.
+func (r *applyRun) stamp() string { return r.opts.Now().UTC().Format(time.RFC3339) }

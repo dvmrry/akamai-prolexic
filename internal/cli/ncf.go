@@ -475,9 +475,9 @@ func (d *ApplyDoc) WriteText(w io.Writer) error {
 		return nil
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ALIAS\tID\tSTATUS\tFROM\tVERSION\t+\t-")
+	fmt.Fprintln(tw, "ALIAS\tID\tSTATUS\tFROM\tVERSION\t+\t-\tTO PRODUCTION")
 	for _, al := range d.Result.Aliases {
-		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%d\t%d\n", al.Name, al.ID, al.Status, dash(al.FromVersion), dash(al.Version), len(al.Add), len(al.Remove))
+		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%d\t%d\t%s\n", al.Name, al.ID, al.Status, dash(al.FromVersion), dash(al.Version), len(al.Add), len(al.Remove), toProduction(al))
 	}
 	return tw.Flush()
 }
@@ -627,4 +627,15 @@ func writeFindings(w io.Writer, fs []ncf.Finding) error {
 		}
 	}
 	return nil
+}
+
+// toProduction is how long an alias took from activation to production, as
+// timed at the poll interval, or "-" when it wasn't timed.
+func toProduction(a ncf.AliasApply) string {
+	act, err1 := time.Parse(time.RFC3339, a.ActivatedAt)
+	prod, err2 := time.Parse(time.RFC3339, a.ProductionAt)
+	if err1 != nil || err2 != nil {
+		return "-"
+	}
+	return prod.Sub(act).String()
 }

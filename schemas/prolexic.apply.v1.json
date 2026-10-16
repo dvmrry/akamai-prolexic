@@ -247,6 +247,10 @@
           "items": {
             "additionalProperties": false,
             "properties": {
+              "activatedAt": {
+                "description": "When this apply activated the version (RFC 3339; a BIG upload activates on arrival).",
+                "type": "string"
+              },
               "add": {
                 "items": {
                   "oneOf": [
@@ -294,6 +298,10 @@
                 "type": "integer"
               },
               "name": {
+                "type": "string"
+              },
+              "productionAt": {
+                "description": "The first poll that saw production carry the version (RFC 3339): accurate to the poll interval.",
                 "type": "string"
               },
               "remove": {

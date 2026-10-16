@@ -682,3 +682,24 @@ func TestApplySplitIsOneVersionOneActivation(t *testing.T) {
 		t.Errorf("live = %v", live.Entries)
 	}
 }
+
+// The result times each change from activation to production, so a live
+// apply measures the propagation lag.
+func TestApplyTimesActivationToProduction(t *testing.T) {
+	s := world()
+	s.ProdLag = 3
+	res, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := res.Aliases[0]
+	act, aerr := time.Parse(time.RFC3339, a.ActivatedAt)
+	prod, perr := time.Parse(time.RFC3339, a.ProductionAt)
+	if aerr != nil || perr != nil || !prod.After(act) {
+		t.Errorf("activatedAt = %q, productionAt = %q: want production after activation", a.ActivatedAt, a.ProductionAt)
+	}
+	again, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), nil) // nothing to write now
+	if err != nil || again.Aliases[0].ActivatedAt != "" || again.Aliases[0].ProductionAt != "" {
+		t.Errorf("an unchanged alias is timed: %+v (err %v)", again.Aliases[0], err)
+	}
+}
