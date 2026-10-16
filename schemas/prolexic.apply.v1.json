@@ -205,7 +205,7 @@
           "type": "object"
         },
         "digest": {
-          "description": "sha256 over the settings and each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest.",
+          "description": "sha256 over the settings and each alias's id, name, activeVersion, changes, desiredHash, role and roleSource; apply refuses unless the fresh plan's digest equals it.",
           "type": "string"
         },
         "fileDigest": {

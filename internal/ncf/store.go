@@ -130,13 +130,15 @@ type LiveOwnSpace interface {
 	OwnSpace(ctx context.Context) (LiveOwnSpaceResult, error)
 }
 
-// LiveOwnSpaceResult is what a LiveOwnSpace reports. Warnings say where the
-// view is incomplete (a customer name with no protected prefixes, or no BGP
-// sessions); the plan reports them.
+// LiveOwnSpaceResult is what a LiveOwnSpace reports. Findings say where the
+// view is incomplete, and the plan reports them: a warning where the gap is
+// "unknown" (a customer name with no protected prefixes, or no BGP
+// sessions), an error where own space is known to exist but can't be
+// checked against (a subnet that isn't a prefix).
 type LiveOwnSpaceResult struct {
 	Prefixes []OwnSpacePrefix
 	ASNs     []OwnASN
-	Warnings []Finding
+	Findings []Finding
 }
 
 // LiveOwnSpaceFunc adapts a function to LiveOwnSpace.

@@ -25,6 +25,7 @@ func TestDerivedRole(t *testing.T) {
 		{Index: 3, Action: "DENY", Source: "SRC::A-EXAMPLE::trusted", Destination: "any"},
 		{Index: 4, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "any"},
 		{Index: 5, Action: "deny", Source: "SRC:A-EXAMPLE:block-v4", Destination: "block-v4"},
+		{Index: 6, Action: "permit", Source: "SRC::A-EXAMPLE::partner", Destination: "any"},
 	})
 	tests := []struct {
 		name    string
@@ -34,7 +35,10 @@ func TestDerivedRole(t *testing.T) {
 	}{
 		{"block-v4", []int{1}, RoleDeny, true},
 		{"protected-dst", []int{1, 2}, RoleDestination, true}, // destination only: where the rules apply
-		{"trusted", []int{2}, RoleAllow, true},
+		{"partner", []int{6}, RoleAllow, true},
+		// Rule 3 denies trusted but isn't among its indexes (a deployment
+		// between the reads): unverified, not the allow rule 2 alone says.
+		{"trusted", []int{2}, "", false},
 		{"trusted", []int{2, 3}, RoleDeny, true}, // any deny-source use makes it deny
 		{"unused", nil, "", false},
 		{"block-v4", []int{9}, "", false}, // index not in the deployed version
@@ -88,5 +92,25 @@ func TestDerivedRoleNeedsEveryRule(t *testing.T) {
 	}
 	if role, ok := DerivedRole("block-v4", []int{1}, RulesByIndex([]ACLRule{permit})); !ok || role != RoleAllow {
 		t.Errorf("every rule readable: %s %v", role, ok)
+	}
+}
+
+// The alias list's rule indexes and the deployed rules come from separate
+// reads: a deployed rule that names the alias but isn't among its indexes
+// (a deployment between the reads) leaves the side unverified.
+func TestDerivedRoleSeesUnlistedRules(t *testing.T) {
+	rules := RulesByIndex([]ACLRule{
+		{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "any"},
+		{Index: 2, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"},
+	})
+	if role, ok := DerivedRole("block-v4", []int{1}, rules); ok {
+		t.Errorf("deny rule 2 unlisted: derived %s", role)
+	}
+	other := RulesByIndex([]ACLRule{
+		{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "any"},
+		{Index: 2, Action: "deny", Source: "SRC::A-EXAMPLE::other", Destination: "any"},
+	})
+	if role, ok := DerivedRole("block-v4", []int{1}, other); !ok || role != RoleAllow {
+		t.Errorf("an unlisted rule about another alias: %s %v", role, ok)
 	}
 }

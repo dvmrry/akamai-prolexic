@@ -22,6 +22,9 @@ type Protected struct {
 	// NoRouted is set when the name has no BGP sessions (a 404): its AS
 	// numbers are unknown, not none.
 	NoRouted bool `json:"noRouted,omitempty" doc:"No BGP sessions (404): AS numbers unknown."`
+	// Unparsable counts subnet entries that weren't prefixes: own space that
+	// can't be checked against.
+	Unparsable int `json:"unparsable,omitempty" doc:"Subnet entries that were not prefixes, left out of prefixes."`
 }
 
 // ProtectedFor gathers one customer name's protected prefixes and own AS
@@ -38,6 +41,7 @@ func (c *Client) ProtectedFor(ctx context.Context, customer string) (Protected, 
 	if len(m.Prefixes) == 0 {
 		out.Notes = append(out.Notes, "no protected prefixes reported (unknown, not nothing protected)")
 	}
+	out.Unparsable = m.Unparsable
 	if m.Unparsable > 0 {
 		out.Notes = append(out.Notes, fmt.Sprintf("%d subnet entries were not prefixes and are left out", m.Unparsable))
 	}

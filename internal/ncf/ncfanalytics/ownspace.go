@@ -52,11 +52,17 @@ func Fetch(ctx context.Context, c *analytics.Client) (ncf.LiveOwnSpaceResult, er
 		}
 		// Empty means unknown, not "nothing protected": say so.
 		if len(p.Prefixes) == 0 {
-			out.Warnings = append(out.Warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_empty",
+			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_analytics_empty",
 				Message: fmt.Sprintf("Prolexic Analytics reports no protected prefixes for customer name %s", p.Customer)})
 		}
+		// A subnet that isn't a prefix is own space nothing can check against:
+		// a deny entry could cover it unseen, so the plan can't pass.
+		if p.Unparsable > 0 {
+			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Error, Code: "own_space_unreadable",
+				Message: fmt.Sprintf("Prolexic Analytics reports %d protected subnets for customer name %s that aren't prefixes; own space would be incomplete", p.Unparsable, p.Customer)})
+		}
 		if p.NoRouted {
-			out.Warnings = append(out.Warnings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
+			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
 				Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", p.Customer)})
 		}
 	}

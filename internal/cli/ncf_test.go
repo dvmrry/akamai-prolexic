@@ -403,3 +403,15 @@ func TestPlanCustomerNameWithoutRoutedHasNoASNs(t *testing.T) {
 		t.Errorf("exit = %d, findings = %+v; a 404 must be visible", r.code, doc.Findings)
 	}
 }
+
+// A protected subnet Analytics reports in a form prolexic can't read is own
+// space that can't be checked against: the plan can't pass.
+func TestPlanRefusesUnreadableLiveOwnSpace(t *testing.T) {
+	api := ncfAPI(t)
+	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"example-a","status":true,
+	  "data":{"fbm":{"metrics":{"bandwidth":{"subnets":["198.51.100.128/25","203.0.113.0-203.0.113.255"]},"packets":{"subnets":[]}}}}}`)
+	r := runCLI(t, ncfEnv(api.env()), "plan", "--file", writeDesired(t, desiredFixture))
+	if r.code != exitCode(apperr.Validation) || !strings.Contains(r.stdout, `"code": "own_space_unreadable"`) {
+		t.Errorf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}

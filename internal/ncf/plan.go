@@ -15,7 +15,7 @@ import (
 // Plan is the diff of a desired file against live, with every finding.
 type Plan struct {
 	AccountID  string `json:"accountId"`
-	Digest     string `json:"digest" doc:"sha256 over the settings and each alias's id, name, activeVersion, changes and desiredHash; apply refuses unless given this digest."`
+	Digest     string `json:"digest" doc:"sha256 over the settings and each alias's id, name, activeVersion, changes, desiredHash, role and roleSource; apply refuses unless the fresh plan's digest equals it."`
 	FileDigest string `json:"fileDigest" doc:"sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file."`
 	// Settings are the checks the plan ran with. The digest covers them, so
 	// a reviewed plan can't be applied with weaker ones.
@@ -144,7 +144,12 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 		if live, err = opts.LiveOwnSpace.OwnSpace(ctx); err != nil {
 			return nil, apperr.Wrap(apperr.KindOf(err), err, "own space from Prolexic Analytics")
 		}
-		p.Findings = append(p.Findings, live.Warnings...)
+		p.Findings = append(p.Findings, live.Findings...)
+	}
+	// Entries are unmapped when parsed: an IPv4-mapped live prefix must be
+	// too, or it would never overlap the IPv4 entries it protects.
+	for i, o := range live.Prefixes {
+		live.Prefixes[i].Prefix = unmapPrefix(o.Prefix)
 	}
 
 	own, err := c.ownSpace(ctx, store, f, byName, dupNames, live.Prefixes, add)
@@ -206,6 +211,12 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 			roleSource = RoleFromRules
 			if derived != a.Role {
 				add(Error, "role_mismatch", a.Name, "", "the file says role %s, but the deployed rules use the alias %s", a.Role, sideOf(derived))
+			}
+			if derived == RoleDeny && a.Type == "DIPA" {
+				// A DIPA alias lists our protected destinations and is never
+				// own-space checked; denied as a source, it blocks our own
+				// traffic. That's a rule to fix, not a change to plan around.
+				add(Error, "dipa_deny_source", a.Name, "", "a deployed rule denies this protected-destination (DIPA) alias as a source, which blocks traffic from our own addresses; fix the rule before changing the alias")
 			}
 			a.Role = derived
 		} else if len(l.ProdRules) > 0 {
@@ -440,10 +451,14 @@ func digest(aliases []AliasPlan, settings PlanSettings) string {
 		Add           []string `json:"add"`
 		Remove        []string `json:"remove"`
 		Desired       string   `json:"desired"`
+		// The side the checks ran on: a review is of these checks, so a
+		// side that changes before apply moves the digest.
+		Role       Role   `json:"role"`
+		RoleSource string `json:"roleSource"`
 	}
 	pins := make([]pin, len(aliases))
 	for i, a := range aliases {
-		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove), a.DesiredHash}
+		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove), a.DesiredHash, a.Role, a.RoleSource}
 	}
 	b, _ := json.Marshal(struct {
 		Settings PlanSettings `json:"settings"`

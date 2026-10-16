@@ -150,9 +150,7 @@ func parse(s string, strict bool) (Value, error) {
 		}
 		p = netip.PrefixFrom(a, a.BitLen())
 	}
-	if a := p.Addr(); a.Is4In6() && p.Bits() >= 96 {
-		p = netip.PrefixFrom(a.Unmap(), p.Bits()-96)
-	}
+	p = unmapPrefix(p)
 	if m := p.Masked(); m != p {
 		if strict {
 			return Value{}, fmt.Errorf("%q has host bits set; did you mean %s?", s, m)
@@ -187,3 +185,13 @@ UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW`
 }()
 
 func isCountry(code string) bool { return countries[code] }
+
+// unmapPrefix turns an IPv4-mapped IPv6 prefix (::ffff:198.51.100.0/120)
+// into the IPv4 prefix it covers, so it compares with IPv4 entries. Shorter
+// prefixes cover more than mapped space and stay IPv6.
+func unmapPrefix(p netip.Prefix) netip.Prefix {
+	if a := p.Addr(); a.Is4In6() && p.Bits() >= 96 {
+		return netip.PrefixFrom(a.Unmap(), p.Bits()-96)
+	}
+	return p
+}

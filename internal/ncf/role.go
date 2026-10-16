@@ -1,6 +1,9 @@
 package ncf
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Role sources, as a plan reports them.
 const (
@@ -51,6 +54,14 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 			unknownAction = true
 		case src:
 			permitSource = true
+		}
+	}
+	// The alias list's indexes and the deployed rules come from separate
+	// reads. A deployed rule that mentions the alias outside its indexes (a
+	// deployment between the reads) might deny it: unverified.
+	for idx, r := range rules {
+		if !slices.Contains(prodRules, idx) && (mentions(r.Source, name) || mentions(r.Destination, name)) {
+			unknownAction = true
 		}
 	}
 	if unknownAction || !named {

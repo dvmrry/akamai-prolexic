@@ -389,7 +389,7 @@ func TestPlanNeedsLiveOwnSpaceOrAnExplicitSkip(t *testing.T) {
 
 func TestPlanReportsLiveOwnSpaceWarnings(t *testing.T) {
 	warn := ncf.LiveOwnSpaceFunc(func(context.Context) (ncf.LiveOwnSpaceResult, error) {
-		return ncf.LiveOwnSpaceResult{Warnings: []ncf.Finding{{Severity: ncf.Warning, Code: "own_space_asn_unknown", Message: "x"}}}, nil
+		return ncf.LiveOwnSpaceResult{Findings: []ncf.Finding{{Severity: ncf.Warning, Code: "own_space_asn_unknown", Message: "x"}}}, nil
 	})
 	p := plan(t, world(), desired("192.0.2.0/25", "198.51.100.7"), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: warn})
 	if got := findingCodes(p.Findings); !slices.Equal(got, []string{"warning own_space_asn_unknown"}) {
@@ -522,5 +522,44 @@ func TestPlanChecksAnAliasWithAnUnreadableRuleAsDeny(t *testing.T) {
 	p := plan(t, s, f, defaults)
 	if !slices.Contains(findingCodes(p.Findings), "error own_space block-v4 203.0.113.0/26") || p.Aliases[0].RoleSource != ncf.RoleUnverified {
 		t.Errorf("findings = %v, role source %s", findingCodes(p.Findings), p.Aliases[0].RoleSource)
+	}
+}
+
+// Live own space in IPv4-mapped IPv6 form protects the IPv4 space it maps:
+// the desired file's entries are unmapped, so live prefixes must be too.
+func TestLiveOwnSpaceIsUnmapped(t *testing.T) {
+	mapped := ncf.OwnSpacePrefix{Prefix: netip.MustParsePrefix("::ffff:198.51.100.0/120"), Source: "analytics example-a/site-a"}
+	p := plan(t, world(), desired("192.0.2.0/25", "198.51.100.0/26"), ncf.PlanOptions{MaxRemovals: -1, LiveOwnSpace: live([]ncf.OwnSpacePrefix{mapped}, nil)})
+	if !slices.Contains(findingCodes(p.Findings), "error own_space block-v4 198.51.100.0/26") {
+		t.Errorf("findings = %v", findingCodes(p.Findings))
+	}
+}
+
+// A DIPA alias holds our protected destinations and is never own-space
+// checked. A deployed rule that denies it as a source blocks traffic from
+// our own addresses: the plan refuses to treat that as normal.
+func TestPlanRefusesADIPAAliasDeniedAsASource(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::protected-dst", Destination: "any"}}
+	s.UseInRule(102, 1)
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "protected-dst", ID: 102, Type: "DIPA", Role: ncf.RoleDeny, Entries: entries("203.0.113.0/26")})
+	p := plan(t, s, f, defaults)
+	if !slices.Contains(findingCodes(p.Findings), "error dipa_deny_source protected-dst") {
+		t.Errorf("findings = %v", findingCodes(p.Findings))
+	}
+}
+
+// The digest pins the side each alias was checked on: if it changes between
+// review and apply (a rule deployed in between), apply sees the digest move.
+func TestDigestCoversTheRole(t *testing.T) {
+	f := desired("192.0.2.0/25", "198.51.100.9")
+	fromFile := plan(t, world(), f, defaults) // no deployed rule: role from the file
+	ruled := world()
+	ruled.Rules = []ncf.ACLRule{{Index: 1, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}}
+	ruled.UseInRule(101, 1)
+	fromRules := plan(t, ruled, f, defaults) // same changes, side from the rules
+	if fromFile.Digest == fromRules.Digest {
+		t.Error("the digest doesn't change with the role's source")
 	}
 }

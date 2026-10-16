@@ -90,6 +90,10 @@
           "site": {
             "description": "The metric types response's currentContract.",
             "type": "string"
+          },
+          "unparsable": {
+            "description": "Subnet entries that were not prefixes, left out of prefixes.",
+            "type": "integer"
           }
         },
         "required": [
