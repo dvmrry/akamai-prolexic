@@ -240,7 +240,7 @@ func (s *V2) Limits(ctx context.Context) ([]ncf.Limit, error) {
 
 // DeployedRules reads the production ACL version (from deployment status)
 // with details, and returns each rule's index, action and parsed addresses.
-// Rules without parsed details (remarks) are skipped.
+// Remarks are skipped; a rule without parsed details is kept with its text.
 func (s *V2) DeployedRules(ctx context.Context) ([]ncf.ACLRule, error) {
 	d, err := s.Deployment(ctx)
 	if err != nil {
@@ -251,8 +251,9 @@ func (s *V2) DeployedRules(ctx context.Context) ([]ncf.ACLRule, error) {
 	}
 	var resp struct {
 		RuleSet []struct {
-			Index  int `json:"index"`
-			Parsed *struct {
+			Index   int    `json:"index"`
+			ACLText string `json:"aclText"`
+			Parsed  *struct {
 				Action             string `json:"action"`
 				SourceAddress      string `json:"sourceAddress"`
 				DestinationAddress string `json:"destinationAddress"`
@@ -265,10 +266,18 @@ func (s *V2) DeployedRules(ctx context.Context) ([]ncf.ACLRule, error) {
 	}
 	var out []ncf.ACLRule
 	for _, r := range resp.RuleSet {
-		if r.Parsed == nil {
+		// A remark is a comment: naming an alias in one says nothing about
+		// its side. Any other rule without a parsed form (one the API
+		// didn't parse) is kept with its text: if it names an alias, the
+		// alias's side is unverified.
+		if r.Parsed == nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.ACLText)), "remark") {
 			continue
 		}
-		out = append(out, ncf.ACLRule{Index: r.Index, Action: r.Parsed.Action, Source: r.Parsed.SourceAddress, Destination: r.Parsed.DestinationAddress})
+		rule := ncf.ACLRule{Index: r.Index, Text: r.ACLText}
+		if r.Parsed != nil {
+			rule.Action, rule.Source, rule.Destination = r.Parsed.Action, r.Parsed.SourceAddress, r.Parsed.DestinationAddress
+		}
+		out = append(out, rule)
 	}
 	return out, nil
 }

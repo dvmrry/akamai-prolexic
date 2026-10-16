@@ -1,6 +1,9 @@
 package ncf
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRefersTo(t *testing.T) {
 	for addr, want := range map[string]bool{
@@ -112,5 +115,40 @@ func TestDerivedRoleSeesUnlistedRules(t *testing.T) {
 	})
 	if role, ok := DerivedRole("block-v4", []int{1}, other); !ok || role != RoleAllow {
 		t.Errorf("an unlisted rule about another alias: %s %v", role, ok)
+	}
+}
+
+// A deployed rule the scan can't see can't verify a side. Two ways one used
+// to hide: at an index another rule shares (dropped as a duplicate), and
+// without a parsed form (dropped by the adapter). Both are kept; either
+// naming the alias leaves its side unverified.
+func TestDerivedRoleSeesEveryRule(t *testing.T) {
+	permit := ACLRule{Index: 1, Action: "permit", Source: "SRC::A-EXAMPLE::block-v4", Destination: "any"}
+	deny := ACLRule{Index: 2, Action: "deny", Source: "SRC::A-EXAMPLE::block-v4", Destination: "protected-dst"}
+	other := ACLRule{Index: 2, Action: "permit", Source: "SRC::A-EXAMPLE::other", Destination: "any"}
+	if role, ok := DerivedRole("block-v4", []int{1}, RulesByIndex([]ACLRule{permit, deny, other})); ok {
+		t.Errorf("unlisted deny at a duplicated index: derived %s", role)
+	}
+	unparsed := ACLRule{Index: 2, Text: "deny ip SRC::A-EXAMPLE::block-v4 any"}
+	if role, ok := DerivedRole("block-v4", []int{1}, RulesByIndex([]ACLRule{permit, unparsed})); ok {
+		t.Errorf("unlisted unparsed rule naming the alias: derived %s", role)
+	}
+	if role, ok := DerivedRole("block-v4", []int{1, 2}, RulesByIndex([]ACLRule{permit, unparsed})); ok {
+		t.Errorf("listed unparsed rule: derived %s", role)
+	}
+}
+
+// An IPv6 literal that ends in an alias's name (2001:db8::cafe, alias cafe)
+// is an address, not a reference to the alias.
+func TestRefersToIgnoresAddresses(t *testing.T) {
+	for _, addr := range []string{"2001:db8::cafe", "2001:db8::cafe/128", "2001:db8::bad"} {
+		name := addr[strings.LastIndex(addr, ":")+1:]
+		name, _, _ = strings.Cut(name, "/")
+		if refersTo(addr, name) {
+			t.Errorf("refersTo(%q, %q)", addr, name)
+		}
+	}
+	if !refersTo("SRC::A-EXAMPLE::cafe", "cafe") || !refersTo("cafe", "cafe") {
+		t.Error("real references to cafe are no longer recognised")
 	}
 }

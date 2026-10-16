@@ -71,7 +71,14 @@ type ACLRule struct {
 	Action      string
 	Source      string
 	Destination string
+	// Text is the rule as written (aclText). A rule with no parsed form has
+	// only its index and text: prolexic can't read its side, but can see
+	// whether it names an alias.
+	Text string
 }
+
+// parsed reports whether r has a parsed form.
+func (r ACLRule) parsed() bool { return r.Action != "" || r.Source != "" || r.Destination != "" }
 
 // Limit is the account's alias limit for one type.
 type Limit struct {

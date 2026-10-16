@@ -1,6 +1,7 @@
 package ncf
 
 import (
+	"net/netip"
 	"slices"
 	"strings"
 )
@@ -21,17 +22,19 @@ const (
 // addresses being protected). It is unknown (ok false) unless some rule at
 // one of the alias's indexes actually names it: a rule in an address form
 // this code doesn't recognise must not turn own-space checks off.
-func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, bool) {
+func DerivedRole(name string, prodRules []int, rules RuleSet) (Role, bool) {
 	named, unknownAction, permitSource := false, false, false
 	for _, idx := range prodRules {
-		r, ok := rules[idx]
-		if !ok {
-			// A rule uses the alias that prolexic can't read (no parsed
-			// details, or a duplicated index): it might deny, so the side
-			// is unverified, not derived from the rules that can be read.
+		at := rules[idx]
+		if len(at) != 1 || !at[0].parsed() {
+			// A rule uses the alias that prolexic can't read (missing, no
+			// parsed form, or an index two rules share): it might deny, so
+			// the side is unverified, not derived from the rules that can be
+			// read.
 			unknownAction = true
 			continue
 		}
+		r := at[0]
 		src, dst := refersTo(r.Source, name), refersTo(r.Destination, name)
 		// An address that mentions the alias in a form we don't recognise
 		// might be it: unknown, so a recognised use elsewhere in the rule
@@ -59,10 +62,8 @@ func DerivedRole(name string, prodRules []int, rules map[int]ACLRule) (Role, boo
 	// The alias list's indexes and the deployed rules come from separate
 	// reads. A deployed rule that mentions the alias outside its indexes (a
 	// deployment between the reads) might deny it: unverified.
-	for idx, r := range rules {
-		if !slices.Contains(prodRules, idx) && (mentions(r.Source, name) || mentions(r.Destination, name)) {
-			unknownAction = true
-		}
+	if namedOutside(name, prodRules, rules) {
+		unknownAction = true
 	}
 	if unknownAction || !named {
 		return "", false
@@ -107,24 +108,29 @@ func nameChar(c byte) bool {
 // matching the bare name or a "::<name>" suffix, ignoring case, covers both
 // and any qualified destination form.
 func refersTo(addr, name string) bool {
+	// An address is never an alias reference, though an IPv6 literal can end
+	// in "::" and a hex word that is also an alias name (2001:db8::cafe).
+	if _, err := netip.ParseAddr(addr); err == nil {
+		return false
+	}
+	if _, err := netip.ParsePrefix(addr); err == nil {
+		return false
+	}
 	addr, name = strings.ToLower(addr), strings.ToLower(name)
 	return addr == name || strings.HasSuffix(addr, "::"+name)
 }
 
-// RulesByIndex indexes deployed rules for DerivedRole. An index two rules
-// share is left out: keeping either would hide the other (a deny behind a
-// permit), and a missing index makes the derivation unverified.
-func RulesByIndex(rules []ACLRule) map[int]ACLRule {
-	m := make(map[int]ACLRule, len(rules))
-	dup := map[int]bool{}
+// RuleSet is the deployed rules by index, every one kept: an index two
+// rules share holds both (DerivedRole reads neither as verifying a side, and
+// scans both for names), and a rule with no parsed form stays for its text.
+// Dropping either kind would hide a rule that might deny an alias.
+type RuleSet map[int][]ACLRule
+
+// RulesByIndex indexes deployed rules for DerivedRole.
+func RulesByIndex(rules []ACLRule) RuleSet {
+	m := make(RuleSet, len(rules))
 	for _, r := range rules {
-		if _, seen := m[r.Index]; seen {
-			dup[r.Index] = true
-		}
-		m[r.Index] = r
-	}
-	for idx := range dup {
-		delete(m, idx)
+		m[r.Index] = append(m[r.Index], r)
 	}
 	return m
 }
@@ -138,4 +144,22 @@ func sideOf(r Role) string {
 		return "only as a destination: the addresses a rule protects (not own-space checked)"
 	}
 	return "as the source of a permit rule (not own-space checked)"
+}
+
+// namedOutside reports whether a deployed rule names the alias at an index
+// outside prodRules. The alias list (prodRules) and the rules are separate
+// reads, and a deployment can land between them: such a rule might deny the
+// alias, so its side can't be verified.
+func namedOutside(name string, prodRules []int, rules RuleSet) bool {
+	for idx, at := range rules {
+		if slices.Contains(prodRules, idx) {
+			continue
+		}
+		for _, r := range at {
+			if mentions(r.Source, name) || mentions(r.Destination, name) || mentions(r.Text, name) {
+				return true
+			}
+		}
+	}
+	return false
 }

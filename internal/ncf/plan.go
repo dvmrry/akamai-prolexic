@@ -167,7 +167,7 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 
 	// Deployed rules decide each alias's side; fetch them once, and only
 	// when some alias in the file is referenced by one.
-	var rules map[int]ACLRule
+	var rules RuleSet
 	for _, a := range f.Aliases {
 		if l, ok := byID[a.ID]; ok && len(l.ProdRules) > 0 {
 			deployed, err := store.DeployedRules(ctx)
@@ -219,12 +219,18 @@ func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte
 				add(Error, "dipa_deny_source", a.Name, "", "a deployed rule denies this protected-destination (DIPA) alias as a source, which blocks traffic from our own addresses; fix the rule before changing the alias")
 			}
 			a.Role = derived
-		} else if len(l.ProdRules) > 0 {
+		} else if len(l.ProdRules) > 0 || namedOutside(a.Name, l.ProdRules, rules) {
 			// Deployed rules use the alias but its side can't be read: only a
 			// verified derivation may relax checks, so it is checked as deny.
 			roleSource = RoleUnverified
-			add(Warning, "role_unverified", a.Name, "", "deployed rules %v reference the alias in a form or with an action prolexic doesn't recognise; own-space checks apply whatever the file says", l.ProdRules)
+			add(Warning, "role_unverified", a.Name, "", "deployed rules reference the alias in a form or with an action prolexic doesn't recognise (indexes %v, or one outside them); own-space checks apply whatever the file says", l.ProdRules)
 			a.Role = RoleDeny
+			if a.Type == "DIPA" {
+				// A DIPA alias is never own-space checked, so "checked as
+				// deny" would check nothing: for all prolexic can tell, it is
+				// denied as a source, which blocks our own traffic.
+				add(Error, "dipa_unverified", a.Name, "", "deployed rules use this protected-destination (DIPA) alias in a way prolexic can't read; it might be denied as a source. Fix or check the rule before changing the alias")
+			}
 		}
 		ap, ok := c.diff(a, full, add)
 		if !ok {
@@ -390,6 +396,17 @@ func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map
 				continue
 			}
 			out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name})
+		}
+		// The file may be about to add to the own-space alias: those
+		// prefixes are own space too, or a deny entry covering one would pass
+		// and the same apply would block it. Live entries stay as well, so a
+		// removal doesn't shrink own space before it is live.
+		if i := slices.IndexFunc(f.Aliases, func(a Alias) bool { return a.Name == name }); i >= 0 {
+			for _, e := range f.Aliases[i].Entries {
+				if v, err := ParseAuthored(e.CIDR); err == nil && v.Kind() == KindPrefix {
+					out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name + " (desired)"})
+				}
+			}
 		}
 	}
 	return append(out, extra...), nil
@@ -603,7 +620,7 @@ func FileDigest(f *File) string {
 // deny-side alias isn't checked against them. Discovery only warns: own space
 // comes from the reviewed file, so a rule changed in the console can't
 // silently shrink it.
-func undeclaredOwnSpace(all []LiveAlias, rules map[int]ACLRule, declared []string, add func(Severity, string, string, string, string, ...any)) {
+func undeclaredOwnSpace(all []LiveAlias, rules RuleSet, declared []string, add func(Severity, string, string, string, string, ...any)) {
 	for _, l := range all {
 		if l.Type != "DIPA" || !l.Editable || len(l.ProdRules) == 0 || slices.Contains(declared, l.Name) {
 			continue

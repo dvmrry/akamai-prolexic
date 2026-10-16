@@ -563,3 +563,30 @@ func TestDigestCoversTheRole(t *testing.T) {
 		t.Error("the digest doesn't change with the role's source")
 	}
 }
+
+// Own space includes what the file is about to add to an own-space alias:
+// otherwise a deny entry covering the new prefix passes, and the same apply
+// blocks our own space.
+func TestOwnSpaceCountsTheFilesOwnSpaceAliasEntries(t *testing.T) {
+	f := desired("192.0.2.0/25", "203.0.113.64/26") // block-v4 covers the prefix protected-dst gains
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "protected-dst", ID: 102, Type: "DIPA", Role: ncf.RoleDestination,
+		Entries: entries("203.0.113.0/26", "203.0.113.64/26")})
+	p := plan(t, world(), f, defaults)
+	if !slices.Contains(findingCodes(p.Findings), "error own_space block-v4 203.0.113.64/26") {
+		t.Errorf("findings = %v", findingCodes(p.Findings))
+	}
+}
+
+// A DIPA alias whose side can't be read is denied-as-a-source as far as
+// anyone knows: the same error a verified deny source gets.
+func TestPlanRefusesAnUnverifiedDIPAAlias(t *testing.T) {
+	s := world()
+	s.Rules = []ncf.ACLRule{{Index: 1, Action: "drop", Source: "SRC::A-EXAMPLE::protected-dst", Destination: "any"}}
+	s.UseInRule(102, 1)
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "protected-dst", ID: 102, Type: "DIPA", Role: ncf.RoleDestination, Entries: entries("203.0.113.0/26")})
+	p := plan(t, s, f, defaults)
+	if !ncf.HasErrors(p.Findings) || !slices.Contains(findingCodes(p.Findings), "error dipa_unverified protected-dst") {
+		t.Errorf("findings = %v", findingCodes(p.Findings))
+	}
+}

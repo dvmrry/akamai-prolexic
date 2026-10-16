@@ -58,7 +58,7 @@ func Export(ctx context.Context, store Store, existing *File, opts ExportOptions
 
 	// The deployed rules decide each alias's role where one references it
 	// (plan rejects a file that disagrees); opts.Role covers the rest.
-	var rules map[int]ACLRule
+	var rules RuleSet
 	for _, l := range live {
 		if l.Editable && len(l.ProdRules) > 0 {
 			deployed, err := store.DeployedRules(ctx)
