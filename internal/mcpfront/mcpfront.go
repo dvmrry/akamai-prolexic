@@ -256,7 +256,10 @@ func (f *front) path(p string) (string, error) {
 			return "", apperr.New(apperr.Usage, "%s: hidden files and directories are off limits", p)
 		}
 	}
-	return rel, nil // the operation opens it under the runtime's Dir (the root); documents show it as given
+	// The operation opens it under the runtime's Dir (the root), and documents
+	// show it as given: with forward slashes, so a document reads the same on
+	// every platform.
+	return filepath.ToSlash(rel), nil
 }
 
 // exactNames refuses an object key the schema doesn't name exactly, at any

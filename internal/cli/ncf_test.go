@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -109,7 +110,8 @@ func TestFmt(t *testing.T) {
 	if r.code != 0 || readFile(t, p) != desiredFixture {
 		t.Errorf("fmt: exit = %d, file:\n%s", r.code, readFile(t, p))
 	}
-	if st, _ := os.Stat(p); st.Mode().Perm() != 0o640 {
+	// Windows has no such modes to keep.
+	if st, _ := os.Stat(p); runtime.GOOS != "windows" && st.Mode().Perm() != 0o640 {
 		t.Errorf("mode = %v, want the original 0640", st.Mode().Perm())
 	}
 	if r := runCLI(t, ncfEnv(Env{}), "validate", "--file", p); r.code != 0 {
