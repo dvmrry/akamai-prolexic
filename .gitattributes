@@ -1,0 +1,4 @@
+# Every tracked text file is LF on every platform: internal/hygiene refuses a
+# CR, and the schemas and CLI docs are compared byte for byte with generated
+# output. Without this, a Windows checkout (autocrlf) fails those tests.
+* text=auto eol=lf

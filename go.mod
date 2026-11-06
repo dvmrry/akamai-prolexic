@@ -1,6 +1,6 @@
 module github.com/dvmrry/akamai-prolexic
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0

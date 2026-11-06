@@ -160,14 +160,6 @@ func parse(s string, strict bool) (Value, error) {
 	return Value{kind: KindPrefix, prefix: p}, nil
 }
 
-// Overlaps reports whether two prefixes share any address.
-func Overlaps(a, b netip.Prefix) bool { return a.Overlaps(b) }
-
-// Contains reports whether outer covers all of inner.
-func Contains(outer, inner netip.Prefix) bool {
-	return outer.Bits() <= inner.Bits() && outer.Contains(inner.Addr())
-}
-
 // countries are the ISO 3166-1 alpha-2 assigned codes.
 var countries = func() map[string]bool {
 	const codes = `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ
