@@ -1,0 +1,88 @@
+{
+  "$id": "prolexic.time-series.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "destinations": {
+      "description": "The addresses or CIDR blocks queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "end": {
+      "description": "Window end, RFC 3339 UTC.",
+      "type": "string"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "locations": {
+      "description": "The data centers queried; agr is all of them, aggregated.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "points": {
+      "description": "Sorted by destination, facet, time.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "destination": {
+            "type": "string"
+          },
+          "facet": {
+            "description": "The report facet; aggregatedData holds the sums.",
+            "type": "string"
+          },
+          "key": {
+            "description": "The key the API used, normally epoch seconds.",
+            "type": "string"
+          },
+          "time": {
+            "description": "Key read as an epoch time, seconds UTC (normalised); absent when the key isn't one.",
+            "type": "integer"
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "destination",
+          "facet",
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "source": {
+      "description": "both, access_flow (Akamai router) or border_flow (customer router).",
+      "type": "string"
+    },
+    "start": {
+      "description": "Window start, RFC 3339 UTC.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "destinations",
+    "end",
+    "locations",
+    "points",
+    "schema",
+    "source",
+    "start"
+  ],
+  "type": "object"
+}

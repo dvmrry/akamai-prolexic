@@ -1,0 +1,10 @@
+# Issue template chooser. It surfaces private security disclosure prominently so
+# vulnerabilities go through GitHub private vulnerability reporting rather than
+# public issues. Regular issues remain available via the blank issue form.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/dvmrry/akamai-prolexic/security/policy
+    about: >-
+      Do not open a public issue for security vulnerabilities. Use private
+      disclosure through GitHub private vulnerability reporting.

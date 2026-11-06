@@ -1,0 +1,806 @@
+package ncf_test
+
+import (
+	"context"
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf/ncftest"
+)
+
+// fakeClock advances only when apply sleeps.
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time { return c.t }
+func (c *fakeClock) sleep(_ context.Context, d time.Duration) error {
+	c.t = c.t.Add(d)
+	return nil
+}
+
+func apply(t *testing.T, s *ncftest.Store, f *ncf.File, mutate func(*ncf.ApplyOptions)) (*ncf.ApplyResult, error) {
+	t.Helper()
+	p := plan(t, s, f, defaults)
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	opts := ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep}
+	if mutate != nil {
+		mutate(&opts)
+	}
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, opts)
+	return res, err
+}
+
+var ambiguous = &apperr.Error{Kind: apperr.Upstream, Message: "POST: EOF", Upstream: &apperr.UpstreamDetail{Method: "POST", Ambiguous: true}}
+
+func TestApplyCreatesVerifiesActivatesAndWaits(t *testing.T) {
+	s := world()
+	s.ProdLag = 3
+	res, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := res.Aliases[0]
+	if a.Status != ncf.StatusDeployed || a.FromVersion != "V1" || a.Version != "V2" {
+		t.Errorf("result = %+v", a)
+	}
+	live := s.Live(101)
+	if live.ActiveVersion != "V2" || live.ProdVersion != "V2" || !ncf.SameEntries(live.Entries, []string{"192.0.2.0/25", "198.51.100.9/32"}) {
+		t.Errorf("live = %+v", live)
+	}
+	if s.Count("CreateVersion") != 1 || s.Count("Activate") != 1 {
+		t.Errorf("calls = %v", s.Calls)
+	}
+}
+
+func TestApplyNothingToDo(t *testing.T) {
+	s := world()
+	res, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.7"), nil)
+	if err != nil || res.Aliases[0].Status != ncf.StatusUnchanged || s.Count("CreateVersion") != 0 {
+		t.Errorf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestApplyRefusesAMovedDigest(t *testing.T) {
+	s := world()
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Reviewed.Digest = "sha256:reviewed-something-else" })
+	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+}
+
+func TestApplyRefusesPlanErrors(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25", "203.0.113.0/24") // own space via protected-dst
+	_, _, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: plan(t, s, f, defaults)})
+	if apperr.KindOf(err) != apperr.Validation || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyConflictWhenTheTokenMovesAfterPlanning(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25")
+	p := plan(t, s, f, defaults)
+	// Someone activates a version between apply's own re-plan and its
+	// pre-write re-read: the digest still matches, the token doesn't.
+	calls, fired := 0, false
+	read := &hookStore{Store: s, onListAliases: func() {
+		if calls++; calls == 2 { // the re-plan lists once; the pre-write re-read is the second list
+			s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
+			fired = true
+		}
+	}}
+	_, res, err := checker().Apply(context.Background(), read, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p})
+	if !fired {
+		t.Fatal("the token never moved: the pre-write re-read isn't the second alias list any more; fix the hook")
+	}
+	if apperr.KindOf(err) != apperr.Conflict || s.Count("CreateVersion") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+type hookStore struct {
+	*ncftest.Store
+	onListAliases func()
+}
+
+func (h *hookStore) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	h.onListAliases()
+	return h.Store.ListAliases(ctx)
+}
+
+func TestApplyAmbiguousCreateThatLanded(t *testing.T) {
+	s := world()
+	s.CreateErr, s.CreateLands = ambiguous, true
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if err != nil || res.Aliases[0].Version != "V2" || res.Aliases[0].Status != ncf.StatusDeployed {
+		t.Errorf("res = %+v, err = %v", res, err)
+	}
+	if s.Count("CreateVersion") != 1 {
+		t.Errorf("CreateVersion sent %d times; it must never be retried", s.Count("CreateVersion"))
+	}
+}
+
+func TestApplyAmbiguousCreateThatDidNotLand(t *testing.T) {
+	s := world()
+	s.CreateErr = ambiguous
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "did not land; safe to re-run") || s.Count("CreateVersion") != 1 {
+		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+}
+
+func TestApplyAmbiguousCreateWithAConcurrentWriter(t *testing.T) {
+	s := world()
+	s.CreateErr, s.CreateLands = ambiguous, true
+	s.BeforeCreate = func(s *ncftest.Store) { s.AddVersions(101, 1) }
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.Conflict {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyNonAmbiguousCreateFailureIsNotProbed(t *testing.T) {
+	s := world()
+	s.CreateErr = apperr.New(apperr.Upstream, "HTTP 400: bad entry")
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if err == nil || s.Count("ListVersions") != 1 { // only the pre-create snapshot
+		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+}
+
+func TestApplyLeavesAMismatchedVersionInactive(t *testing.T) {
+	s := world()
+	s.Corrupt = func(es []string) []string { return append(es, "198.51.100.200") }
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.Upstream || s.Count("Activate") != 0 || res.Aliases[0].Status != ncf.StatusFailed {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+	if s.Live(101).ActiveVersion != "V1" {
+		t.Error("the mismatched version was activated")
+	}
+}
+
+func TestApplyActivatesNothingUntilEveryVersionVerifies(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/26")})
+	n := 0
+	s.Corrupt = func(es []string) []string {
+		if n++; n == 2 {
+			return nil // the second alias's version comes back wrong
+		}
+		return es
+	}
+	res, err := apply(t, s, f, nil)
+	if err == nil || s.Count("Activate") != 0 {
+		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+	got := []ncf.Status{res.Aliases[0].Status, res.Aliases[1].Status}
+	if !slices.Equal(got, []ncf.Status{ncf.StatusCreated, ncf.StatusFailed}) {
+		t.Errorf("statuses = %v", got)
+	}
+}
+
+func TestApplyAmbiguousActivateThatTookEffect(t *testing.T) {
+	s := world()
+	s.ActivateErr, s.ActivateLands = ambiguous, true
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if err != nil || res.Aliases[0].Status != ncf.StatusDeployed || s.Count("Activate") != 1 {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyTimesOutWaitingForProduction(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	res, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if apperr.KindOf(err) != apperr.Upstream || res.Aliases[0].Status != ncf.StatusActive {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyReportsFailedRules(t *testing.T) {
+	s := world()
+	s.Deploy = ncf.Deployment{FailedRules: 2}
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "2 failed rules") || res.Aliases[0].Status != ncf.StatusActive {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyReportsAFailedRuleset(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		deploy  ncf.Deployment
+		wantErr bool
+	}{
+		{"newer FAILED ruleset, no failed rules", ncf.Deployment{Version: 7, State: "PRODUCTION", FailedVersion: 8}, true},
+		{"nothing in production", ncf.Deployment{State: "FAILED", FailedVersion: 3}, true},
+		{"older FAILED ruleset is history", ncf.Deployment{Version: 7, State: "PRODUCTION", FailedVersion: 5}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := world()
+			s.Deploy = tt.deploy
+			res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+			if (err != nil) != tt.wantErr || (tt.wantErr && res.Aliases[0].Status != ncf.StatusActive) {
+				t.Errorf("err = %v, res = %+v", err, res)
+			}
+		})
+	}
+}
+
+func TestApplyOnAnUnversionedAPIIsUnsupported(t *testing.T) {
+	s := world()
+	s.Unversioned = true
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.NotFound || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v, calls %v", err, s.Calls)
+	}
+}
+
+// bigWorld adds a BIG alias (51+ entries) next to world's SOURCE alias.
+func bigWorld() (*ncftest.Store, *ncf.File, []string) {
+	s := world()
+	var live []string
+	for i := range 60 {
+		live = append(live, fmt.Sprintf("198.51.100.%d", i))
+	}
+	s.Add(ncf.LiveAlias{ID: 104, Name: "block-big", Type: "BIG", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, live...)
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-big", ID: 104, Type: "BIG", Role: ncf.RoleDeny, Entries: entries(append(live[1:], "198.51.100.200")...)})
+	return s, f, live
+}
+
+func TestApplyCommentsCarryTheDigest(t *testing.T) {
+	s := world()
+	res, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if err != nil || len(s.Comments) != 1 || s.Comments[0] != "prolexic apply "+res.Digest {
+		t.Errorf("err = %v, comments = %q", err, s.Comments)
+	}
+}
+
+func TestApplyBigUploadThatActivatesOnArrival(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	res, err := apply(t, s, f, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Count("Activate") != 1 { // only the SOURCE alias; the BIG one was active already
+		t.Errorf("calls = %v", s.Calls)
+	}
+	if got := s.Calls[slices.Index(s.Calls, "CreateVersion")+1:]; slices.Index(got, "CreateVersion") < 0 {
+		t.Errorf("expected two creates, calls = %v", s.Calls)
+	}
+	for _, a := range res.Aliases {
+		if a.Status != ncf.StatusDeployed {
+			t.Errorf("%s: %s", a.Name, a.Status)
+		}
+	}
+}
+
+func TestApplyCreatesBigVersionsLast(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	// The SOURCE alias fails verification: the BIG upload, which would go
+	// live on arrival, must never be sent.
+	s.Corrupt = func(es []string) []string { return append(es, "203.0.113.200") }
+	_, err := apply(t, s, f, nil)
+	if err == nil || s.Count("CreateVersion") != 1 || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, calls = %v", err, s.Calls)
+	}
+}
+
+func TestApplyRollsBackABadBigUpload(t *testing.T) {
+	s, f, _ := bigWorld()
+	s.BigActivates = true
+	n := 0
+	s.Corrupt = func(es []string) []string {
+		if n++; n == 2 { // the BIG upload, created second
+			return es[1:]
+		}
+		return es
+	}
+	res, err := apply(t, s, f, nil)
+	big := res.Aliases[0] // sorted by name: block-big first
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "V1 was re-activated") ||
+		s.Live(104).ActiveVersion != "V1" || big.Status != ncf.StatusRolledBack || big.Error == "" || s.Count("Activate") != 1 {
+		t.Errorf("err = %v, big = %+v, calls = %v", err, big, s.Calls)
+	}
+	if s.Live(101).ActiveVersion != "V1" {
+		t.Error("the SOURCE alias was activated although the apply failed")
+	}
+}
+
+func TestApplyDoesNotWaitForAnAliasNoRuleUses(t *testing.T) {
+	s := world()
+	s.Unused(101)
+	res, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err != nil || res.Aliases[0].Status != ncf.StatusActive || s.Live(101).ActiveVersion != "V2" {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+	if s.Count("Deployment") != 0 {
+		t.Errorf("waited on the deployment for an alias no rule uses: %v", s.Calls)
+	}
+}
+
+func TestApplyRollsBackEveryUploadThatWentLive(t *testing.T) {
+	s, f, live := bigWorld()
+	s.Add(ncf.LiveAlias{ID: 105, Name: "block-big-2", Type: "BIG", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, live...)
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-big-2", ID: 105, Type: "BIG", Role: ncf.RoleDeny, Entries: entries(append(live[2:], "198.51.100.201")...)})
+	s.BigActivates = true
+	n := 0
+	s.Corrupt = func(es []string) []string {
+		if n++; n == 3 { // SOURCE, block-big, then block-big-2 comes back wrong
+			return es[1:]
+		}
+		return es
+	}
+	res, err := apply(t, s, f, nil)
+	if err == nil {
+		t.Fatal("apply succeeded")
+	}
+	for _, id := range []int64{101, 104, 105} {
+		if v := s.Live(id).ActiveVersion; v != "V1" {
+			t.Errorf("alias %d is on %s; nothing may stay live after a failed apply", id, v)
+		}
+	}
+	got := map[string]ncf.Status{}
+	for _, a := range res.Aliases {
+		got[a.Name] = a.Status
+	}
+	if got["block-big"] != ncf.StatusRolledBack || got["block-big-2"] != ncf.StatusRolledBack || got["block-v4"] != ncf.StatusCreated {
+		t.Errorf("statuses = %v", got)
+	}
+}
+
+func TestApplyRollsBackAnUploadItCannotReRead(t *testing.T) {
+	s, f, _ := bigWorld()
+	f.Aliases = f.Aliases[1:] // just the BIG alias
+	s.BigActivates = true
+	s.GetVersionErr = &apperr.Error{Kind: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" } // only the upload
+	res, err := apply(t, s, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "couldn't be re-read") || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, res = %+v, live = %+v", err, res, s.Live(104))
+	}
+}
+
+func TestApplyRollsBackActivationsWhenALaterOneFails(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/26")})
+	s.ActivateFails = map[int64]error{103: apperr.New(apperr.Upstream, "HTTP 400: bad")}
+	res, err := apply(t, s, f, nil)
+	if err == nil || s.Live(101).ActiveVersion != "V1" || s.Live(103).ActiveVersion != "V1" {
+		t.Errorf("err = %v, live 101 = %s, 103 = %s", err, s.Live(101).ActiveVersion, s.Live(103).ActiveVersion)
+	}
+	if res.Aliases[0].Status != ncf.StatusRolledBack || res.Aliases[1].Status != ncf.StatusFailed {
+		t.Errorf("statuses = %s, %s", res.Aliases[0].Status, res.Aliases[1].Status)
+	}
+}
+
+func TestApplyWaitsOnTheListNotOnEntries(t *testing.T) {
+	s := world()
+	s.ProdLag = 5
+	if _, err := apply(t, s, desired("192.0.2.0/25"), nil); err != nil {
+		t.Fatal(err)
+	}
+	// Plans read entries by version id, and the pre-create token re-read and
+	// the wait both use the list: no GetAlias, so no entry download.
+	if n := s.Count("GetAlias"); n != 0 {
+		t.Errorf("GetAlias called %d times; polling must use the alias list", n)
+	}
+}
+
+func TestApplyReRunAfterSuccessIsANoOp(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25")
+	reviewed := plan(t, s, f, defaults)
+	run := func() (*ncf.ApplyResult, error) {
+		clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+		_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: reviewed, Now: clock.now, Sleep: clock.sleep})
+		return res, err
+	}
+	if _, err := run(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := run() // the same merge job, retried: digest now differs
+	if err != nil || !res.AlreadyApplied || s.Count("CreateVersion") != 1 || res.Aliases[0].Status != ncf.StatusUnchanged {
+		t.Errorf("err = %v, res = %+v, creates = %d", err, res, s.Count("CreateVersion"))
+	}
+}
+
+func TestApplyReRunFinishesAProductionWait(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	f := desired("192.0.2.0/25")
+	if _, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute }); apperr.KindOf(err) != apperr.Upstream {
+		t.Fatalf("first run: err = %v, want a production timeout", err)
+	}
+	// Production lands a few reads in: after the re-run's plan, during its wait.
+	s.SetLag(3)
+	stale := plan(t, s, f, defaults) // a plan of the same file, its digest from before the first run
+	stale.Digest = "sha256:stale"
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: stale, Now: clock.now, Sleep: clock.sleep})
+	if err != nil || !res.AlreadyApplied || res.Aliases[0].Status != ncf.StatusUnchanged || !res.Aliases[0].WaitedForProduction || s.Count("CreateVersion") != 1 {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyStillRefusesAMovedDigestWhenThereIsWorkToDo(t *testing.T) {
+	s := world()
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Reviewed.Digest = "sha256:stale" })
+	if apperr.KindOf(err) != apperr.Drift || s.Count("CreateVersion") != 0 {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyRetryReusesItsEarlierVersion(t *testing.T) {
+	s := world()
+	f := desired("192.0.2.0/25")
+	// First attempt: the version is created, then activation fails, and the
+	// version is left inactive (nothing else was activated to roll back).
+	s.ActivateFails = map[int64]error{101: apperr.New(apperr.Upstream, "HTTP 400: try later")}
+	if _, err := apply(t, s, f, nil); err == nil {
+		t.Fatal("first attempt succeeded")
+	}
+	s.ActivateFails = nil
+	res, err := apply(t, s, f, nil)
+	if err != nil || res.Aliases[0].Version != "V2" || s.Count("CreateVersion") != 1 {
+		t.Errorf("err = %v, version = %s, creates = %d; the retry must re-use V2", err, res.Aliases[0].Version, s.Count("CreateVersion"))
+	}
+}
+
+func TestApplyNoOpTimeoutSaysItWroteNothing(t *testing.T) {
+	s := world()
+	s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7")
+	s.Lag(101, "V1") // someone else activated V2; production still carries V1
+	f := desired("192.0.2.0/25", "198.51.100.7")
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, f, nil, ncf.ApplyOptions{
+		PlanOptions: defaults, Reviewed: plan(t, s, f, defaults), Timeout: time.Minute, Now: clock.now, Sleep: clock.sleep,
+	})
+	if err == nil || !strings.Contains(err.Error(), "this apply wrote nothing") || res.Aliases[0].Status != ncf.StatusUnchanged {
+		t.Errorf("err = %v, res = %+v", err, res)
+	}
+}
+
+func TestApplyMixedTimeoutNamesBothKinds(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	s.ActivateNow(103, "192.0.2.128/25")
+	s.Lag(103, "V1") // activated outside this apply, production stuck
+	s.ProdLag = 1000 // this apply's own write never lands either
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/25")})
+	_, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "block-v4 (written by this apply) and block-v4-b (activated outside it)") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyTimeoutWhileTheDeploymentIsProcessing(t *testing.T) {
+	s := world()
+	s.Deploy = ncf.Deployment{Version: 7, State: "PRODUCTION", Processing: true}
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if apperr.KindOf(err) != apperr.Upstream || !strings.Contains(err.Error(), "still processing") || strings.Contains(err.Error(), "wrote nothing") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestApplyTimeoutWhenOnlyOutsideActivationsLag(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	s.ActivateNow(103, "192.0.2.128/25")
+	s.Lag(103, "V1")
+	f := desired("192.0.2.0/25") // block-v4's own write lands promptly
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/25")})
+	_, err := apply(t, s, f, func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "new versions are in production") || !strings.Contains(err.Error(), "block-v4-b, activated outside") || strings.Contains(err.Error(), "()") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// activateHook runs before each Activate the store receives.
+type activateHook struct {
+	*ncftest.Store
+	before func(id int64, v string)
+}
+
+func (h *activateHook) Activate(ctx context.Context, id int64, v string) error {
+	h.before(id, v)
+	return h.Store.Activate(ctx, id, v)
+}
+
+func applyWith(t *testing.T, read, write ncf.Store, f *ncf.File) (*ncf.ApplyResult, error) {
+	t.Helper()
+	p, err := checker().MakePlan(context.Background(), read, f, nil, defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), read, write, f, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep})
+	return res, err
+}
+
+func TestApplyNeverOverwritesAnActivationMadeDuringIt(t *testing.T) {
+	s := world()
+	fired := false
+	// Another writer activates V3 after apply created V2, before it activates.
+	w := &activateHook{Store: s, before: func(int64, string) {}}
+	read := &listHook{Store: s, onList: func() {
+		if s.Count("CreateVersion") == 1 && !fired {
+			fired = true
+			s.ActivateNow(101, "192.0.2.0/25", "198.51.100.7", "198.51.100.8")
+		}
+	}}
+	_, err := applyWith(t, read, w, desired("192.0.2.0/25"))
+	if apperr.KindOf(err) != apperr.Conflict || s.Live(101).ActiveVersion != "V3" {
+		t.Errorf("err = %v, active = %s; the other writer's V3 must stay", err, s.Live(101).ActiveVersion)
+	}
+}
+
+// listHook runs before each ListAliases.
+type listHook struct {
+	*ncftest.Store
+	onList func()
+	fail   bool
+}
+
+func (h *listHook) ListAliases(ctx context.Context) ([]ncf.LiveAlias, error) {
+	if h.onList != nil {
+		h.onList()
+	}
+	if h.fail {
+		return nil, apperr.New(apperr.Upstream, "HTTP 503")
+	}
+	return h.Store.ListAliases(ctx)
+}
+
+func TestApplyRollsBackAnActivationWhoseOutcomeIsUnknown(t *testing.T) {
+	s := world()
+	s.Add(ncf.LiveAlias{ID: 103, Name: "block-v4-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "192.0.2.128/25")
+	f := desired("192.0.2.0/25")
+	f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-v4-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("192.0.2.128/26")})
+	lost := false
+	w := &ambiguousActivate{Store: s, id: 103, lost: &lost}
+	read := &listHook{Store: s, onList: func() {}}
+	read.onList = func() {
+		if lost {
+			read.fail = true // the read-back fails too
+		}
+	}
+	_, err := applyWith(t, read, w, f)
+	if err == nil || s.Live(103).ActiveVersion != "V1" || s.Live(101).ActiveVersion != "V1" {
+		t.Errorf("err = %v; 101 = %s, 103 = %s; both must be back on V1", err, s.Live(101).ActiveVersion, s.Live(103).ActiveVersion)
+	}
+}
+
+// ambiguousActivate lands the first activation of alias id but reports an
+// ambiguous failure, as when the response is lost.
+type ambiguousActivate struct {
+	*ncftest.Store
+	id   int64
+	lost *bool
+}
+
+func (a *ambiguousActivate) Activate(ctx context.Context, id int64, v string) error {
+	if id == a.id && !*a.lost {
+		*a.lost = true
+		if err := a.Store.Activate(ctx, id, v); err != nil {
+			return err
+		}
+		return ambiguous
+	}
+	return a.Store.Activate(ctx, id, v)
+}
+
+func TestApplyRollsBackABigUploadItCannotConfirm(t *testing.T) {
+	s, f, _ := bigWorld()
+	f.Aliases = f.Aliases[1:]
+	s.BigActivates = true
+	w := &hideActive{Store: s}
+	s.GetVersionErr = &apperr.Error{Kind: apperr.Upstream, Message: "HTTP 503"}
+	s.GetVersionFor = func(id int64, v string) bool { return id == 104 && v == "V2" }
+	_, err := applyWith(t, s, w, f)
+	if err == nil || s.Live(104).ActiveVersion != "V1" {
+		t.Errorf("err = %v, active = %s; an unconfirmed upload must be put back", err, s.Live(104).ActiveVersion)
+	}
+}
+
+// hideActive drops isActive from create responses (a response without it).
+type hideActive struct{ *ncftest.Store }
+
+func (h *hideActive) CreateVersion(ctx context.Context, l ncf.LiveAlias, es []string, c string) (ncf.AliasVersion, error) {
+	v, err := h.Store.CreateVersion(ctx, l, es, c)
+	v.Active = false
+	return v, err
+}
+
+func TestApplyStopsWaitingForAnAliasNoLongerInAnyRule(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	polls := 0
+	read := &listHook{Store: s}
+	read.onList = func() {
+		if polls++; polls == 6 { // mid-wait, the rule using it is removed
+			s.Unused(101)
+		}
+	}
+	_, err := applyWith(t, read, s, desired("192.0.2.0/25"))
+	if err != nil {
+		t.Errorf("err = %v; an alias no rule uses has nothing to wait for", err)
+	}
+}
+
+func TestApplyAmbiguousCreateNeverAdoptsAnotherWritersVersion(t *testing.T) {
+	s := world()
+	s.CreateErr = ambiguous                                           // ours didn't land...
+	s.BeforeCreate = func(s *ncftest.Store) { s.AddVersions(101, 1) } // ...but someone else's did
+	_, err := apply(t, s, desired("192.0.2.0/25"), nil)
+	if apperr.KindOf(err) != apperr.Conflict || s.Count("Activate") != 0 {
+		t.Errorf("err = %v, calls = %v; the one new version isn't this apply's", err, s.Calls)
+	}
+}
+
+func TestApplyTimeoutReportsAnUnhealthyDeployment(t *testing.T) {
+	s := world()
+	s.ProdLag = 1000
+	s.Deploy = ncf.Deployment{Version: 7, State: "PRODUCTION", FailedRules: 3}
+	_, err := apply(t, s, desired("192.0.2.0/25"), func(o *ncf.ApplyOptions) { o.Timeout = time.Minute })
+	if err == nil || !strings.Contains(err.Error(), "ACL deployment is unhealthy") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// Splitting a block and leaving part out is one change: one new version
+// holding the complete final set, then one activation. There is never a
+// state with the block gone and its parts not yet there, or both at once,
+// because the API is never sent entry-level adds or removes.
+func TestApplySplitIsOneVersionOneActivation(t *testing.T) {
+	s := world()
+	s.ActivateNow(101, "192.0.2.0/24", "198.51.100.7")
+	writes := len(s.Calls)
+	final := []string{"192.0.2.0/26", "192.0.2.64/26", "192.0.2.192/26", "198.51.100.7"} // 192.0.2.128/26 left out
+	if _, err := apply(t, s, desired(final...), nil); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	for _, c := range s.Calls[writes:] {
+		if c == "CreateVersion" || c == "Activate" {
+			calls = append(calls, c)
+		}
+	}
+	if !slices.Equal(calls, []string{"CreateVersion", "Activate"}) {
+		t.Errorf("writes = %v, want one CreateVersion then one Activate", calls)
+	}
+	if live := s.Live(101); !ncf.SameEntries(live.Entries, []string{"192.0.2.0/26", "192.0.2.64/26", "192.0.2.192/26", "198.51.100.7/32"}) {
+		t.Errorf("live = %v", live.Entries)
+	}
+}
+
+// The result times each change from activation to production, so a live
+// apply measures the propagation lag.
+func TestApplyTimesActivationToProduction(t *testing.T) {
+	s := world()
+	s.ProdLag = 3
+	res, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := res.Aliases[0]
+	act, aerr := time.Parse(time.RFC3339, a.ActivatedAt)
+	prod, perr := time.Parse(time.RFC3339, a.ProductionAt)
+	if aerr != nil || perr != nil || !prod.After(act) {
+		t.Errorf("activatedAt = %q, productionAt = %q: want production after activation", a.ActivatedAt, a.ProductionAt)
+	}
+	again, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), nil) // nothing to write now
+	if err != nil || again.Aliases[0].ActivatedAt != "" || again.Aliases[0].ProductionAt != "" {
+		t.Errorf("an unchanged alias is timed: %+v (err %v)", again.Aliases[0], err)
+	}
+}
+
+// Apply reports each step as it goes, so a long wait for production is
+// visibly a wait, not a hang.
+func TestApplyReportsProgress(t *testing.T) {
+	s := world()
+	s.ProdLag = 3
+	var steps []string
+	var waiting string
+	_, err := apply(t, s, desired("192.0.2.0/25", "198.51.100.9"), func(o *ncf.ApplyOptions) {
+		o.Progress = func(p ncf.Progress) {
+			if len(steps) == 0 || steps[len(steps)-1] != p.Step {
+				steps = append(steps, p.Step)
+			}
+			if p.Step == "waiting" && waiting == "" {
+				waiting = p.Message
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(steps, []string{"created", "activated", "waiting", "in_production"}) {
+		t.Errorf("steps = %v", steps)
+	}
+	if !strings.Contains(waiting, "0 of 1 aliases (block-v4 at V1, want V2)") || !strings.Contains(waiting, " of 15m0s") {
+		t.Errorf("waiting = %q", waiting)
+	}
+}
+
+// Aliases reaching production on the same poll are reported in plan order,
+// every run.
+func TestApplyProgressOrderIsStable(t *testing.T) {
+	for run := range 20 {
+		s := world()
+		s.Add(ncf.LiveAlias{ID: 103, Name: "block-b", Type: "SOURCE", IPVersion: "V4", Editable: true, AccountID: "A-EXAMPLE"}, "198.51.100.200")
+		// No lag: both reach production by the first poll, so only the loop order decides.
+		f := desired("192.0.2.0/25", "198.51.100.9")
+		f.Aliases = append(f.Aliases, ncf.Alias{Name: "block-b", ID: 103, Type: "SOURCE", Role: ncf.RoleDeny, Entries: entries("198.51.100.201")})
+		var order []string
+		_, err := apply(t, s, f, func(o *ncf.ApplyOptions) {
+			o.Progress = func(p ncf.Progress) {
+				if p.Step == "in_production" {
+					order = append(order, p.Alias)
+				}
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(order, []string{"block-b", "block-v4"}) {
+			t.Fatalf("run %d: in_production order = %v", run, order)
+		}
+	}
+}
+
+// A reviewed plan applies only to the file, account and settings it was made
+// from, whichever front calls apply (invariant 1). Another file can match live
+// as it is: without these checks that apply would succeed, writing nothing,
+// with the reviewed change never applied.
+func TestApplyBindsTheReviewedPlan(t *testing.T) {
+	reviewedFile := desired("192.0.2.0/25", "198.51.100.9")
+	for name, tc := range map[string]struct {
+		file   *ncf.File
+		mutate func(o *ncf.ApplyOptions, p *ncf.Plan)
+		kind   apperr.Kind
+		want   string
+	}{
+		"another file, matching live": {desired("192.0.2.0/25", "198.51.100.7"), nil, apperr.Validation, "not the desired file the plan was made from"},
+		"another account":             {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.AccountID = "B-OTHER" }, apperr.Validation, "B-OTHER"},
+		"other settings":              {reviewedFile, func(o *ncf.ApplyOptions, _ *ncf.Plan) { o.MaxRemovals = -1 }, apperr.Validation, "maxRemovals"},
+		"no digests":                  {reviewedFile, func(_ *ncf.ApplyOptions, p *ncf.Plan) { p.FileDigest = "" }, apperr.Validation, "older prolexic"},
+		"no reviewed plan":            {reviewedFile, func(o *ncf.ApplyOptions, _ *ncf.Plan) { o.Reviewed = nil }, apperr.Usage, "needs the reviewed plan"},
+	} {
+		s := world()
+		p := plan(t, s, reviewedFile, defaults)
+		clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+		opts := ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep}
+		if tc.mutate != nil {
+			tc.mutate(&opts, p)
+		}
+		s.Calls = nil // apply must refuse before reading or writing anything
+		_, res, err := checker().Apply(context.Background(), s, s, tc.file, nil, opts)
+		if apperr.KindOf(err) != tc.kind || err == nil || !strings.Contains(err.Error(), tc.want) || res != nil || len(s.Calls) != 0 {
+			t.Errorf("%s: err = %v (kind %v), res = %+v, calls = %v", name, err, apperr.KindOf(err), res, s.Calls)
+		}
+	}
+
+	// The file it was made from applies, taking the plan's digest.
+	s := world()
+	p := plan(t, s, reviewedFile, defaults)
+	clock := &fakeClock{t: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}
+	_, res, err := checker().Apply(context.Background(), s, s, reviewedFile, nil, ncf.ApplyOptions{PlanOptions: defaults, Reviewed: p, Now: clock.now, Sleep: clock.sleep})
+	if err != nil || res.Aliases[0].Status != ncf.StatusDeployed {
+		t.Errorf("reviewed file: res = %+v, err = %v", res, err)
+	}
+}

@@ -1,0 +1,114 @@
+{
+  "$id": "prolexic.attack.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attackId": {
+      "type": "integer"
+    },
+    "customer": {
+      "description": "The customer name queried.",
+      "type": "string"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "rows": {
+      "description": "One row per location and target, sorted by location, ip, netmask, eventPeakId.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "attackId": {
+            "type": "integer"
+          },
+          "attackTypeName": {
+            "type": "string"
+          },
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "destinationPort": {
+            "type": "string"
+          },
+          "endTime": {
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+            "type": "integer"
+          },
+          "eventBw": {
+            "description": "Peak bandwidth of the event.",
+            "type": "integer"
+          },
+          "eventCON": {
+            "description": "Peak connections of the event.",
+            "type": "integer"
+          },
+          "eventEndTime": {
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+            "type": "integer"
+          },
+          "eventId": {
+            "type": "integer"
+          },
+          "eventPeakId": {
+            "type": "integer"
+          },
+          "eventPps": {
+            "description": "Peak packets per second of the event.",
+            "type": "integer"
+          },
+          "eventStartTime": {
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+            "type": "integer"
+          },
+          "ip": {
+            "description": "The target address.",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where in the Prolexic network the attack was seen.",
+            "type": "string"
+          },
+          "netmask": {
+            "type": "integer"
+          },
+          "startTime": {
+            "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+            "type": "integer"
+          },
+          "ticketId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "attackId",
+          "customer",
+          "eventBw",
+          "eventId",
+          "eventPps",
+          "ip",
+          "location",
+          "netmask",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "attackId",
+    "customer",
+    "rows",
+    "schema"
+  ],
+  "type": "object"
+}

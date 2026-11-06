@@ -1,0 +1,35 @@
+{
+  "$id": "prolexic.fmt.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "canonical": {
+      "description": "Whether the file was already canonical.",
+      "type": "boolean"
+    },
+    "file": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "written": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "canonical",
+    "file",
+    "schema",
+    "written"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+# Code owners for prolexic. The owner is auto-requested for review on pull
+# requests touching the matched paths. The surfaces below keep an explicit owner
+# even if more maintainers join, so a change to what reaches the firewall, to
+# credentials or to what an agent can do always gets that review.
+
+# Default owner for everything.
+*                       @dvmrry
+
+# The write path and its invariants (AGENTS.md): plan, apply, the own-space
+# checks, the transport's retry and ambiguity rules.
+/internal/ncf/          @dvmrry
+/internal/akamai/       @dvmrry
+
+# Credentials and request signing.
+/internal/edgegrid/     @dvmrry
+
+# What an agent can reach: read-only, no apply, paths confined to the root.
+/internal/mcpfront/     @dvmrry
+
+# What untrusted API text can do to a terminal or a model.
+/internal/textsafe/     @dvmrry
+/internal/output/       @dvmrry
+
+# The repository's own guards.
+/internal/hygiene/      @dvmrry
+/.gitleaks.toml         @dvmrry
+
+# Supply chain, release and CI security posture.
+/.github/               @dvmrry
+/renovate.json          @dvmrry
+/Makefile               @dvmrry
+/internal/tools/        @dvmrry
+/SECURITY.md            @dvmrry

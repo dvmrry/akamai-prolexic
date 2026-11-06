@@ -1,0 +1,104 @@
+{
+  "$id": "prolexic.alias.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active": {
+      "description": "The shown version is the alias's active version.",
+      "type": "boolean"
+    },
+    "alias": {
+      "additionalProperties": false,
+      "properties": {
+        "activeVersion": {
+          "description": "Empty when none is reported.",
+          "type": "string"
+        },
+        "editable": {
+          "description": "False means Akamai-managed.",
+          "type": "boolean"
+        },
+        "entriesCount": {
+          "description": "Entries in the active version.",
+          "type": "integer"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "inUse": {
+          "description": "A deployed ACL rule references the alias.",
+          "type": "boolean"
+        },
+        "ipVersion": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "prodRuleIndexes": {
+          "description": "Indexes of the deployed ACL rules that reference the alias.",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "prodVersion": {
+          "description": "The version production carries; empty when none.",
+          "type": "string"
+        },
+        "type": {
+          "description": "SOURCE, DIPA or BIG.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activeVersion",
+        "editable",
+        "entriesCount",
+        "id",
+        "inUse",
+        "ipVersion",
+        "name",
+        "prodRuleIndexes",
+        "prodVersion",
+        "type"
+      ],
+      "type": "object"
+    },
+    "entries": {
+      "description": "Canonical form where parsable (others kept as sent); sorted IPv4, IPv6, GEO, ASN, then unparsable.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "managed": {
+      "description": "The alias is Akamai-managed (not customer-editable); its entries were fetched because it was named explicitly.",
+      "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "version": {
+      "description": "The version shown: the alias's active version unless another was named.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "active",
+    "alias",
+    "entries",
+    "managed",
+    "schema",
+    "version"
+  ],
+  "type": "object"
+}

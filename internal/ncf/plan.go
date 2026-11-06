@@ -1,0 +1,648 @@
+package ncf
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+)
+
+// Plan is the diff of a desired file against live, with every finding.
+type Plan struct {
+	AccountID  string `json:"accountId"`
+	Digest     string `json:"digest" doc:"sha256 over the settings and each alias's id, name, activeVersion, changes, desiredHash, role and roleSource; apply refuses unless the fresh plan's digest equals it."`
+	FileDigest string `json:"fileDigest" doc:"sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file."`
+	// Settings are the checks the plan ran with. The digest covers them, so
+	// a reviewed plan can't be applied with weaker ones.
+	Settings PlanSettings `json:"settings"`
+	Changes  bool         `json:"changes"`
+	Aliases  []AliasPlan  `json:"aliases"`
+	Findings []Finding    `json:"findings"`
+	// Checks says what the live checks ran against, so a clean plan reads as
+	// "checked against these sources" and not only as "no errors".
+	Checks Checks `json:"checks"`
+}
+
+// Checks summarises the live checks' inputs. It stays zero when the
+// offline checks fail, since the live checks then don't run.
+type Checks struct {
+	LiveChecksRan bool          `json:"liveChecksRan" doc:"False when the offline checks failed, so the counts below are zero because nothing live was checked."`
+	OwnSpace      []CheckSource `json:"ownSpace" doc:"Each own-space source and how many prefixes it gave, sorted by source."`
+	OwnASNs       int           `json:"ownASNs" doc:"Own AS numbers that ASN:: entries were checked against."`
+	DeployedRules int           `json:"deployedRules" doc:"Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one."`
+}
+
+// CheckSource is one own-space source: "static", "alias <name>" or "analytics".
+type CheckSource struct {
+	Source   string `json:"source"`
+	Prefixes int    `json:"prefixes"`
+}
+
+// AliasPlan is one alias's diff.
+type AliasPlan struct {
+	Name          string  `json:"name"`
+	ID            int64   `json:"id"`
+	Type          string  `json:"type"`
+	IPVersion     string  `json:"ipVersion"`
+	Role          Role    `json:"role" enum:"deny,allow,destination" doc:"The effective role: derived from the deployed rules when one references the alias, else the file's."`
+	RoleSource    string  `json:"roleSource" enum:"rules,file,unverified"`
+	ActiveVersion string  `json:"activeVersion" doc:"The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions."`
+	ProdVersion   string  `json:"prodVersion"`
+	Add           []Entry `json:"add"`
+	Remove        []Entry `json:"remove"`
+	Unchanged     int     `json:"unchanged"`
+	DesiredHash   string  `json:"desiredHash" doc:"sha256 over the alias's expected entries after apply (canonical, sorted): verify compares live with it."`
+
+	// desired is the full canonical entry list apply writes.
+	desired []string
+	live    LiveAlias
+}
+
+// Changed reports whether apply would write this alias.
+func (a AliasPlan) Changed() bool { return len(a.Add) > 0 || len(a.Remove) > 0 }
+
+// PlanOptions tune the live checks.
+type PlanOptions struct {
+	// MaxRemovals is the most entries one alias may lose in one apply
+	// before the plan errors; a truncated file must not empty a blocklist.
+	// Negative means no limit.
+	MaxRemovals int
+	// LiveOwnSpace adds own space as the APIs report it: protected prefixes,
+	// and our own AS numbers (a deny-side ASN:: entry naming one would block
+	// our own network). A plan needs it unless SkipLiveOwnSpace says to plan
+	// without it, so no front can leave it out by accident.
+	LiveOwnSpace LiveOwnSpace
+	// SkipLiveOwnSpace plans without LiveOwnSpace, and says so in a warning.
+	SkipLiveOwnSpace bool
+}
+
+// DefaultMaxRemovals is the removal threshold without --max-removals.
+const DefaultMaxRemovals = 10
+
+// geoASNTypes are the alias types that accept GEO:: and ASN:: entries.
+// Source-side types only, per techdocs: SOURCE and BIG; DIPA holds
+// destination IPs.
+var geoASNTypes = []string{"SOURCE", "BIG"}
+
+// countLimits are the entry-count bounds per alias type.
+var countLimits = map[string][2]int{
+	"SOURCE": {0, 50},
+	"DIPA":   {0, 50},
+	"BIG":    {51, 19999},
+}
+
+// MakePlan validates f offline, then against live. If the offline checks
+// fail, it returns without contacting the API. An error return means the
+// plan couldn't be computed (credentials, upstream); findings are in the
+// Plan.
+func (c *Checker) MakePlan(ctx context.Context, store Store, f *File, raw []byte, opts PlanOptions) (*Plan, error) {
+	if opts.MaxRemovals < -1 {
+		// Only -1 means no limit: any other negative is a mistake, and the
+		// plan's settings are what apply later runs with.
+		return nil, apperr.New(apperr.Usage, "the removal limit must be -1 (no limit) or at least 0, not %d", opts.MaxRemovals)
+	}
+	p := &Plan{AccountID: f.AccountID, Aliases: []AliasPlan{}, Findings: c.Validate(f, raw), Checks: Checks{OwnSpace: []CheckSource{}}}
+	if HasErrors(p.Findings) {
+		return p, nil
+	}
+	add := func(sev Severity, code, alias, entry, format string, args ...any) {
+		p.Findings = append(p.Findings, Finding{sev, code, alias, entry, fmt.Sprintf(format, args...)})
+	}
+
+	p.Checks.LiveChecksRan = true
+	all, err := store.ListAliases(ctx)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.KindOf(err), err, "list aliases")
+	}
+	byID, byName := map[int64]LiveAlias{}, map[string]LiveAlias{}
+	dupNames := map[string]bool{} // names more than one live alias carries
+	for _, l := range all {
+		if prev, dup := byID[l.ID]; dup {
+			return nil, apperr.New(apperr.Upstream, "the alias list has alias %d twice (%+q and %+q): refusing to plan on an inconsistent answer", l.ID, prev.Name, l.Name)
+		}
+		if _, seen := byName[l.Name]; seen {
+			dupNames[l.Name] = true
+		}
+		byID[l.ID], byName[l.Name] = l, l
+	}
+
+	var live LiveOwnSpaceResult
+	switch {
+	case opts.SkipLiveOwnSpace && opts.LiveOwnSpace != nil:
+		return nil, apperr.New(apperr.Bug, "plan: LiveOwnSpace and SkipLiveOwnSpace are both set")
+	case opts.SkipLiveOwnSpace:
+		p.Findings = append(p.Findings, Finding{Severity: Warning, Code: "own_space_analytics_skipped",
+			Message: "live own space skipped: Prolexic Analytics protected prefixes and own AS numbers were not checked"})
+	case opts.LiveOwnSpace == nil:
+		return nil, apperr.New(apperr.Bug, "plan: no LiveOwnSpace; set SkipLiveOwnSpace to plan without it")
+	default:
+		if live, err = opts.LiveOwnSpace.OwnSpace(ctx); err != nil {
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "own space from Prolexic Analytics")
+		}
+		p.Findings = append(p.Findings, live.Findings...)
+	}
+	// Entries are unmapped when parsed: an IPv4-mapped live prefix must be
+	// too, or it would never overlap the IPv4 entries it protects.
+	for i, o := range live.Prefixes {
+		live.Prefixes[i].Prefix = unmapPrefix(o.Prefix)
+	}
+
+	own, err := c.ownSpace(ctx, store, f, byName, dupNames, live.Prefixes, add)
+	if err != nil {
+		return nil, err
+	}
+	p.Checks.OwnSpace = summariseOwnSpace(staticOwnSpace(f), own)
+	ownASNs := map[uint32]string{}
+	for _, a := range live.ASNs {
+		if _, seen := ownASNs[a.ASN]; !seen {
+			ownASNs[a.ASN] = a.Source // first source wins: stable messages
+		}
+	}
+	p.Checks.OwnASNs = len(ownASNs)
+
+	// Deployed rules decide each alias's side; fetch them once, and only
+	// when some alias in the file is referenced by one.
+	var rules RuleSet
+	for _, a := range f.Aliases {
+		if l, ok := byID[a.ID]; ok && len(l.ProdRules) > 0 {
+			deployed, err := store.DeployedRules(ctx)
+			if err != nil {
+				return nil, apperr.Wrap(apperr.KindOf(err), err, "read the deployed ACL rules")
+			}
+			rules = RulesByIndex(deployed)
+			p.Checks.DeployedRules = len(deployed)
+			break
+		}
+	}
+
+	for _, a := range f.Aliases {
+		l, ok := byID[a.ID]
+		switch {
+		case !ok:
+			add(Error, "alias_missing", a.Name, "", "no alias with id %d", a.ID)
+			continue
+		case l.Name != a.Name:
+			add(Error, "alias_mismatch", a.Name, "", "alias %d is named %+q live, not %+q", a.ID, l.Name, a.Name)
+			continue
+		case l.Type != a.Type:
+			add(Error, "alias_mismatch", a.Name, "", "alias %d is type %s live, not %s; a type change means recreating the alias", a.ID, l.Type, a.Type)
+			continue
+		case !l.Editable:
+			add(Error, "alias_not_editable", a.Name, "", "alias %d is Akamai-managed", a.ID)
+			continue
+		case f.AccountID != "" && l.AccountID != "" && l.AccountID != f.AccountID:
+			add(Error, "account_mismatch", a.Name, "", "alias %d belongs to another account", a.ID)
+			continue
+		}
+		full, err := withEntries(ctx, store, l)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "get alias %s", a.Name)
+		}
+		// The deployed rules' side wins over the file's; a disagreement is an
+		// error, since the file's role would switch own-space checks off or on
+		// wrongly.
+		roleSource, fileDenySide := RoleFromFile, a.DenySide()
+		if derived, ok := DerivedRole(a.Name, l.ProdRules, rules); ok {
+			roleSource = RoleFromRules
+			if derived != a.Role {
+				add(Error, "role_mismatch", a.Name, "", "the file says role %s, but the deployed rules use the alias %s", a.Role, sideOf(derived))
+			}
+			if derived == RoleDeny && a.Type == "DIPA" {
+				// A DIPA alias lists our protected destinations and is never
+				// own-space checked; denied as a source, it blocks our own
+				// traffic. That's a rule to fix, not a change to plan around.
+				add(Error, "dipa_deny_source", a.Name, "", "a deployed rule denies this protected-destination (DIPA) alias as a source, which blocks traffic from our own addresses; fix the rule before changing the alias")
+			}
+			a.Role = derived
+		} else if len(l.ProdRules) > 0 || namedOutside(a.Name, l.ProdRules, rules) {
+			// Deployed rules use the alias but its side can't be read: only a
+			// verified derivation may relax checks, so it is checked as deny.
+			roleSource = RoleUnverified
+			add(Warning, "role_unverified", a.Name, "", "deployed rules reference the alias in a form or with an action prolexic doesn't recognise (indexes %v, or one outside them); own-space checks apply whatever the file says", l.ProdRules)
+			a.Role = RoleDeny
+			if a.Type == "DIPA" {
+				// A DIPA alias is never own-space checked, so "checked as
+				// deny" would check nothing: for all prolexic can tell, it is
+				// denied as a source, which blocks our own traffic.
+				add(Error, "dipa_unverified", a.Name, "", "deployed rules use this protected-destination (DIPA) alias in a way prolexic can't read; it might be denied as a source. Fix or check the rule before changing the alias")
+			}
+		}
+		ap, ok := c.diff(a, full, add)
+		if !ok {
+			continue
+		}
+		ap.RoleSource = roleSource
+		// The side the own-space checks run on. Only a verified derivation
+		// relaxes them (invariant 5): an alias no deployed rule uses is
+		// checked as deny whatever role the file gives it, so an edit to
+		// the file can't switch the checks off. A DIPA alias lists
+		// destinations and is never checked.
+		side := a
+		if roleSource == RoleFromFile {
+			side.Role = RoleDeny
+		}
+		checked := own
+		if side.DenySide() && !fileDenySide {
+			// Validate checked the static list against the file's role, which
+			// said allow; the side checked is deny, so check it here too.
+			checked = append(staticOwnSpace(f), own...)
+		}
+		c.liveChecks(side, full, &ap, checked, ownASNs, opts, add)
+		p.Aliases = append(p.Aliases, ap)
+	}
+	crossAliasMoves(p.Aliases, add)
+	if rules != nil {
+		undeclaredOwnSpace(all, rules, f.OwnSpace.Aliases, add)
+	}
+
+	slices.SortFunc(p.Aliases, func(x, y AliasPlan) int { return cmpString(x.Name, y.Name) })
+	for _, a := range p.Aliases {
+		p.Changes = p.Changes || a.Changed()
+	}
+	p.Settings = opts.settings()
+	p.Digest = digest(p.Aliases, p.Settings)
+	p.FileDigest = FileDigest(f)
+	return p, nil
+}
+
+func (c *Checker) diff(a Alias, l LiveAlias, add func(Severity, string, string, string, string, ...any)) (AliasPlan, bool) {
+	ap := AliasPlan{
+		Name: a.Name, ID: a.ID, Type: l.Type, IPVersion: l.IPVersion, Role: a.Role,
+		ActiveVersion: l.ActiveVersion, ProdVersion: l.ProdVersion,
+		Add: []Entry{}, Remove: []Entry{}, live: l, desired: []string{}, // never nil: emptying an alias sends []
+	}
+	live := map[string]bool{}
+	ok := true
+	for _, s := range l.Entries {
+		v, err := ParseLive(s)
+		if err != nil {
+			add(Error, "live_entry", a.Name, s, "live entry can't be parsed, so the alias can't be diffed: %v", err)
+			ok = false
+			continue
+		}
+		live[v.String()] = true
+	}
+	if !ok {
+		return ap, false
+	}
+	desired := map[string]bool{}
+	for _, e := range a.Entries {
+		v, _ := ParseAuthored(e.CIDR) // Validate already rejected unparsable entries
+		key := v.String()
+		desired[key] = true
+		ap.desired = append(ap.desired, key)
+		if live[key] {
+			ap.Unchanged++
+		} else {
+			e.CIDR = key
+			ap.Add = append(ap.Add, e)
+		}
+	}
+	for key := range live {
+		if !desired[key] {
+			ap.Remove = append(ap.Remove, Entry{CIDR: key})
+		}
+	}
+	sortByValue(ap.Add)
+	sortByValue(ap.Remove)
+	sortCanonical(ap.desired)
+	ap.DesiredHash = entriesHash(ap.desired)
+	return ap, true
+}
+
+func (c *Checker) liveChecks(a Alias, l LiveAlias, ap *AliasPlan, own []OwnSpacePrefix, ownASNs map[uint32]string, opts PlanOptions, add func(Severity, string, string, string, string, ...any)) {
+	for _, e := range a.Entries {
+		v, _ := ParseAuthored(e.CIDR)
+		key := v.String()
+		switch v.Kind() {
+		case KindPrefix:
+			if v.Is4() != (l.IPVersion == "V4") {
+				add(Error, "address_family", a.Name, key, "%s doesn't match the alias's IP version %s", key, l.IPVersion)
+			}
+			if a.DenySide() {
+				for _, o := range own {
+					if v.Prefix().Overlaps(o.Prefix) {
+						add(Error, "own_space", a.Name, key, "deny entry %s overlaps own space %s (%s)", key, o.Prefix, o.Source)
+					}
+				}
+			}
+		case KindGeo, KindASN:
+			if !slices.Contains(geoASNTypes, l.Type) {
+				add(Error, "entry_type", a.Name, key, "%s alias %s can't hold GEO:: or ASN:: entries", l.Type, a.Name)
+			}
+			if src, ours := ownASNs[v.ASN()]; ours && v.Kind() == KindASN && a.DenySide() {
+				add(Error, "own_space", a.Name, key, "deny entry %s is our own AS (%s): it would block our own network", key, src)
+			}
+		}
+	}
+
+	if lim, ok := countLimits[l.Type]; ok {
+		if n := len(a.Entries); n < lim[0] || n > lim[1] {
+			add(Error, "count_limit", a.Name, "", "%s aliases hold %d–%d entries; this one would hold %d", l.Type, lim[0], lim[1], n)
+		}
+	}
+
+	if opts.MaxRemovals >= 0 && len(ap.Remove) > opts.MaxRemovals {
+		add(Error, "removal_threshold", a.Name, "", "would remove %d entries, more than the removal limit of %d; raise the limit to allow it", len(ap.Remove), opts.MaxRemovals)
+	}
+}
+
+// ownSpace gathers the live own-space prefixes: the own-space aliases'
+// entries and the extra source. The static list is checked offline.
+func (c *Checker) ownSpace(ctx context.Context, store Store, f *File, byName map[string]LiveAlias, dupNames map[string]bool, extra []OwnSpacePrefix, add func(Severity, string, string, string, string, ...any)) ([]OwnSpacePrefix, error) {
+	var out []OwnSpacePrefix
+	for _, name := range f.OwnSpace.Aliases {
+		if dupNames[name] {
+			// Own space is named, so it must name one alias: picking one could
+			// check the deny side against the wrong addresses.
+			add(Error, "own_space_alias", name, "", "own-space alias %+q names more than one live alias; own space can't tell which", name)
+			continue
+		}
+		l, ok := byName[name]
+		if !ok {
+			add(Error, "own_space_alias", name, "", "own-space alias %q doesn't exist", name)
+			continue
+		}
+		if !l.Editable {
+			// Akamai-managed aliases can hold hundreds of thousands of entries
+			// and are never fetched.
+			add(Error, "own_space_alias", name, "", "own-space alias %q is Akamai-managed; list its prefixes in ownSpace.prefixes instead", name)
+			continue
+		}
+		if l.Type != "DIPA" {
+			add(Error, "own_space_alias", name, "", "own-space alias %q is %s; own-space aliases are protected-destination (DIPA) aliases", name, l.Type)
+			continue
+		}
+		full, err := withEntries(ctx, store, l)
+		if err != nil {
+			return nil, apperr.Wrap(apperr.KindOf(err), err, "get own-space alias %s", name)
+		}
+		if len(full.Entries) == 0 {
+			// An own-space alias names what we protect; empty, it protects
+			// nothing, and the deny-side checks would pass anything.
+			add(Error, "own_space_alias", name, "", "own-space alias %q has no entries: own space can't be checked against it", name)
+			continue
+		}
+		for _, s := range full.Entries {
+			v, err := ParseLive(s)
+			if err != nil || v.Kind() != KindPrefix {
+				// Skipping it would shrink own space silently.
+				add(Error, "own_space_alias", name, s, "own-space alias entry %q isn't a prefix prolexic can read", s)
+				continue
+			}
+			out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name})
+		}
+		// The file may be about to add to the own-space alias: those
+		// prefixes are own space too, or a deny entry covering one would pass
+		// and the same apply would block it. Live entries stay as well, so a
+		// removal doesn't shrink own space before it is live.
+		if i := slices.IndexFunc(f.Aliases, func(a Alias) bool { return a.Name == name }); i >= 0 {
+			for _, e := range f.Aliases[i].Entries {
+				if v, err := ParseAuthored(e.CIDR); err == nil && v.Kind() == KindPrefix {
+					out = append(out, OwnSpacePrefix{v.Prefix(), "alias " + name + " (desired)"})
+				}
+			}
+		}
+	}
+	return append(out, extra...), nil
+}
+
+// withEntries reads a listed alias's entries from its active version by id:
+// the list already gave the token, so a plan makes one list call instead of
+// one per alias. An API without versions falls back to GetAlias.
+func withEntries(ctx context.Context, store Store, l LiveAlias) (LiveAlias, error) {
+	if l.ActiveVersion == "" {
+		return store.GetAlias(ctx, l.ID)
+	}
+	v, err := store.GetVersion(ctx, l.ID, l.ActiveVersion)
+	if err != nil {
+		return LiveAlias{}, err
+	}
+	l.Entries = v.Entries
+	return l, nil
+}
+
+// summariseOwnSpace counts own-space prefixes per source; Analytics sources
+// (one per customer name and site) fold into "analytics".
+func summariseOwnSpace(static, live []OwnSpacePrefix) []CheckSource {
+	counts := map[string]int{}
+	for _, o := range append(append([]OwnSpacePrefix{}, static...), live...) {
+		source := o.Source
+		if strings.HasPrefix(source, "analytics") {
+			source = "analytics"
+		}
+		counts[source]++
+	}
+	out := []CheckSource{}
+	for source, n := range counts {
+		out = append(out, CheckSource{Source: source, Prefixes: n})
+	}
+	slices.SortFunc(out, func(a, b CheckSource) int { return strings.Compare(a.Source, b.Source) })
+	return out
+}
+
+// staticOwnSpace is the desired file's static own-space list, parsed (Validate
+// already reported any it couldn't parse).
+func staticOwnSpace(f *File) []OwnSpacePrefix {
+	var out []OwnSpacePrefix
+	for _, s := range f.OwnSpace.Prefixes {
+		if v, err := ParseAuthored(s); err == nil && v.Kind() == KindPrefix {
+			out = append(out, OwnSpacePrefix{v.Prefix(), "static"})
+		}
+	}
+	return out
+}
+
+// digest pins what apply will do: per alias, its identity, conflict token
+// and changes. Metadata isn't included; it never reaches the API.
+func digest(aliases []AliasPlan, settings PlanSettings) string {
+	type pin struct {
+		ID            int64    `json:"id"`
+		Name          string   `json:"name"`
+		ActiveVersion string   `json:"activeVersion"`
+		Add           []string `json:"add"`
+		Remove        []string `json:"remove"`
+		Desired       string   `json:"desired"`
+		// The side the checks ran on: a review is of these checks, so a
+		// side that changes before apply moves the digest.
+		Role       Role   `json:"role"`
+		RoleSource string `json:"roleSource"`
+	}
+	pins := make([]pin, len(aliases))
+	for i, a := range aliases {
+		pins[i] = pin{a.ID, a.Name, a.ActiveVersion, cidrs(a.Add), cidrs(a.Remove), a.DesiredHash, a.Role, a.RoleSource}
+	}
+	b, _ := json.Marshal(struct {
+		Settings PlanSettings `json:"settings"`
+		Aliases  []pin        `json:"aliases"`
+	}{settings, pins}) // plain structs always marshal
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func cidrs(es []Entry) []string {
+	out := make([]string, len(es))
+	for i, e := range es {
+		out[i] = e.CIDR
+	}
+	return out
+}
+
+func sortByValue(es []Entry) {
+	slices.SortFunc(es, func(a, b Entry) int {
+		va, _ := ParseLive(a.CIDR)
+		vb, _ := ParseLive(b.CIDR)
+		return Compare(va, vb)
+	})
+}
+
+func sortCanonical(ss []string) {
+	slices.SortFunc(ss, func(a, b string) int {
+		va, _ := ParseLive(a)
+		vb, _ := ParseLive(b)
+		return Compare(va, vb)
+	})
+}
+
+// SameEntries reports whether two entry lists are the same set after
+// normalisation; unparsable entries never match.
+func SameEntries(a, b []string) bool {
+	set := func(ss []string) (map[string]bool, bool) {
+		m := map[string]bool{}
+		for _, s := range ss {
+			v, err := ParseLive(s)
+			if err != nil {
+				return nil, false
+			}
+			m[v.String()] = true
+		}
+		return m, true
+	}
+	ma, oka := set(a)
+	mb, okb := set(b)
+	if !oka || !okb || len(ma) != len(mb) {
+		return false
+	}
+	for k := range ma {
+		if !mb[k] {
+			return false
+		}
+	}
+	return true
+}
+
+func cmpString(a, b string) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
+}
+
+// crossAliasMoves warns when space leaves one deny-side alias while another
+// gains it in the same apply. Each alias changes atomically, but aliases
+// activate and reach production one at a time, so there is a moment when
+// neither blocks it. Two applies close the gap: the addition, then the
+// removal.
+func crossAliasMoves(aliases []AliasPlan, add func(Severity, string, string, string, string, ...any)) {
+	// The side the own-space checks use: a role only the file states is checked
+	// as deny, so it counts as deny here too.
+	deny := func(a AliasPlan) bool {
+		return a.Type != "DIPA" && (a.Role == RoleDeny || a.RoleSource == RoleFromFile)
+	}
+	covers := func(x, y string) bool {
+		vx, ex := ParseLive(x)
+		vy, ey := ParseLive(y)
+		if ex != nil || ey != nil {
+			return false
+		}
+		if vx.Kind() == KindPrefix && vy.Kind() == KindPrefix {
+			return vx.Prefix().Overlaps(vy.Prefix())
+		}
+		return vx.String() == vy.String() // GEO:: and ASN:: entries move only as themselves
+	}
+	for _, from := range aliases {
+		if !deny(from) {
+			continue
+		}
+		for _, r := range from.Remove {
+			for _, to := range aliases {
+				if to.Name == from.Name || !deny(to) {
+					continue
+				}
+				if i := slices.IndexFunc(to.Add, func(e Entry) bool { return covers(r.CIDR, e.CIDR) }); i >= 0 {
+					add(Warning, "cross_alias_move", from.Name, r.CIDR,
+						"%s leaves %s while %s gains %s: aliases activate one at a time, so for a moment neither blocks it; to avoid that, apply the addition first, then the removal",
+						r.CIDR, from.Name, to.Name, to.Add[i].CIDR)
+				}
+			}
+		}
+	}
+}
+
+// entriesHash is sha256 over a set of entries in canonical form, sorted and
+// without duplicates, so equal sets hash equal however the API spells them.
+func entriesHash(entries []string) string {
+	keys := make([]string, 0, len(entries))
+	for _, s := range entries {
+		if v, err := ParseLive(s); err == nil {
+			s = v.String()
+		}
+		keys = append(keys, s)
+	}
+	slices.Sort(keys)
+	b, _ := json.Marshal(slices.Compact(keys)) // a string slice always marshals
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// FileDigest is sha256 over f's canonical form: the identity of the desired
+// file a plan was made from, so a reviewed plan can't be applied with another.
+func FileDigest(f *File) string {
+	b, err := Canonical(f)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// undeclaredOwnSpace warns about an editable protected-destination (DIPA)
+// alias that a deployed rule uses as its destination but ownSpace.aliases
+// doesn't list. Its entries are addresses being protected; undeclared, a
+// deny-side alias isn't checked against them. Discovery only warns: own space
+// comes from the reviewed file, so a rule changed in the console can't
+// silently shrink it.
+func undeclaredOwnSpace(all []LiveAlias, rules RuleSet, declared []string, add func(Severity, string, string, string, string, ...any)) {
+	for _, l := range all {
+		if l.Type != "DIPA" || !l.Editable || len(l.ProdRules) == 0 || slices.Contains(declared, l.Name) {
+			continue
+		}
+		if role, ok := DerivedRole(l.Name, l.ProdRules, rules); ok && role == RoleDestination {
+			add(Warning, "own_space_undeclared", l.Name, "", "a deployed rule uses %s as its destination, so its entries are addresses you protect, but ownSpace.aliases doesn't list it; add it so deny entries are checked against them", l.Name)
+		}
+	}
+}
+
+// PlanSettings are the checks a plan ran with: part of what was reviewed.
+type PlanSettings struct {
+	MaxRemovals      int  `json:"maxRemovals" doc:"Most entries one alias may lose; -1 for no limit."`
+	SkipLiveOwnSpace bool `json:"skipLiveOwnSpace" doc:"Live own space (Prolexic Analytics) was skipped."`
+}
+
+// settings are the PlanSettings a plan made with o records.
+func (o PlanOptions) settings() PlanSettings {
+	return PlanSettings{MaxRemovals: o.MaxRemovals, SkipLiveOwnSpace: o.SkipLiveOwnSpace}
+}
+
+// jsonSettings names s's fields as the plan document does.
+func jsonSettings(s PlanSettings) string {
+	return fmt.Sprintf("maxRemovals %d, skipLiveOwnSpace %t", s.MaxRemovals, s.SkipLiveOwnSpace)
+}

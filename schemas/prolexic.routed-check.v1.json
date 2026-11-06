@@ -1,0 +1,154 @@
+{
+  "$id": "prolexic.routed-check.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "description": "How many times sessions and routes were fetched.",
+      "type": "integer"
+    },
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "expect": {
+      "description": "present: every expected session carries the prefix; absent: none does.",
+      "type": "string"
+    },
+    "failures": {
+      "description": "Customer names whose query failed on the last attempt.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "usage",
+              "credentials",
+              "not_found",
+              "upstream",
+              "validation",
+              "drift",
+              "conflict",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prefix": {
+      "description": "The normalised prefix checked.",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "satisfied": {
+      "description": "Whether the expectation held on the last attempt, with no failures and at least one expected session.",
+      "type": "boolean"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "sessions": {
+      "description": "The expected sessions, sorted by customer, dataCenter, routerName, peer.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "carried": {
+            "description": "Whether Akamai holds a route for exactly the prefix from this peer.",
+            "type": "boolean"
+          },
+          "customer": {
+            "type": "string"
+          },
+          "dataCenter": {
+            "type": "string"
+          },
+          "peer": {
+            "description": "The session's customer BGP peer of the prefix's address family.",
+            "type": "string"
+          },
+          "routerName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "carried",
+          "customer",
+          "dataCenter",
+          "peer",
+          "routerName"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "sites": {
+      "description": "The data-center filter; empty means every data center.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "skipped": {
+      "description": "Sessions with no BGP peer of the prefix's address family; not expected.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "customer": {
+            "type": "string"
+          },
+          "dataCenter": {
+            "type": "string"
+          },
+          "routerName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "dataCenter",
+          "routerName"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "attempts",
+    "customers",
+    "expect",
+    "failures",
+    "prefix",
+    "satisfied",
+    "schema",
+    "sessions",
+    "sites",
+    "skipped"
+  ],
+  "type": "object"
+}

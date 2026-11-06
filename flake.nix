@@ -23,6 +23,7 @@
             golangci-lint
             gitleaks
             prek
+            zizmor
           ];
         };
       });

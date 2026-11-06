@@ -1,0 +1,194 @@
+{
+  "$id": "prolexic.doctor.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apis": {
+      "description": "With --live: one read per API, in the order ncf, analytics, networkHealth.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "enum": [
+              "ncf",
+              "analytics",
+              "networkHealth"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "The apperr kind of the failure; empty when ok.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "api",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "clients": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "accountKey": {
+            "description": "Whether an accountSwitchKey is set (not its value).",
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "source": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "env",
+                  "edgerc"
+                ],
+                "type": "string"
+              },
+              "path": {
+                "description": "The .edgerc file, for kind edgerc.",
+                "type": "string"
+              },
+              "section": {
+                "type": "string"
+              },
+              "vars": {
+                "description": "The environment variables read, for kind env.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "kind",
+              "section"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "accountKey",
+          "resolved",
+          "role",
+          "section"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "proxy": {
+      "additionalProperties": false,
+      "properties": {
+        "httpsProxy": {
+          "type": "boolean"
+        },
+        "noProxy": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "httpsProxy",
+        "noProxy"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "tls": {
+      "additionalProperties": false,
+      "properties": {
+        "caBundle": {
+          "description": "A CA bundle is declared (--ca-bundle or PROLEXIC_CA_BUNDLE).",
+          "type": "boolean"
+        },
+        "certificates": {
+          "description": "Certificates the bundle added to the system roots.",
+          "type": "integer"
+        },
+        "error": {
+          "description": "Why the bundle can't be used; every API command would fail.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "caBundle",
+        "certificates"
+      ],
+      "type": "object"
+    },
+    "version": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "go": {
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arch",
+        "commit",
+        "date",
+        "go",
+        "os",
+        "version"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "clients",
+    "proxy",
+    "schema",
+    "tls",
+    "version"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,482 @@
+// Package akamai is the HTTP transport shared by every API this CLI calls:
+// EdgeGrid signing, JSON in and out, lenient decoding, error classification
+// and the retry policy.
+//
+// Retry policy: only reads are retried (GETs, and the POSTs that only query,
+// marked Request.ReadOnly), on 429/502/503/504 or a transport
+// error, honouring Retry-After, with exponential backoff and full jitter. A
+// write is sent exactly once; if it fails in a way that may have taken
+// effect, the error is marked Ambiguous and the caller must prove the outcome
+// by reading state, never by retrying.
+package akamai
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand/v2"
+	"net/http"
+	"net/url"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/edgegrid"
+	"github.com/dvmrry/akamai-prolexic/internal/version"
+)
+
+// MaxResponseSize bounds a response body. The largest expected one is an
+// alias list or a 19,999-entry BIG alias, far below it.
+const MaxResponseSize = 16 << 20
+
+// Client calls one Akamai API host with one set of credentials.
+type Client struct {
+	base       url.URL
+	accountKey string
+	http       *http.Client
+	userAgent  string
+
+	MaxAttempts int           // for GETs; 1 disables retries
+	BaseDelay   time.Duration // first backoff step
+	MaxDelay    time.Duration // cap on any single wait, Retry-After included
+	// AttemptTimeout bounds each attempt, the response body included, so a
+	// stalled proxy or API can't hang a command.
+	AttemptTimeout time.Duration
+	sleep          func(context.Context, time.Duration) error
+	readOnly       bool
+}
+
+// Options tune a Client. The zero value is production behaviour.
+type Options struct {
+	// Base is the transport under the signer; nil means a clone of
+	// http.DefaultTransport, which honours HTTPS_PROXY and the system roots
+	// (so a TLS-inspecting proxy works once its CA is trusted).
+	Base http.RoundTripper
+	// Scheme overrides "https", for tests against a plain httptest server.
+	Scheme string
+	// RootCAs, when set, are the roots TLS trusts: the system's plus a
+	// declared bundle, such as a TLS-inspecting proxy's CA. Verification is
+	// never turned off.
+	RootCAs *x509.CertPool
+	// ReadOnly makes the client refuse every request that isn't a read (a GET,
+	// or marked ReadOnly) before sending it. Read paths get a read-only client,
+	// so they can't write even by mistake.
+	ReadOnly bool
+}
+
+// New returns a client for creds.
+func New(creds edgegrid.Credentials, opts Options) *Client {
+	base := opts.Base
+	if base == nil {
+		base = http.DefaultTransport.(*http.Transport).Clone()
+	}
+	if opts.RootCAs != nil {
+		if t, ok := base.(*http.Transport); ok {
+			t = t.Clone() // never change a transport the caller owns
+			if t.TLSClientConfig == nil {
+				t.TLSClientConfig = &tls.Config{}
+			}
+			t.TLSClientConfig.RootCAs = opts.RootCAs
+			base = t
+		}
+	}
+	scheme := opts.Scheme
+	if scheme == "" {
+		scheme = "https"
+	}
+	return &Client{
+		base:           url.URL{Scheme: scheme, Host: creds.Host},
+		accountKey:     creds.AccountKey,
+		http:           &http.Client{Transport: &edgegrid.Transport{Signer: edgegrid.NewSigner(creds), Base: base}},
+		readOnly:       opts.ReadOnly,
+		userAgent:      "prolexic/" + version.Current().Version,
+		MaxAttempts:    4,
+		BaseDelay:      500 * time.Millisecond,
+		MaxDelay:       30 * time.Second,
+		AttemptTimeout: 2 * time.Minute,
+		sleep:          sleepCtx,
+	}
+}
+
+// Request is one API call. Path is absolute from the host
+// ("/network-cloud-firewall/v1/acls/aliases").
+type Request struct {
+	Method string
+	Path   string
+	Query  url.Values
+	// JSON, when non-nil, is marshalled as the body.
+	JSON any
+	// Body and ContentType send a raw body instead (e.g. multipart). Body
+	// must be fully buffered: it is signed and may be re-read.
+	Body        []byte
+	ContentType string
+	// ReadOnly marks a non-GET that only queries (the Analytics routed
+	// endpoints are POSTs): it is retried like a GET and never ambiguous.
+	ReadOnly bool
+	// AllowEmpty accepts an empty (or 204) answer where out expects data. Off
+	// by default: read as empty, a blanked answer would hide live state.
+	AllowEmpty bool
+}
+
+// safe reports whether req may be retried: it changes nothing upstream.
+func (r Request) safe() bool { return r.Method == http.MethodGet || r.ReadOnly }
+
+// Do sends req and decodes a 2xx JSON response into out (if non-nil).
+// Unknown response fields are ignored: the live APIs don't match their specs.
+func (c *Client) Do(ctx context.Context, req Request, out any) error {
+	// A value that slipped into the path as "", "." or ".." would change which
+	// endpoint is called; refuse anything that isn't already a clean path.
+	if p := path.Clean(req.Path); p != req.Path || !strings.HasPrefix(req.Path, "/") {
+		return apperr.New(apperr.Usage, "%s %q: a value can't be an empty, . or .. path segment", req.Method, req.Path)
+	}
+	if c.readOnly && !req.safe() {
+		return apperr.New(apperr.Bug, "%s %s: refused, a read-only client never writes", req.Method, req.Path)
+	}
+	body, contentType := req.Body, req.ContentType
+	if req.JSON != nil {
+		b, err := json.Marshal(req.JSON)
+		if err != nil {
+			return fmt.Errorf("encode %s %s: %w", req.Method, req.Path, err)
+		}
+		body, contentType = b, "application/json"
+	}
+
+	u := c.base
+	u.Path = req.Path
+	q := url.Values{}
+	for k, v := range req.Query {
+		q[k] = v
+	}
+	if c.accountKey != "" {
+		q.Set("accountSwitchKey", c.accountKey)
+	}
+	u.RawQuery = q.Encode()
+
+	safe := req.safe()
+	attempts := 1
+	if safe {
+		attempts = max(c.MaxAttempts, 1)
+	}
+	for attempt := 1; ; attempt++ {
+		actx, cancel := context.WithTimeout(ctx, c.attemptTimeout())
+		resp, err := c.send(actx, req.Method, u.String(), body, contentType)
+		if err != nil {
+			cancel()
+			// The url.Error wrapper prints the full URL: the API host (which
+			// embeds a token) and the account switch key. Keep only the cause.
+			var ue *url.Error
+			if errors.As(err, &ue) {
+				err = ue.Err
+			}
+			err = c.redact(err) // a DNS error names the host itself
+			// A cancelled GET is just cancelled; a cancelled write may already
+			// have landed, so it falls through and is marked ambiguous.
+			if ctx.Err() != nil && safe {
+				return fmt.Errorf("%s %s: %w", req.Method, req.Path, ctx.Err())
+			}
+			if ctx.Err() == nil && attempt < attempts && !proxyAuth(err) && !untrusted(err) {
+				if err := c.sleep(ctx, c.backoff(attempt, "")); err != nil {
+					return err
+				}
+				continue
+			}
+			msg := fmt.Sprintf("%s %s", req.Method, req.Path)
+			if untrusted(err) {
+				msg += ": the server's certificate isn't trusted (behind a TLS-inspecting proxy, declare its CA bundle)"
+			}
+			return &apperr.Error{
+				Kind: apperr.Upstream, Message: msg, Err: err,
+				Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Ambiguous: !safe},
+			}
+		}
+		if retryable(resp.StatusCode) && attempt < attempts {
+			wait := c.backoff(attempt, resp.Header.Get("Retry-After"))
+			drain(resp)
+			cancel()
+			if err := c.sleep(ctx, wait); err != nil {
+				return err
+			}
+			continue
+		}
+		err = c.finish(req, resp, out)
+		cancel()
+		return err
+	}
+}
+
+func (c *Client) attemptTimeout() time.Duration {
+	if c.AttemptTimeout > 0 {
+		return c.AttemptTimeout
+	}
+	return 2 * time.Minute
+}
+
+// proxyAuth reports a proxy that wants credentials (407): retrying can't help.
+func proxyAuth(err error) bool { return strings.Contains(err.Error(), "Proxy Authentication Required") }
+
+func (c *Client) send(ctx context.Context, method, rawURL string, body []byte, contentType string) (*http.Response, error) {
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	hreq, err := http.NewRequestWithContext(ctx, method, rawURL, r)
+	if err != nil {
+		return nil, err
+	}
+	hreq.Header.Set("Accept", "application/json")
+	hreq.Header.Set("User-Agent", c.userAgent)
+	if contentType != "" {
+		hreq.Header.Set("Content-Type", contentType)
+	}
+	return c.http.Do(hreq)
+}
+
+func (c *Client) finish(req Request, resp *http.Response, out any) error {
+	defer drain(resp)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseSize+1))
+	if err == nil && len(b) > MaxResponseSize {
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: response larger than %d bytes", req.Method, req.Path, MaxResponseSize),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	if err != nil {
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: read response", req.Method, req.Path), Err: err,
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return c.redactUpstream(statusError(req, resp.StatusCode, b))
+	}
+	// A 2xx that isn't the API's answer must not pass as one: an intercepting
+	// proxy's page, or an empty body where data was expected. Read as empty,
+	// either would hide live state. On a write it's ambiguous: the request may
+	// never have reached the API.
+	trimmed := bytes.TrimSpace(b)
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") || bytes.HasPrefix(trimmed, []byte("<")) {
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: got an HTML page (HTTP %d), not the API's answer: an intercepting proxy?", req.Method, req.Path, resp.StatusCode),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	if out == nil {
+		return nil
+	}
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		if req.AllowEmpty {
+			return nil
+		}
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: an empty answer (HTTP %d) where data was expected", req.Method, req.Path, resp.StatusCode),
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	if err := json.Unmarshal(b, out); err != nil {
+		// A write that got a 2xx took effect even if its body is unreadable:
+		// ambiguous, so the caller proves the outcome instead of assuming failure.
+		return &apperr.Error{
+			Kind: apperr.Upstream, Message: fmt.Sprintf("%s %s: decode response", req.Method, req.Path), Err: err,
+			Upstream: &apperr.UpstreamDetail{Method: req.Method, Path: req.Path, Status: resp.StatusCode, Ambiguous: !req.safe()},
+		}
+	}
+	return nil
+}
+
+// problem covers both application/problem+json shapes Akamai returns: the
+// application's (errorCode, message) and the API gateway's (type, title,
+// detail, and sometimes code).
+type problem struct {
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	Detail     string `json:"detail"`
+	Code       string `json:"code"`
+	ErrorCode  string `json:"errorCode"`
+	Message    string `json:"message"`
+	IncidentID string `json:"incidentId"`
+	// ErrorPaths is the Analytics error shape's per-field detail: which
+	// request field was wrong, and why.
+	ErrorPaths []struct {
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	} `json:"errorPaths"`
+}
+
+// detail is the most useful text a problem carries.
+func (p problem) detail() string {
+	d := firstNonEmpty(p.Detail, p.Message)
+	var paths []string
+	for _, e := range p.ErrorPaths {
+		if e.Path != "" || e.Message != "" {
+			paths = append(paths, strings.TrimSpace(e.Path+": "+e.Message))
+		}
+	}
+	if len(paths) > 0 {
+		d = strings.TrimSpace(d + " (" + strings.Join(paths, "; ") + ")")
+	}
+	return d
+}
+
+func statusError(req Request, status int, body []byte) error {
+	var p problem
+	_ = json.Unmarshal(body, &p) // a non-JSON error body still yields a status error
+	d := &apperr.UpstreamDetail{
+		Method:     req.Method,
+		Path:       req.Path,
+		Status:     status,
+		ErrorCode:  firstNonEmpty(p.ErrorCode, p.Code),
+		Title:      p.Title,
+		Detail:     p.detail(),
+		IncidentID: p.IncidentID,
+		Ambiguous:  !req.safe() && status >= 500,
+	}
+	msg := fmt.Sprintf("%s %s: HTTP %d", req.Method, req.Path, status)
+	if s := firstNonEmpty(d.Detail, d.Title, d.ErrorCode); s != "" {
+		msg += ": " + s
+	}
+	return &apperr.Error{Kind: kindForStatus(status), Message: msg, Upstream: d}
+}
+
+func kindForStatus(status int) apperr.Kind {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return apperr.Credentials
+	case http.StatusNotFound:
+		return apperr.NotFound
+	case http.StatusConflict, http.StatusPreconditionFailed:
+		return apperr.Conflict
+	default:
+		return apperr.Upstream
+	}
+}
+
+func retryable(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
+// backoff is the wait before retry number attempt: Retry-After when the
+// server gives one, otherwise full jitter over an exponential step; both
+// capped at MaxDelay.
+func (c *Client) backoff(attempt int, retryAfter string) time.Duration {
+	if d, ok := parseRetryAfter(retryAfter, time.Now(), c.MaxDelay); ok {
+		return min(d, c.MaxDelay)
+	}
+	step := c.BaseDelay << (attempt - 1)
+	if step <= 0 || step > c.MaxDelay {
+		step = c.MaxDelay
+	}
+	return time.Duration(rand.Int64N(int64(step) + 1))
+}
+
+func parseRetryAfter(v string, now time.Time, limit time.Duration) (time.Duration, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
+	}
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if secs := int(limit / time.Second); n > secs {
+			n = secs // a huge value would overflow Duration
+		}
+		return time.Duration(n) * time.Second, true
+	}
+	if t, err := http.ParseTime(v); err == nil {
+		return max(t.Sub(now), 0), true
+	}
+	return 0, false
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+func drain(resp *http.Response) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	resp.Body.Close()
+}
+
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// IsAmbiguous reports whether err is a non-GET failure that may have taken
+// effect upstream.
+func IsAmbiguous(err error) bool {
+	d := apperr.UpstreamOf(err)
+	return d != nil && d.Ambiguous
+}
+
+// redact keeps the API host (which embeds a token) and the account switch key
+// out of an error's text. errors.Is and errors.As still see the cause.
+func (c *Client) redact(err error) error {
+	msg := err.Error()
+	for _, secret := range []string{c.base.Host, c.accountKey} {
+		if secret != "" {
+			msg = strings.ReplaceAll(msg, secret, "<redacted>")
+		}
+	}
+	if msg == err.Error() {
+		return err
+	}
+	return &redacted{msg: msg, err: err}
+}
+
+type redacted struct {
+	msg string
+	err error
+}
+
+func (r *redacted) Error() string { return r.msg }
+func (r *redacted) Unwrap() error { return r.err }
+
+// untrusted reports a certificate that didn't verify: retrying can't help,
+// and the cause is usually a TLS-inspecting proxy whose CA isn't declared.
+func untrusted(err error) bool {
+	var cv *tls.CertificateVerificationError
+	var ua x509.UnknownAuthorityError
+	return errors.As(err, &cv) || errors.As(err, &ua)
+}
+
+// redactUpstream applies redact to an API error's own text: a problem body
+// can echo the request URL, and with it the host and the account switch key.
+func (c *Client) redactUpstream(err error) error {
+	var e *apperr.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	scrub := func(s string) string {
+		for _, secret := range []string{c.base.Host, c.accountKey} {
+			if secret != "" {
+				s = strings.ReplaceAll(s, secret, "<redacted>")
+			}
+		}
+		return s
+	}
+	e.Message = scrub(e.Message)
+	if u := e.Upstream; u != nil {
+		u.Title, u.Detail, u.ErrorCode = scrub(u.Title), scrub(u.Detail), scrub(u.ErrorCode)
+	}
+	return err
+}

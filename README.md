@@ -4,7 +4,86 @@
 
 Unofficial: not affiliated with or endorsed by Akamai.
 
-Early days: only `prolexic version` exists so far.
+It does two things:
+
+- **Network Cloud Firewall alias entries as reviewed desired state.** A machine-owned JSON file in git is the intent, and live is the state. `plan` diffs them, `apply` writes a reviewed plan, and `verify` reads the result back.
+- **Read-only visibility** across Prolexic: firewall aliases, ACLs and rule hits; Routed BGP sessions, routes and tunnel health; attacks, events and traffic; Network Health targets.
+
+The read side stands on its own. With read credentials only, `plan --exit-code` on a schedule is drift detection against a reviewed file, and `export` adopts changes made in Control Center.
+
+See [docs/design.md](docs/design.md) for the model and the decisions behind it, [docs/runbook.md](docs/runbook.md) for what to do when something fails, and [docs/cli/](docs/cli/prolexic.md) for every command and flag (`prolexic <command> --help` shows the same).
+
+## Install
+
+Each release on the [releases page](https://github.com/dvmrry/akamai-prolexic/releases) has an archive per platform for Linux, macOS and Windows (amd64, arm64) holding a static binary, the licence and the docs, an SBOM for each, and `SHA256SUMS`, signed with Sigstore and with build provenance:
+
+```
+shasum -a 256 -c SHA256SUMS --ignore-missing
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/dvmrry/akamai-prolexic/\.github/workflows/release\.yml@' \
+  SHA256SUMS
+gh attestation verify prolexic_0.1.0_linux_amd64.tar.gz --repo dvmrry/akamai-prolexic
+```
+
+Or with Go: `go install github.com/dvmrry/akamai-prolexic/cmd/prolexic@v0.1.0`.
+
+## First run
+
+```
+prolexic doctor --live        # which credentials resolve, and which APIs they can use
+prolexic export --file desired.json   # start the desired file from live
+prolexic validate --file desired.json
+```
+
+## Making a change
+
+Edit the desired file with `add` and `remove` (they keep it canonical and record the ticket), open a PR, then:
+
+```
+# on the PR: the reviewer reads the text; the JSON is the artifact
+prolexic plan --file desired.json --out plan.json --format text
+
+# after merge: takes the reviewed digest from the artifact, writes, waits for production
+prolexic apply --file desired.json --plan plan.json
+
+# then: an independent read-back of the plan's end state
+prolexic verify --plan plan.json
+```
+
+`apply` re-plans and refuses (exit 7) if live moved since the review. It writes one new version per changed alias, holding the alias's complete final entry set, so an alias never passes through a half-changed state. It then waits for production, printing progress on stderr. Akamai documents a deployment window of up to about ten minutes. `apply` is the only command that writes, and the only one that uses the write credentials.
+
+## Output and exit codes
+
+stdout carries one document. It's JSON by default, everywhere: in a terminal, a pipe, CI or an agent. People opt in to text with `--format text`, or once with `PROLEXIC_FORMAT=text` in their shell config. Every document names its schema (`schemas/`) and says when and by which version it was made. stderr is text for people: progress lines, and on failure one `prolexic:` line (JSON only with `--format json`).
+
+The exit codes are a contract:
+
+| code | meaning |
+| --- | --- |
+| 0 | ok |
+| 1 | bug |
+| 2 | usage |
+| 3 | credentials |
+| 4 | not found or unsupported |
+| 5 | upstream failure |
+| 6 | validation |
+| 7 | drift, or the plan's digest moved |
+| 8 | conflict (another writer) |
+| 130 | cancelled |
+
+## Agents (MCP)
+
+`prolexic mcp` offers the operations as MCP tools to a local agent, over stdio: the agent's MCP client starts it as a child process. There is no listener and no network transport.
+
+```
+claude mcp add prolexic -- prolexic mcp --root /path/to/desired-state-repo
+```
+
+- It reads live state with the read credentials, and edits the local desired file (`add`, `remove`, `fmt`, `export`, `plan`).
+- There is no apply, and the front refuses write credentials. Changes reach the firewall through version control: a pull request, the reviewed plan, and CI's `apply`.
+- File paths are confined to `--root` (default: the working directory); a symbolic link can't lead out of it.
+- Every tool returns the document the CLI prints as JSON, with invisible characters escaped, since API text reaches the model.
 
 ## Build
 
@@ -12,8 +91,39 @@ Early days: only `prolexic version` exists so far.
 make build      # bin/prolexic
 make install    # ~/go/bin/prolexic
 make check      # gofmt, go vet, go test, gitleaks
+make fuzz       # fuzz the parsers and the plan diff (FUZZTIME=30s each)
+make schemas    # regenerate schemas/ after changing a document type
+make docs       # regenerate docs/cli/ after changing a command or flag
+make dist       # the release archives, SBOMs and checksums, in dist/
 ```
+
+Releases come from pull requests: each one to main either adds `docs/releases/vX.Y.Z.md`, which merging tags and publishes with signed archives, or carries the `no-release` label. CI blocks a pull request that does neither, so there is no separate tagging step. [SECURITY.md](SECURITY.md) says how to report a vulnerability.
 
 ## Credentials
 
-Akamai API clients authenticate with EdgeGrid credentials, kept in `~/.edgerc`. They never go in this repo: `.edgerc` is gitignored, and `.gitleaks.toml` flags EdgeGrid tokens in commits.
+Akamai API clients authenticate with EdgeGrid credentials. These come from the environment first (`AKAMAI_HOST`, … for the read section; `AKAMAI_WRITE_HOST`, … for the write section), then from `~/.edgerc`. Only `apply` uses the write section. Every other command gets a read-only client that refuses to send a write.
+
+Use two API clients, created in Control Center under Identity and Access Management:
+
+| API client | API service | Access level | Used by |
+| --- | --- | --- | --- |
+| read | Prolexic Network Cloud Firewall API | READ-ONLY | every firewall command but `apply` |
+| read | Prolexic Analytics API | READ-ONLY | `plan`, which reads your own space from it, and the attack, traffic and Routed BGP commands |
+| read | Prolexic Network Health API | READ-ONLY | `targets` |
+| write | Prolexic Network Cloud Firewall API | READ-WRITE | `apply` only; keep it in CI's apply step |
+
+`prolexic doctor --live` shows which APIs a client can reach. `acl test` is refused with READ-ONLY access to the firewall API and probably needs READ-WRITE, which isn't worth giving a read client: it would let that key write to the firewall, whatever `prolexic` itself refuses to send.
+
+Behind a corporate proxy, prolexic follows `HTTPS_PROXY`/`NO_PROXY`, and `--ca-bundle` (or `PROLEXIC_CA_BUNDLE`) declares a TLS-inspecting proxy's CA. See [docs/runbook.md](docs/runbook.md#behind-a-corporate-proxy).
+
+Credentials never go in this repo: `.edgerc` is gitignored, `.gitleaks.toml` flags EdgeGrid tokens, and `internal/hygiene` fails on globally routable addresses in tracked files.
+
+## License
+
+prolexic is source-available under the [Business Source License 1.1](LICENSE).
+
+- **Free:** any individual or organization using it for its own purposes, including in production on its own Akamai accounts.
+- **Needs a commercial license:** offering it, or a service built on it, to customers or other third parties for a fee. That includes managed or hosted services, consulting or managed security services delivered to clients, and bundling it into a commercial product. Contact the licensor through [github.com/dvmrry](https://github.com/dvmrry).
+- **Becomes Apache-2.0:** each version converts to the Apache License 2.0 on 2030-10-15, or four years after that version is published, whichever comes first.
+
+The vendored Akamai API specifications in `api/akamai-apis/` and the EdgeGrid signing test vectors stay under their own Apache-2.0 license.

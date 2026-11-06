@@ -1,0 +1,66 @@
+{
+  "$id": "prolexic.validate.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "file": {
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable reason, e.g. bogon, own_space, host_bits.",
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "valid": {
+      "description": "No error findings.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "file",
+    "findings",
+    "schema",
+    "valid"
+  ],
+  "type": "object"
+}

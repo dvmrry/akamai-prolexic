@@ -1,0 +1,30 @@
+{
+  "$id": "prolexic.scrub-centers.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "scrubCenters": {
+      "description": "Active scrub center names, sorted.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "scrubCenters"
+  ],
+  "type": "object"
+}

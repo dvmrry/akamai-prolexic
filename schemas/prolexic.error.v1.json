@@ -1,0 +1,80 @@
+{
+  "$id": "prolexic.error.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "description": "The process exit code.",
+      "type": "integer"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "bug",
+        "usage",
+        "credentials",
+        "not_found",
+        "upstream",
+        "validation",
+        "drift",
+        "conflict",
+        "cancelled"
+      ],
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "upstream": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguous": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": "string"
+        },
+        "incidentId": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "code",
+    "kind",
+    "message",
+    "schema"
+  ],
+  "type": "object"
+}

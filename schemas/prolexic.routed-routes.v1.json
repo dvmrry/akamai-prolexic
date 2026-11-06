@@ -1,0 +1,131 @@
+{
+  "$id": "prolexic.routed-routes.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "failures": {
+      "description": "Customer names whose query failed.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "usage",
+              "credentials",
+              "not_found",
+              "upstream",
+              "validation",
+              "drift",
+              "conflict",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prefix": {
+      "description": "The normalised prefix filter, when given.",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "routes": {
+      "description": "Sorted by customer, prefix, dataCenter, routerName, customerBgpPeerIp.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "akamaiLocation": {
+            "type": "string"
+          },
+          "asPath": {
+            "type": "string"
+          },
+          "community": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "customerBgpPeerIp": {
+            "description": "The BGP peer that announced the prefix; matches a session's customerBgpPeerIpv4 or customerBgpPeerIpv6.",
+            "type": "string"
+          },
+          "dataCenter": {
+            "type": "string"
+          },
+          "localPref": {
+            "type": "integer"
+          },
+          "med": {
+            "type": "integer"
+          },
+          "mtu": {
+            "type": "integer"
+          },
+          "prefix": {
+            "description": "The announced prefix, as the API reports it.",
+            "type": "string"
+          },
+          "routerName": {
+            "type": "string"
+          },
+          "tunnelType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "akamaiLocation",
+          "asPath",
+          "customer",
+          "customerBgpPeerIp",
+          "prefix",
+          "routerName"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "failures",
+    "routes",
+    "schema"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,96 @@
+{
+  "$id": "prolexic.acl.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "production": {
+      "description": "This is the version deployment status reports in production.",
+      "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "rules": {
+      "description": "In index order.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "aclText": {
+            "type": "string"
+          },
+          "action": {
+            "description": "Empty for a remark, which has no parsed form.",
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "destinationPorts": {
+            "description": "TCP or UDP destination port range.",
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "protocol": {
+            "description": "Name for the common numbers (icmp, tcp, udp, gre), else the number or min-max; ip for 0-255.",
+            "type": "string"
+          },
+          "ruleUuid": {
+            "type": "string"
+          },
+          "source": {
+            "description": "As live names it: a source alias is qualified SRC::\u003caccount\u003e::\u003cname\u003e, a destination alias is bare.",
+            "type": "string"
+          },
+          "sourcePorts": {
+            "description": "TCP or UDP source port range.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "updated": {
+      "type": "string"
+    },
+    "updatedBy": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "production",
+    "rules",
+    "schema",
+    "state",
+    "version"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,45 @@
+# Advisory, not a merge blocker: findings go to the repository's Security tab
+# for a person to judge (a public repository; a private one skips this). The
+# scanner running at all is not optional: if it produces no results, the job
+# fails.
+name: gosec
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "45 11 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # uploads the results
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Run gosec
+        run: |
+          status=0
+          go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -fmt sarif -out gosec.sarif ./... || status=$?
+          if [ ! -s gosec.sarif ]; then
+            echo "gosec produced no results (exit $status)"
+            exit 1
+          fi
+          echo "gosec exited $status; findings are advisory"
+      - uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        with:
+          sarif_file: gosec.sarif

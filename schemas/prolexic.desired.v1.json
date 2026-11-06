@@ -1,0 +1,127 @@
+{
+  "$id": "prolexic.desired.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "Optional reference to this schema, for editor validation.",
+      "type": "string"
+    },
+    "accountId": {
+      "description": "The Akamai account the aliases belong to.",
+      "type": "string"
+    },
+    "aliases": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "oneOf": [
+                {
+                  "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "added": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "cidr": {
+                      "type": "string"
+                    },
+                    "expires": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "ticket": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cidr"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "deny",
+              "allow",
+              "destination"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "SOURCE",
+              "BIG",
+              "DIPA"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "entries",
+          "id",
+          "name",
+          "role",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "ownSpace": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "description": "Names of live aliases whose entries are own space (the protected-destination alias).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prefixes": {
+          "description": "Static own-space prefixes.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "aliases",
+        "prefixes"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "enum": [
+        "prolexic.desired.v1"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "accountId",
+    "aliases",
+    "ownSpace",
+    "schema"
+  ],
+  "type": "object"
+}

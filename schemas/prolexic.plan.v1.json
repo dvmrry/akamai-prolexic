@@ -1,0 +1,289 @@
+{
+  "$id": "prolexic.plan.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accountId": {
+      "type": "string"
+    },
+    "aliases": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "description": "The conflict token: apply refuses if it moved. Empty when the API doesn't expose versions.",
+            "type": "string"
+          },
+          "add": {
+            "items": {
+              "oneOf": [
+                {
+                  "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "added": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "cidr": {
+                      "type": "string"
+                    },
+                    "expires": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "ticket": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cidr"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "desiredHash": {
+            "description": "sha256 over the alias's expected entries after apply (canonical, sorted): verify compares live with it.",
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prodVersion": {
+            "type": "string"
+          },
+          "remove": {
+            "items": {
+              "oneOf": [
+                {
+                  "description": "A prefix, GEO::\u003ccountry\u003e or ASN::\u003cnumber\u003e, without metadata.",
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "added": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "cidr": {
+                      "type": "string"
+                    },
+                    "expires": {
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "ticket": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cidr"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "role": {
+            "description": "The effective role: derived from the deployed rules when one references the alias, else the file's.",
+            "enum": [
+              "deny",
+              "allow",
+              "destination"
+            ],
+            "type": "string"
+          },
+          "roleSource": {
+            "enum": [
+              "rules",
+              "file",
+              "unverified"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "unchanged": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "add",
+          "desiredHash",
+          "id",
+          "ipVersion",
+          "name",
+          "prodVersion",
+          "remove",
+          "role",
+          "roleSource",
+          "type",
+          "unchanged"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "changes": {
+      "type": "boolean"
+    },
+    "checks": {
+      "additionalProperties": false,
+      "properties": {
+        "deployedRules": {
+          "description": "Deployed ACL rules read to derive alias sides; 0 when no alias in the file is used by one.",
+          "type": "integer"
+        },
+        "liveChecksRan": {
+          "description": "False when the offline checks failed, so the counts below are zero because nothing live was checked.",
+          "type": "boolean"
+        },
+        "ownASNs": {
+          "description": "Own AS numbers that ASN:: entries were checked against.",
+          "type": "integer"
+        },
+        "ownSpace": {
+          "description": "Each own-space source and how many prefixes it gave, sorted by source.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "prefixes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "prefixes",
+              "source"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "deployedRules",
+        "liveChecksRan",
+        "ownASNs",
+        "ownSpace"
+      ],
+      "type": "object"
+    },
+    "digest": {
+      "description": "sha256 over the settings and each alias's id, name, activeVersion, changes, desiredHash, role and roleSource; apply refuses unless the fresh plan's digest equals it.",
+      "type": "string"
+    },
+    "file": {
+      "type": "string"
+    },
+    "fileDigest": {
+      "description": "sha256 of the desired file's canonical form: apply refuses a reviewed plan for any other file.",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "type": "string"
+          },
+          "code": {
+            "description": "Stable machine-readable reason, e.g. bogon, own_space, host_bits.",
+            "type": "string"
+          },
+          "entry": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "ownSpaceAnalytics": {
+      "description": "Whether Prolexic Analytics protected prefixes were part of the own-space check.",
+      "type": "boolean"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "settings": {
+      "additionalProperties": false,
+      "properties": {
+        "maxRemovals": {
+          "description": "Most entries one alias may lose; -1 for no limit.",
+          "type": "integer"
+        },
+        "skipLiveOwnSpace": {
+          "description": "Live own space (Prolexic Analytics) was skipped.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "maxRemovals",
+        "skipLiveOwnSpace"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "accountId",
+    "aliases",
+    "changes",
+    "checks",
+    "digest",
+    "file",
+    "fileDigest",
+    "findings",
+    "ownSpaceAnalytics",
+    "schema",
+    "settings"
+  ],
+  "type": "object"
+}

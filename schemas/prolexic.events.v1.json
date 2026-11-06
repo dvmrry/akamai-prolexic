@@ -1,0 +1,253 @@
+{
+  "$id": "prolexic.events.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "customers": {
+      "description": "The customer names queried.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "end": {
+      "description": "Window end, RFC 3339 UTC; set only when a window was asked for.",
+      "type": "string"
+    },
+    "events": {
+      "description": "Sorted by time, customer, kind.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "critical": {
+            "additionalProperties": false,
+            "properties": {
+              "acknowledged": {
+                "type": "integer"
+              },
+              "attackId": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer"
+              },
+              "description": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "expires": {
+                "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                "type": "integer"
+              },
+              "firstOccur": {
+                "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                "type": "integer"
+              },
+              "importance": {
+                "type": "integer"
+              },
+              "instance": {
+                "type": "string"
+              },
+              "interfaceName": {
+                "type": "string"
+              },
+              "ip": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "node": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "recentOccur": {
+                "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                "type": "integer"
+              },
+              "siteCustomerName": {
+                "type": "string"
+              },
+              "siteName": {
+                "type": "string"
+              },
+              "siteType": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "state": {
+                "type": "integer"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "customer": {
+            "description": "The customer name queried; added by prolexic.",
+            "type": "string"
+          },
+          "event": {
+            "additionalProperties": false,
+            "properties": {
+              "eventEndTime": {
+                "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                "type": "integer"
+              },
+              "eventInfo": {
+                "additionalProperties": false,
+                "properties": {
+                  "alertInfo": {
+                    "type": "string"
+                  },
+                  "attackEventId": {
+                    "type": "string"
+                  },
+                  "attackId": {
+                    "type": "string"
+                  },
+                  "attackType": {
+                    "type": "string"
+                  },
+                  "destinationIPs": {
+                    "type": "string"
+                  },
+                  "endTime": {
+                    "description": "Epoch seconds UTC, or false while the event is ongoing."
+                  },
+                  "eventTicketId": {
+                    "type": "string"
+                  },
+                  "lastOccurred": {
+                    "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                    "type": "integer"
+                  },
+                  "location": {
+                    "type": "string"
+                  },
+                  "startTime": {
+                    "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                    "type": "integer"
+                  },
+                  "topDestinationPorts": {},
+                  "topNetProtocols": {},
+                  "topSourceIPs": {}
+                },
+                "type": "object"
+              },
+              "eventStartTime": {
+                "description": "Epoch seconds UTC (normalised; 0 when the API sends a value prolexic can't read).",
+                "type": "integer"
+              },
+              "eventTitle": {
+                "type": "string"
+              },
+              "eventType": {
+                "description": "alert or attack.",
+                "type": "string"
+              },
+              "isOngoing": {
+                "type": "boolean"
+              },
+              "service": {
+                "description": "Mitigation for attacks; for alerts abm, abr, arb, bgp, fbm, int or man.",
+                "type": "string"
+              },
+              "severity": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "eventStartTime",
+              "eventType",
+              "isOngoing"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "enum": [
+              "critical",
+              "event"
+            ],
+            "type": "string"
+          },
+          "time": {
+            "description": "When it began (critical: most recent occurrence), RFC 3339 UTC.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "failures": {
+      "description": "Customer names whose query failed; either list failing fails the name.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "customer": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "usage",
+              "credentials",
+              "not_found",
+              "upstream",
+              "validation",
+              "drift",
+              "conflict",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "customer",
+          "kind",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "start": {
+      "description": "Window start, RFC 3339 UTC; set only when a window was asked for.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "customers",
+    "events",
+    "failures",
+    "schema"
+  ],
+  "type": "object"
+}

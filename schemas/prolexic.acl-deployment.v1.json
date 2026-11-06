@@ -1,0 +1,100 @@
+{
+  "$id": "prolexic.acl-deployment.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "production": {
+      "description": "The version in production; 0 when none is.",
+      "type": "integer"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "ruleSets": {
+      "description": "Newest version first, then by status.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "deploymentStatus": {
+            "description": "PRODUCTION, PROCESSING or FAILED.",
+            "type": "string"
+          },
+          "hash": {
+            "type": "string"
+          },
+          "ruleSet": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "aclText": {
+                  "type": "string"
+                },
+                "installStatus": {
+                  "description": "INSTALLED, NOT_INSTALLED or FAILED.",
+                  "type": "string"
+                },
+                "ruleUuid": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rulesDeployStats": {
+            "additionalProperties": false,
+            "properties": {
+              "failed": {
+                "type": "integer"
+              },
+              "installed": {
+                "type": "integer"
+              },
+              "notInstalled": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "failed",
+              "installed",
+              "notInstalled",
+              "total"
+            ],
+            "type": "object"
+          },
+          "statusRetrievalTimestamp": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deploymentStatus",
+          "ruleSet",
+          "rulesDeployStats",
+          "version"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "production",
+    "ruleSets",
+    "schema"
+  ],
+  "type": "object"
+}

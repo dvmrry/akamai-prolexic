@@ -1,0 +1,114 @@
+# The checks on every pull request and every push to main (the hooks only run
+# where someone installed them), and weekly so a newly published
+# vulnerability shows up without a change. Actions are pinned to commit SHAs;
+# Renovate keeps them current. Branch protection requires the required job.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make install-gitleaks
+      - run: make check
+      - run: make race
+      - run: make dist
+      - run: make vuln
+      - run: make lint
+      - run: make deadcode
+      - run: make licenses
+      - run: make actionlint
+
+  # The release ships Windows binaries, and file writes, paths and the MCP
+  # front's root confinement all behave differently there.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+
+  # A secret added and removed again within a pull request is gone from the
+  # tree but still in the pull request's commits.
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: make install-gitleaks
+      - name: Scan the pull request's commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: make secret-scan-commits RANGE="$BASE..$HEAD"
+
+  # Security audit of the workflows themselves (template injection,
+  # credentials, permissions); findings fail the job. .github/zizmor.yml holds
+  # the settings.
+  zizmor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
+        with:
+          advanced-security: false
+
+  # One stable check for branch protection, so adding a job here doesn't mean
+  # changing the protection rule. commits only runs on pull requests and no job
+  # here needs another, so skipped only ever means "not applicable".
+  required:
+    if: ${{ always() }}
+    needs: [check, windows, commits, zizmor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *)
+                echo "a required job did not succeed: $result"
+                exit 1
+                ;;
+            esac
+          done

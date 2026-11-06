@@ -1,0 +1,283 @@
+package ncfapi
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/dvmrry/akamai-prolexic/internal/akamai"
+	"github.com/dvmrry/akamai-prolexic/internal/apperr"
+	"github.com/dvmrry/akamai-prolexic/internal/edgegrid"
+	"github.com/dvmrry/akamai-prolexic/internal/ncf"
+)
+
+// v2Server fakes the NCF v2 routes a test registers, recording requests.
+type v2Server struct {
+	t      *testing.T
+	mu     sync.Mutex
+	routes map[string]func(w http.ResponseWriter, r *http.Request, body []byte)
+	seen   []string
+}
+
+func newV2(t *testing.T) (*V2, *v2Server) {
+	f := &v2Server{t: t, routes: map[string]func(http.ResponseWriter, *http.Request, []byte){}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		key := r.Method + " " + strings.TrimPrefix(r.URL.Path, v2Path)
+		f.mu.Lock()
+		f.seen = append(f.seen, key+"?"+r.URL.RawQuery)
+		h, ok := f.routes[key]
+		f.mu.Unlock()
+		if !ok {
+			w.WriteHeader(404)
+			w.Write([]byte(`{"errorCode":"NOT_FOUND","message":"no fake route ` + key + `"}`))
+			return
+		}
+		h(w, r, body)
+	}))
+	t.Cleanup(srv.Close)
+	c := akamai.New(edgegrid.Credentials{Host: strings.TrimPrefix(srv.URL, "http://"), ClientToken: "ct", ClientSecret: "cs", AccessToken: "at"}, akamai.Options{Scheme: "http"})
+	c.MaxAttempts = 1
+	return NewV2(c), f
+}
+
+func (f *v2Server) json(route, body string) {
+	f.routes[route] = func(w http.ResponseWriter, _ *http.Request, _ []byte) { w.Write([]byte(body)) }
+}
+
+const aliasesV2 = `[
+  {"accountId":"A-EXAMPLE","aliasId":101,"aliasName":"block-v4","aliasType":"SOURCE","ipVersion":"V4",
+   "isCustomerEditable":true,"activeVersion":{"version":"V3","entriesCount":2},
+   "prodVersion":{"version":"V2","entriesCount":1,"aclRules":[4]},"versions":["V3","V2","V1"]},
+  {"accountId":"A-EXAMPLE","aliasId":900,"aliasName":"akamai-threats","aliasType":"BIG","ipVersion":"V4",
+   "isCustomerEditable":false,"activeVersion":{"version":"V7","entriesCount":150000}}
+]`
+
+func TestV2ListAndGetAlias(t *testing.T) {
+	s, f := newV2(t)
+	f.json("GET /aliases", aliasesV2)
+	// Live: /versions/active has no entries, and version responses carry
+	// no aliasType or ipVersion. A fake active route proves it's not used.
+	f.json("GET /aliases/101/versions/active", `{"aliasId":101,"version":"V3","isActive":true}`)
+	f.json("GET /aliases/101/versions/V3", `{"aliasId":101,"version":"V3","isActive":true,"entries":["192.0.2.0/25","198.51.100.7"],"createdBy":null}`)
+
+	all, err := s.ListAliases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all[0].ActiveVersion != "V3" || all[0].ProdVersion != "V2" || all[0].Entries != nil {
+		t.Errorf("list = %+v", all[0])
+	}
+	if all[1].Editable || all[1].ProdVersion != "" || all[1].EntriesCount != 150000 {
+		t.Errorf("managed alias = %+v", all[1])
+	}
+
+	l, err := s.GetAlias(context.Background(), 101)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.ActiveVersion != "V3" || l.ProdVersion != "V2" || len(l.Entries) != 2 || l.Type != "SOURCE" {
+		t.Errorf("alias = %+v", l)
+	}
+	if _, err := s.GetAlias(context.Background(), 7); apperr.KindOf(err) != apperr.NotFound {
+		t.Errorf("missing alias: err = %v", err)
+	}
+}
+
+func TestV2GetAliasReadsEntriesFromTheTokenVersion(t *testing.T) {
+	// The entries must be the planned token's, whatever is active by the
+	// time they are read: apply compares tokens, not entries.
+	s, f := newV2(t)
+	f.json("GET /aliases", aliasesV2)
+	f.json("GET /aliases/101/versions/V3", `{"aliasId":101,"version":"V3","isActive":false,"entries":["192.0.2.0/25"]}`)
+	l, err := s.GetAlias(context.Background(), 101)
+	if err != nil || l.ActiveVersion != "V3" || len(l.Entries) != 1 {
+		t.Errorf("alias = %+v, err = %v", l, err)
+	}
+	for _, k := range f.seen {
+		if strings.Contains(k, "/versions/active") {
+			t.Errorf("read %s; live /versions/active carries no entries", k)
+		}
+	}
+}
+
+func TestV2ListVersionsPages(t *testing.T) {
+	s, f := newV2(t)
+	f.routes["GET /aliases/101/versions"] = func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		if r.URL.Query().Get("size") != "100" {
+			t.Errorf("size = %q", r.URL.Query().Get("size"))
+		}
+		switch r.URL.Query().Get("page") {
+		case "0":
+			w.Write([]byte(`{"content":[{"version":"V3","isActive":true},{"version":"V2"}],"last":false}`))
+		default:
+			w.Write([]byte(`{"content":[{"version":"V1"}],"last":true}`))
+		}
+	}
+	vs, err := s.ListVersions(context.Background(), 101)
+	if err != nil || len(vs) != 3 || !vs[0].Active || vs[2].Version != "V1" {
+		t.Errorf("versions = %+v, err = %v", vs, err)
+	}
+}
+
+func TestV2CreateVersionIsInactiveAndDerivedFromTheToken(t *testing.T) {
+	s, f := newV2(t)
+	var got map[string]any
+	f.routes["POST /aliases/101/versions"] = func(w http.ResponseWriter, r *http.Request, body []byte) {
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Errorf("request body: %v", err)
+		}
+		w.WriteHeader(201)
+		w.Write([]byte(`{"aliasId":101,"version":"V4","isActive":false,"entries":["192.0.2.0/25"]}`))
+	}
+	alias := ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE", IPVersion: "V4", ActiveVersion: "V3"}
+	v, err := s.CreateVersion(context.Background(), alias, []string{"192.0.2.0/25"}, "prolexic apply sha256:abc")
+	if err != nil || v.Version != "V4" || v.Active {
+		t.Fatalf("v = %+v, err = %v", v, err)
+	}
+	// isActive must be sent, and false: the API defaults it to true.
+	if got["isActive"] != false || got["sourceVersion"] != "V3" || got["comments"] != "prolexic apply sha256:abc" {
+		t.Errorf("request = %v", got)
+	}
+	if _, present := got["isActive"]; !present {
+		t.Error("isActive omitted; the API would default it to true")
+	}
+}
+
+func TestV2CreateBigVersionUploadsAFile(t *testing.T) {
+	s, f := newV2(t)
+	fields := map[string]string{}
+	f.routes["POST /big-aliases/104/versions"] = func(w http.ResponseWriter, r *http.Request, body []byte) {
+		_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mr := multipart.NewReader(strings.NewReader(string(body)), params["boundary"])
+		for {
+			p, err := mr.NextPart()
+			if err != nil {
+				break
+			}
+			b, _ := io.ReadAll(p)
+			fields[p.FormName()] = string(b)
+		}
+		w.WriteHeader(201)
+		w.Write([]byte(`{"aliasId":104,"version":"V2","isActive":true}`))
+	}
+	alias := ncf.LiveAlias{ID: 104, Name: "block-big", Type: "BIG", IPVersion: "V4", ActiveVersion: "V1"}
+	v, err := s.CreateVersion(context.Background(), alias, []string{"198.51.100.0/32", "198.51.100.1/32"}, "c")
+	if err != nil || v.Version != "V2" || !v.Active {
+		t.Fatalf("v = %+v, err = %v", v, err)
+	}
+	if fields["aliasName"] != "block-big" || fields["ipVersion"] != "V4" || fields["file"] != "198.51.100.0/32\n198.51.100.1/32\n" {
+		t.Errorf("fields = %q", fields)
+	}
+}
+
+func TestV2CreateWithoutAVersionIsAmbiguous(t *testing.T) {
+	s, f := newV2(t)
+	f.routes["POST /aliases/101/versions"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+		w.WriteHeader(201)
+		w.Write([]byte(`{}`))
+	}
+	_, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Type: "SOURCE", ActiveVersion: "V3"}, []string{"192.0.2.0/25"}, "")
+	if d := apperr.UpstreamOf(err); d == nil || !d.Ambiguous {
+		t.Errorf("err = %v; a create whose version is unknown must be proven from the version list", err)
+	}
+}
+
+func TestV2ActivateAndGetVersion(t *testing.T) {
+	s, f := newV2(t)
+	f.routes["PATCH /aliases/101/versions/V4/activate"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) { w.WriteHeader(204) }
+	f.json("GET /aliases/101/versions/V4", `{"aliasId":101,"version":"V4","isActive":true,"entries":["192.0.2.0/25"]}`)
+	if err := s.Activate(context.Background(), 101, "V4"); err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.GetVersion(context.Background(), 101, "V4")
+	if err != nil || !v.Active || len(v.Entries) != 1 {
+		t.Errorf("v = %+v, err = %v", v, err)
+	}
+}
+
+func TestV2ListVersionsNeverStopsEarly(t *testing.T) {
+	tests := map[string][]string{
+		"totalPages only":  {`{"content":[{"version":"V2"}],"totalPages":2}`, `{"content":[{"version":"V1"}],"totalPages":2}`},
+		"no paging fields": {`{"content":[{"version":"V2"}]}`, `{"content":[{"version":"V1"}]}`, `{"content":[]}`},
+	}
+	for name, pages := range tests {
+		t.Run(name, func(t *testing.T) {
+			s, f := newV2(t)
+			n := 0
+			f.routes["GET /aliases/101/versions"] = func(w http.ResponseWriter, _ *http.Request, _ []byte) {
+				w.Write([]byte(pages[n]))
+				n++
+			}
+			vs, err := s.ListVersions(context.Background(), 101)
+			if err != nil || len(vs) != 2 {
+				t.Errorf("versions = %+v, err = %v", vs, err)
+			}
+		})
+	}
+}
+
+func TestV2CreateNeedsASourceVersion(t *testing.T) {
+	s, _ := newV2(t)
+	_, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE"}, []string{"192.0.2.0/25"}, "")
+	if err == nil || !strings.Contains(err.Error(), "no source version") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestV2DeployedRulesAndRuleIndexes(t *testing.T) {
+	s, f := newV2(t)
+	f.json("GET /aliases", `[{"aliasId":101,"aliasName":"block-v4","aliasType":"BIG","isCustomerEditable":true,
+	  "activeVersion":{"version":"V2"},"prodVersion":{"version":"V2","entriesCount":60,"aclRuleIndexes":[1]}},
+	 {"aliasId":102,"aliasName":"old-shape","aliasType":"SOURCE","isCustomerEditable":true,
+	  "activeVersion":{"version":"V1"},"prodVersion":{"version":"V1","aclRules":[3]}},
+	 {"aliasId":103,"aliasName":"unused","aliasType":"SOURCE","isCustomerEditable":true,"activeVersion":{"version":"V1"},"prodVersion":null}]`)
+	f.json("GET /acls/versions/deployment-status", `{"ruleSets":[{"deploymentStatus":"PRODUCTION","version":7}]}`)
+	var query string
+	f.routes["GET /acls/versions/7"] = func(w http.ResponseWriter, r *http.Request, _ []byte) {
+		query = r.URL.RawQuery
+		w.Write([]byte(`{"version":7,"ruleSet":[{"index":0,"aclText":"remark x"},
+		  {"index":1,"parsed":{"action":"deny","sourceAddress":"SRC::A-EXAMPLE::block-v4","destinationAddress":"protected-dst"}}]}`))
+	}
+	all, err := s.ListAliases(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(all[0].ProdRules, all[1].ProdRules, all[2].ProdRules) != "[1] [3] []" {
+		t.Errorf("rule indexes = %v %v %v", all[0].ProdRules, all[1].ProdRules, all[2].ProdRules)
+	}
+	rules, err := s.DeployedRules(context.Background())
+	if err != nil || len(rules) != 1 || rules[0].Index != 1 || rules[0].Source != "SRC::A-EXAMPLE::block-v4" || rules[0].Action != "deny" {
+		t.Errorf("rules = %+v, err = %v", rules, err)
+	}
+	if query != "details=true" {
+		t.Errorf("query = %q", query)
+	}
+}
+
+func TestV2EmptyingAnAliasSendsAnEmptyList(t *testing.T) {
+	s, f := newV2(t)
+	var body string
+	f.routes["POST /aliases/101/versions"] = func(w http.ResponseWriter, _ *http.Request, b []byte) {
+		body = string(b)
+		w.WriteHeader(201)
+		w.Write([]byte(`{"version":"V4"}`))
+	}
+	if _, err := s.CreateVersion(context.Background(), ncf.LiveAlias{ID: 101, Name: "block-v4", Type: "SOURCE", ActiveVersion: "V3"}, nil, "c"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"entries":[]`) {
+		t.Errorf("body = %s; null is not 'empty the alias'", body)
+	}
+}

@@ -1,0 +1,135 @@
+{
+  "$id": "prolexic.status.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aliases": {
+      "description": "Sorted by name.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "description": "Empty when the API doesn't expose versions.",
+            "type": "string"
+          },
+          "editable": {
+            "description": "False means Akamai-managed.",
+            "type": "boolean"
+          },
+          "entriesCount": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "ipVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prodVersion": {
+            "description": "The version production carries; differs from activeVersion while an activation is pending.",
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "editable",
+          "entriesCount",
+          "id",
+          "ipVersion",
+          "name",
+          "prodVersion",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "deployment": {
+      "additionalProperties": false,
+      "properties": {
+        "failedRules": {
+          "description": "Rules that failed to install; non-zero is a partial failure.",
+          "type": "integer"
+        },
+        "failedVersion": {
+          "description": "The newest FAILED ruleset; at or after the production version it means the deployment failed.",
+          "type": "integer"
+        },
+        "processing": {
+          "description": "A version is being staged.",
+          "type": "boolean"
+        },
+        "state": {
+          "description": "PRODUCTION, PROCESSING or FAILED; empty when the API reported none.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The ACL version in production.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "failedRules",
+        "processing",
+        "state",
+        "version"
+      ],
+      "type": "object"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "limits": {
+      "description": "Sorted by type. Counts cover customer-editable aliases only, not account totals.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "description": "Disabled customer-editable aliases of the type (not an account total).",
+            "type": "integer"
+          },
+          "enabled": {
+            "description": "Enabled customer-editable aliases of the type (not an account total).",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "The alias limit for the type; /stats counts customer-editable aliases only, not account totals.",
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "disabled",
+          "enabled",
+          "limit",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "aliases",
+    "deployment",
+    "limits",
+    "schema"
+  ],
+  "type": "object"
+}

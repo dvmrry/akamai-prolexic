@@ -1,0 +1,126 @@
+{
+  "$id": "prolexic.verify.v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accountId": {
+      "type": "string"
+    },
+    "aliases": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "activeVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "live": {
+            "description": "Live entry count.",
+            "type": "integer"
+          },
+          "missing": {
+            "description": "Entries the plan adds that aren't live.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "problems": {
+            "description": "What doesn't match, in words.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "prodVersion": {
+            "description": "Empty when no deployed rule uses the alias: nothing to carry.",
+            "type": "string"
+          },
+          "productionLag": {
+            "description": "Production doesn't carry the active version yet.",
+            "type": "boolean"
+          },
+          "sameSet": {
+            "description": "The live entries hash to the plan's desiredHash: exactly the expected set.",
+            "type": "boolean"
+          },
+          "stillLive": {
+            "description": "Entries the plan removes that are still live.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verified": {
+            "description": "Every added entry is live, no removed entry is, the count matches, and production carries the active version.",
+            "type": "boolean"
+          },
+          "want": {
+            "description": "Expected count: the plan's unchanged entries plus its additions.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activeVersion",
+          "id",
+          "live",
+          "missing",
+          "name",
+          "problems",
+          "prodVersion",
+          "productionLag",
+          "sameSet",
+          "stillLive",
+          "verified",
+          "want"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "deployment": {
+      "description": "What is wrong with the ACL deployment: failed, or still processing. Empty when healthy.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "digest": {
+      "description": "The verified plan's digest.",
+      "type": "string"
+    },
+    "generatedAt": {
+      "description": "When the document was made (RFC 3339, UTC).",
+      "type": "string"
+    },
+    "planFile": {
+      "type": "string"
+    },
+    "prolexic": {
+      "description": "The prolexic version that made it.",
+      "type": "string"
+    },
+    "schema": {
+      "type": "string"
+    },
+    "verified": {
+      "description": "Every alias matched and the ACL deployment is healthy and settled.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "accountId",
+    "aliases",
+    "deployment",
+    "digest",
+    "planFile",
+    "schema",
+    "verified"
+  ],
+  "type": "object"
+}
