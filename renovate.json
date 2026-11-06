@@ -1,0 +1,95 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "helpers:githubDigestChangelogs"
+  ],
+  "dependencyDashboard": true,
+  "labels": [
+    "dependencies"
+  ],
+  "timezone": "America/New_York",
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "automerge": false,
+  "rangeStrategy": "bump",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "minimumReleaseAge": "14 days",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The tools the Makefile runs by version: each pin has a '# renovate:' comment above it.",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[A-Z_]+ := (?<currentValue>\\S+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Keep GitHub Actions SHA-pinned; inline version comments allow Renovate to update the digest.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "labels": [
+        "dependencies",
+        "ci"
+      ]
+    },
+    {
+      "description": "One PR for routine action bumps; major versions still arrive one at a time.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "github actions"
+    },
+    {
+      "description": "One PR for low-risk Go dependencies. The MCP SDK stays out: it parses what an agent sends, so it arrives alone for its own review.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "!github.com/modelcontextprotocol/go-sdk"
+      ],
+      "groupName": "go dependencies",
+      "labels": [
+        "dependencies",
+        "go"
+      ]
+    },
+    {
+      "description": "One PR for the tools the Makefile pins.",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "groupName": "make tools",
+      "labels": [
+        "dependencies",
+        "ci"
+      ]
+    },
+    {
+      "description": "A Go upgrade waits for dashboard approval, since it changes the toolchain every release is built with. Last, so it overrides the go dependencies group for the go dependency.",
+      "matchDepNames": [
+        "go"
+      ],
+      "groupName": "go toolchain",
+      "dependencyDashboardApproval": true,
+      "labels": [
+        "dependencies",
+        "go"
+      ]
+    }
+  ]
+}

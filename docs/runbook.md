@@ -33,7 +33,7 @@ The command line is wrong: a missing flag, an unknown command, a bad value. The 
 
 ## Exit 3: credentials
 
-The credentials don't resolve, or the API refused them (401/403). Run `prolexic doctor --live` to see which API. If it's only `acl test` that fails, that endpoint needs a different API grant from the read key.
+The credentials don't resolve, or the API refused them (401/403). Run `prolexic doctor --live` to see which API. If it's only `acl test` that fails, that endpoint needs more than the read key's READ-ONLY access: see the [README](../README.md#credentials) before widening it.
 
 ## Exit 5: upstream (Akamai's side, or the wait ran out)
 
@@ -45,6 +45,7 @@ The credentials don't resolve, or the API refused them (401/403). Run `prolexic 
 | `activated outside this apply` | An alias you didn't change is lagging in production: someone else activated it. | Not yours. `prolexic status` shows which alias, and the team that changed it should know. |
 | `the activation of … was accepted, but … is still active: it didn't take effect` | Akamai accepted the activation but the alias stayed on its old version. Nothing changed for traffic. | Check `prolexic aliases versions --name X`, then re-run `apply`. It re-uses the version it already created. If it repeats, raise it with Akamai support. |
 | `create a version of X: it did not land; safe to re-run` | A request failed, and `prolexic` proved nothing was created. | Re-run `apply`. |
+| `HTTP 429` | Akamai rate-limited a request. Reads have already been retried; writes never are. Nothing was left half-applied unless the message also says `rolling back`. | Wait a few minutes and re-run `apply`. It re-uses any version it already created. If the message also says `rolling back`, some aliases stayed on their new version, and `apply` now reports that the plan digest moved: run `plan` again, which shows only what is left, review it, and apply that. |
 | `create a version of X: unknown whether it landed … check status before re-running` | A request failed, and `prolexic` couldn't prove the outcome. | Run `prolexic aliases versions --name X`. Re-run `apply`: it re-uses its own earlier version if there is one, and never creates a second. |
 | `doesn't hold the desired entries; it was left inactive` | Akamai stored a version with different entries from the ones sent. Nothing was activated. | Re-run `apply` once. If it repeats, raise it with Akamai support. |
 | `not rolled back; check each alias by hand` | Something failed, and putting an alias back also failed. **The one case that needs a person.** | For each alias named: `prolexic aliases versions --name X` shows which version is active. Re-activate the version listed as `from` in the apply output in Akamai Control Center (Network Cloud Firewall → aliases), or re-run `apply` to finish the change. Tell whoever owns the change. |

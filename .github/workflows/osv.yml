@@ -1,0 +1,29 @@
+# Advisory: every dependency with a published advisory, reached or not.
+# govulncheck in check.yml is the blocking one, since it knows what the code
+# actually calls.
+name: osv
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "15 11 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+    with:
+      fail-on-vuln: false
+      upload-sarif: false
+      scan-args: |-
+        --recursive
+        ./
+    permissions:
+      # What the reusable workflow declares; a caller has to grant at least that.
+      actions: read
+      contents: read
+      security-events: write

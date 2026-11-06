@@ -1,7 +1,7 @@
 # The checks on every pull request and every push to main (the hooks only run
 # where someone installed them), and weekly so a newly published
 # vulnerability shows up without a change. Actions are pinned to commit SHAs;
-# Dependabot keeps them current.
+# Renovate keeps them current. Branch protection requires the required job.
 name: check
 
 on:
@@ -30,14 +30,29 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Install gitleaks
-        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - run: make install-gitleaks
       - run: make check
       - run: make race
-      - run: make cross
+      - run: make dist
       - run: make vuln
       - run: make lint
+      - run: make deadcode
+      - run: make licenses
       - run: make actionlint
+
+  # The release ships Windows binaries, and file writes, paths and the MCP
+  # front's root confinement all behave differently there.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
 
   # A secret added and removed again within a pull request is gone from the
   # tree but still in the pull request's commits.
@@ -53,8 +68,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Install gitleaks
-        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - run: make install-gitleaks
       - name: Scan the pull request's commits
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -62,9 +76,9 @@ jobs:
         run: make secret-scan-commits RANGE="$BASE..$HEAD"
 
   # Every pull request to main raises VERSION: merging it releases that
-  # version (release.yml). Dependabot's updates ride along to the next one.
+  # version (release.yml). A bot's dependency update rides along to the next.
   version:
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.user.login != 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -78,7 +92,8 @@ jobs:
       - run: make version-check
 
   # Security audit of the workflows themselves (template injection,
-  # credentials, permissions); findings fail the job.
+  # credentials, permissions); findings fail the job. .github/zizmor.yml holds
+  # the settings.
   zizmor:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -86,27 +101,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
         with:
           advanced-security: false
 
-  # Weekly fuzzing beyond the seed inputs make check replays. A failing input
-  # is kept as an artifact: commit it under internal/ncf/testdata/fuzz to
-  # reproduce it.
-  fuzz:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  # One stable check for branch protection, so adding a job here doesn't mean
+  # changing the protection rule. commits and version only run on pull requests
+  # and no job here needs another, so skipped only ever means "not applicable".
+  required:
+    if: ${{ always() }}
+    needs: [check, windows, commits, version, zizmor]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: make fuzz FUZZTIME=3m
-      - if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: fuzz-failures
-          path: internal/ncf/testdata/fuzz
+      - name: Require every job to pass
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *)
+                echo "a required job did not succeed: $result"
+                exit 1
+                ;;
+            esac
+          done

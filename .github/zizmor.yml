@@ -1,0 +1,7 @@
+# Every action is pinned to a commit SHA, GitHub's own included (Renovate keeps
+# the SHAs and their version comments current).
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin

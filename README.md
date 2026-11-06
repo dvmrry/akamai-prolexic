@@ -15,11 +15,15 @@ See [docs/design.md](docs/design.md) for the model and the decisions behind it, 
 
 ## Install
 
-Each release on the [releases page](https://github.com/dvmrry/akamai-prolexic/releases) has static binaries for Linux, macOS and Windows (amd64, arm64) and their `SHA256SUMS`:
+Each release on the [releases page](https://github.com/dvmrry/akamai-prolexic/releases) has an archive per platform for Linux, macOS and Windows (amd64, arm64) holding a static binary, the licence and the docs, an SBOM for each, and `SHA256SUMS`, signed with Sigstore and with build provenance:
 
 ```
 shasum -a 256 -c SHA256SUMS --ignore-missing
-gh attestation verify prolexic_0.1.0_linux_amd64 --repo dvmrry/akamai-prolexic   # where the release has build provenance
+cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/dvmrry/akamai-prolexic/\.github/workflows/release\.yml@' \
+  SHA256SUMS
+gh attestation verify prolexic_0.1.0_linux_amd64.tar.gz --repo dvmrry/akamai-prolexic
 ```
 
 Or with Go: `go install github.com/dvmrry/akamai-prolexic/cmd/prolexic@v0.1.0`.
@@ -90,13 +94,25 @@ make check      # gofmt, go vet, go test, gitleaks
 make fuzz       # fuzz the parsers and the plan diff (FUZZTIME=30s each)
 make schemas    # regenerate schemas/ after changing a document type
 make docs       # regenerate docs/cli/ after changing a command or flag
+make dist       # the release archives, SBOMs and checksums, in dist/
 ```
 
-Releases come from pull requests: each one to main raises `VERSION`, and merging it tags `v<VERSION>` and publishes the binaries. CI blocks a pull request that doesn't raise it, so there is no separate tagging step.
+Releases come from pull requests: each one to main raises `VERSION`, and merging it tags `v<VERSION>` and publishes the signed archives. CI blocks a pull request that doesn't raise it, so there is no separate tagging step. [SECURITY.md](SECURITY.md) says how to report a vulnerability.
 
 ## Credentials
 
 Akamai API clients authenticate with EdgeGrid credentials. These come from the environment first (`AKAMAI_HOST`, … for the read section; `AKAMAI_WRITE_HOST`, … for the write section), then from `~/.edgerc`. Only `apply` uses the write section. Every other command gets a read-only client that refuses to send a write.
+
+Use two API clients, created in Control Center under Identity and Access Management:
+
+| API client | API service | Access level | Used by |
+| --- | --- | --- | --- |
+| read | Prolexic Network Cloud Firewall API | READ-ONLY | every firewall command but `apply` |
+| read | Prolexic Analytics API | READ-ONLY | `plan`, which reads your own space from it, and the attack, traffic and Routed BGP commands |
+| read | Prolexic Network Health API | READ-ONLY | `targets` |
+| write | Prolexic Network Cloud Firewall API | READ-WRITE | `apply` only; keep it in CI's apply step |
+
+`prolexic doctor --live` shows which APIs a client can reach. `acl test` is refused with READ-ONLY access to the firewall API and probably needs READ-WRITE, which isn't worth giving a read client: it would let that key write to the firewall, whatever `prolexic` itself refuses to send.
 
 Behind a corporate proxy, prolexic follows `HTTPS_PROXY`/`NO_PROXY`, and `--ca-bundle` (or `PROLEXIC_CA_BUNDLE`) declares a TLS-inspecting proxy's CA. See [docs/runbook.md](docs/runbook.md#behind-a-corporate-proxy).
 
