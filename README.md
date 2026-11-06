@@ -97,7 +97,7 @@ make docs       # regenerate docs/cli/ after changing a command or flag
 make dist       # the release archives, SBOMs and checksums, in dist/
 ```
 
-Releases come from pull requests: each one to main raises `VERSION`, and merging it tags `v<VERSION>` and publishes the signed archives. CI blocks a pull request that doesn't raise it, so there is no separate tagging step. [SECURITY.md](SECURITY.md) says how to report a vulnerability.
+Releases come from pull requests: each one to main either adds `docs/releases/vX.Y.Z.md`, which merging tags and publishes with signed archives, or carries the `no-release` label. CI blocks a pull request that does neither, so there is no separate tagging step. [SECURITY.md](SECURITY.md) says how to report a vulnerability.
 
 ## Credentials
 

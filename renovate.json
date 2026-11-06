@@ -9,6 +9,9 @@
   "labels": [
     "dependencies"
   ],
+  "addLabels": [
+    "no-release"
+  ],
   "timezone": "America/New_York",
   "schedule": [
     "before 6am on monday"

@@ -1,17 +1,13 @@
-# Merging a pull request to main releases the version it declares in VERSION
-# (the version job of check.yml makes sure the pull request raised it): this
-# tags v<VERSION> on the merged commit and publishes the archives, their SBOMs
-# and signed checksums. Nothing is released when VERSION is already tagged, as
-# after a bot's dependency update. No bot opens release pull requests.
-#
-# workflow_dispatch releases what main declares, for a merge whose release
-# never ran: the same checks apply, and an existing tag still means nothing to do.
+# Merging a pull request that adds docs/releases/vX.Y.Z.md releases that version
+# (release-notes.yml makes every pull request decide): this tags it on the merged
+# commit and publishes the archives, their SBOMs and signed checksums, with that
+# file as the release notes. Any other push releases nothing. No bot opens
+# release pull requests.
 name: release
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
 
 permissions: {}
 
@@ -25,14 +21,13 @@ jobs:
     # A release needs a public repository: build provenance does, and the
     # signature would otherwise put a private repository's name in the public
     # transparency log.
-    if: github.ref == 'refs/heads/main' && !github.event.repository.private
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     outputs:
       tag: ${{ steps.version.outputs.tag }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,7 +38,13 @@ jobs:
           go-version-file: go.mod
           cache: false # a release builds from nothing a pull request could have cached
       - id: version
-        run: go run ./internal/tools/releasever release
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          version="$(go run ./internal/tools/releasever "$BEFORE" "$GITHUB_SHA")"
+          if [ "$version" != none ]; then
+            echo "tag=$version" >>"$GITHUB_OUTPUT"
+          fi
       # The advisories may have moved since the pull request's checks ran.
       - name: Gate
         if: steps.version.outputs.tag != ''
@@ -67,7 +68,7 @@ jobs:
             echo "the release tree is not clean"
             exit 1
           fi
-          make dist
+          make dist VERSION="$TAG"
       - if: steps.version.outputs.tag != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -86,6 +87,10 @@ jobs:
       id-token: write # signs the checksums and the build provenance
       attestations: write # stores the provenance
     steps:
+      # For the notes file.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
@@ -103,9 +108,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
-          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          flags=()
-          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "$TAG" --generate-notes "${flags[@]}" dist/*
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --notes-file "docs/releases/$TAG.md"

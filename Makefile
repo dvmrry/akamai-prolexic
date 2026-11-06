@@ -8,7 +8,7 @@ LDFLAGS = -X github.com/dvmrry/akamai-prolexic/internal/version.version=$(VERSIO
 	-X github.com/dvmrry/akamai-prolexic/internal/version.commit=$(COMMIT) \
 	-X github.com/dvmrry/akamai-prolexic/internal/version.date=$(DATE)
 
-.PHONY: build install fmt-check vet tidy-check test race cross dist version-check vuln actionlint lint deadcode licenses install-gitleaks fuzz schemas docs secret-scan secret-scan-commits check
+.PHONY: build install fmt-check vet tidy-check test race cross dist release-version vuln actionlint lint deadcode licenses install-gitleaks fuzz schemas docs secret-scan secret-scan-commits check
 
 build:
 	go build -ldflags '$(LDFLAGS)' -o bin/prolexic ./cmd/prolexic
@@ -43,22 +43,22 @@ cross:
 		echo "== $$p"; CGO_ENABLED=0 GOOS=$${p%/*} GOARCH=$${p#*/} go build -o /dev/null ./cmd/prolexic; \
 	done
 
-# The release files of VERSION into dist/: for each platform an archive (the
-# binary, the licence, the docs) and its SBOM, then SHA256SUMS over them. CI
-# builds it on every pull request and the release workflow publishes it.
-# -trimpath and the commit date as the build date make a rebuild of a binary
-# from the same commit identical.
+# The release files of VERSION (make dist VERSION=v0.1.0) into dist/: for each
+# platform an archive (the binary, the licence, the docs) and its SBOM, then
+# SHA256SUMS over them. CI builds it on every pull request and the release
+# workflow publishes it. -trimpath and the commit date as the build date make a
+# rebuild of a binary from the same commit identical.
 # renovate: datasource=go depName=github.com/CycloneDX/cyclonedx-gomod
 CYCLONEDX_VERSION := v1.12.0
-dist: VERSION = v$(shell cat VERSION)
 dist: DATE = $(shell TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
 dist:
 	rm -rf dist && mkdir dist
 	@tools="$$(mktemp -d)"; trap 'rm -rf "$$tools"' EXIT; \
 	GOBIN="$$tools" go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CYCLONEDX_VERSION); \
+	version='$(VERSION)'; \
 	for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; ext=; if [ "$$os" = windows ]; then ext=.exe; fi; \
-		name="prolexic_$$(cat VERSION)_$${os}_$${arch}"; dir="dist/$$name"; \
+		name="prolexic_$${version#v}_$${os}_$${arch}"; dir="dist/$$name"; \
 		echo "== $$p"; mkdir -p "$$dir/docs"; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' -o "$$dir/prolexic$$ext" ./cmd/prolexic; \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch "$$tools/cyclonedx-gomod" app -json -licenses -main cmd/prolexic -output "dist/$$name.sbom.cdx.json" .; \
@@ -71,11 +71,12 @@ dist:
 	done
 	cd dist && shasum -a 256 *.tar.gz *.sbom.cdx.json > SHA256SUMS
 
-# Every pull request to main raises VERSION, and merging it releases
-# v<VERSION> (.github/workflows/release.yml). This fails when VERSION is
-# already tagged or below the newest tag; CI runs it on each pull request.
-version-check:
-	go run ./internal/tools/releasever check
+# What this branch would release: the docs/releases/vX.Y.Z.md it adds, or none.
+# It fails on notes that are edited, empty or not the next version. A pull
+# request needs either notes or the no-release label (release-notes.yml).
+RELEASE_BASE ?= origin/main
+release-version:
+	go run ./internal/tools/releasever $(RELEASE_BASE) HEAD
 
 # Known vulnerabilities in code we reach, standard library included. It
 # needs the network and its answer changes over time, so check leaves it out;
