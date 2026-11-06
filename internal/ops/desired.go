@@ -8,8 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/dvmrry/akamai-prolexic/internal/apperr"
 	"github.com/dvmrry/akamai-prolexic/internal/ncf"
@@ -64,10 +67,34 @@ func writeFileAtomic(p file, b []byte) error {
 	if err := tmp.Close(); err != nil {
 		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
-	if err := os.Rename(tmp.Name(), p.open); err != nil {
+	if err := renameOver(tmp.Name(), p.open); err != nil {
 		return apperr.New(apperr.Usage, "write %s: %v", p.show, fsErr(err))
 	}
 	return nil
+}
+
+// renameOver moves tmp onto path. On Windows a rename onto a file that something
+// has open fails, and a virus scanner or the search indexer opens a file for a
+// moment just after it is written, so it waits that out for a couple of seconds
+// (the Go toolchain does the same, in cmd/go/internal/robustio). The rename is
+// atomic, so a failure leaves the old file whole.
+func renameOver(tmp, path string) error {
+	err := os.Rename(tmp, path)
+	if runtime.GOOS != "windows" {
+		return err
+	}
+	for wait := 10 * time.Millisecond; err != nil && renameBusy(err) && wait < 2*time.Second; wait *= 2 {
+		time.Sleep(wait)
+		err = os.Rename(tmp, path)
+	}
+	return err
+}
+
+// renameBusy reports the two errors Windows gives for a file held open:
+// ERROR_ACCESS_DENIED, which os.ErrPermission matches, and ERROR_SHARING_VIOLATION.
+func renameBusy(err error) bool {
+	const errorSharingViolation = syscall.Errno(32)
+	return errors.Is(err, os.ErrPermission) || errors.Is(err, errorSharingViolation)
 }
 
 // readIfExists returns the file's bytes, or nil if it doesn't exist.
