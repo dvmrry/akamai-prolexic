@@ -417,3 +417,21 @@ func TestPlanRefusesUnreadableLiveOwnSpace(t *testing.T) {
 		t.Errorf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
 	}
 }
+
+// So is a BGP session without a usable AS number: a deny entry for that AS
+// would go unchecked.
+func TestPlanRefusesUnreadableLiveOwnASN(t *testing.T) {
+	for name, sessions := range map[string]string{
+		"missing":      `[{"asn":64500,"dataCenter":"DC-A","routerName":"edge-1"},{"dataCenter":"DC-B","routerName":"edge-2"}]`,
+		"out of range": `[{"asn":64500,"dataCenter":"DC-A","routerName":"edge-1"},{"asn":4294967296,"dataCenter":"DC-B","routerName":"edge-2"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := ncfAPI(t)
+			api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 200, sessions)
+			r := runCLI(t, ncfEnv(api.env()), "plan", "--file", writeDesired(t, desiredFixture))
+			if r.code != exitCode(apperr.Validation) || !strings.Contains(r.stdout, `"code": "own_space_unreadable"`) {
+				t.Errorf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
+			}
+		})
+	}
+}

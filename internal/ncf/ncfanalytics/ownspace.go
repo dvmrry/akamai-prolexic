@@ -61,6 +61,12 @@ func Fetch(ctx context.Context, c *analytics.Client) (ncf.LiveOwnSpaceResult, er
 			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Error, Code: "own_space_unreadable",
 				Message: fmt.Sprintf("Prolexic Analytics reports %d protected subnets for customer name %s that aren't prefixes; own space would be incomplete", p.Unparsable, p.Customer)})
 		}
+		// Likewise a BGP session without a usable AS number: a deny entry for
+		// the AS it stands for would go unchecked.
+		if p.UnusableASNs > 0 {
+			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Error, Code: "own_space_unreadable",
+				Message: fmt.Sprintf("Prolexic Analytics reports %d BGP sessions for customer name %s without a usable AS number; own AS numbers would be incomplete", p.UnusableASNs, p.Customer)})
+		}
 		if p.NoRouted {
 			out.Findings = append(out.Findings, ncf.Finding{Severity: ncf.Warning, Code: "own_space_asn_unknown",
 				Message: fmt.Sprintf("Prolexic Analytics has no BGP sessions for customer name %s (404); its AS numbers weren't checked", p.Customer)})

@@ -76,3 +76,19 @@ func TestProtectedBGPErrorOtherThan404Fails(t *testing.T) {
 		t.Errorf("exit %d, doc %+v", r.code, doc)
 	}
 }
+
+// A session without a usable AS number is counted and noted, not dropped unseen.
+func TestProtectedCountsSessionsWithoutAnASN(t *testing.T) {
+	api := newFakeAPI(t)
+	api.json("GET /prolexic-analytics/v2/metric-types/example-a", 200, `{"currentContract":"site-a","status":true,"data":{}}`)
+	api.json("POST /prolexic-analytics/v2/routed/tunnel/bgp-sessions", 200, `[{"dataCenter":"DC-A","asn":64500},{"dataCenter":"DC-B"},{"dataCenter":"DC-C","asn":-1}]`)
+	r := runCLI(t, api.env(), "protected", "--customer", "example-a")
+	doc := decode[ops.ProtectedDoc](t, r.stdout, "prolexic.protected.v1")
+	if r.code != 0 || len(doc.Protected) != 1 {
+		t.Fatalf("exit %d, doc %+v", r.code, doc)
+	}
+	p := doc.Protected[0]
+	if len(p.ASNs) != 1 || p.ASNs[0] != 64500 || p.UnusableASNs != 2 || !strings.Contains(strings.Join(p.Notes, "\n"), "2 BGP sessions have no usable AS number") {
+		t.Errorf("protected = %+v", p)
+	}
+}
