@@ -94,6 +94,10 @@
           "unparsable": {
             "description": "Subnet entries that were not prefixes, left out of prefixes.",
             "type": "integer"
+          },
+          "unusableASNs": {
+            "description": "BGP sessions with a missing or out-of-range AS number, left out of asns.",
+            "type": "integer"
           }
         },
         "required": [

@@ -25,6 +25,9 @@ type Protected struct {
 	// Unparsable counts subnet entries that weren't prefixes: own space that
 	// can't be checked against.
 	Unparsable int `json:"unparsable,omitempty" doc:"Subnet entries that were not prefixes, left out of prefixes."`
+	// UnusableASNs counts BGP sessions whose AS number was missing or out of
+	// range: an own AS that can't be checked against.
+	UnusableASNs int `json:"unusableASNs,omitempty" doc:"BGP sessions with a missing or out-of-range AS number, left out of asns."`
 }
 
 // ProtectedFor gathers one customer name's protected prefixes and own AS
@@ -55,12 +58,18 @@ func (c *Client) ProtectedFor(ctx context.Context, customer string) (Protected, 
 		return out, nil
 	}
 	for _, s := range sessions {
-		if s.ASN > 0 && s.ASN <= math.MaxUint32 && !slices.Contains(out.ASNs, s.ASN) {
+		switch {
+		case s.ASN <= 0 || s.ASN > math.MaxUint32:
+			out.UnusableASNs++
+		case !slices.Contains(out.ASNs, s.ASN):
 			out.ASNs = append(out.ASNs, s.ASN)
 		}
 	}
 	slices.Sort(out.ASNs)
-	if len(out.ASNs) == 0 {
+	switch {
+	case out.UnusableASNs > 0:
+		out.Notes = append(out.Notes, fmt.Sprintf("%d BGP sessions have no usable AS number (missing or out of range) and are left out", out.UnusableASNs))
+	case len(out.ASNs) == 0:
 		out.Notes = append(out.Notes, "BGP sessions carry no AS number")
 	}
 	return out, nil
